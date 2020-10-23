@@ -1,0 +1,30 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`valid duplicate 1`] = `
+"
+			<!-- a:start-->hello world<!-- a:end -->
+			<!--ba:start -->something world<!--ba:end -->
+			<!-- b:start -->goodbye world<!-- b:end -->
+			<!-- ba:start -->something world<!-- ba:end -->
+			<!--a:start -->hello world<!-- a:end -->
+			<!-- b:start -->goodbye world<!--b:end -->
+			<!-- ba:start -->something world<!--ba:end -->
+			<!--a:start -->hello world<!-- a:end -->
+			<!-- ba:start -->something world<!-- ba:end-->
+			<!-- b:start-->goodbye world<!-- b:end -->
+		"
+`;
+
+exports[`valid intersecting 1`] = `
+"
+			<!-- a:start -->hello world<!-- a:end --><<!-- b:end -->
+		"
+`;
+
+exports[`valid multiple 1`] = `
+"
+			<!-- a:start -->hello world<!-- a:end -->
+			<!-- b:start -->goodbye world<!-- b:end -->
+			<!-- ba:start -->something world<!-- ba:end -->
+		"
+`;

@@ -1,23 +1,37 @@
-
-const createPtrn = (key, type) => new RegExp(`<!--\\s*${key}:${type}\\s*-->`);
-const {stringify} = JSON;
+const createPtrn = (key, type) => new RegExp(`<!--\\s*${key}:${type}\\s*-->`, 'g');
+const {hasOwnProperty} = Object.prototype;
 
 function commentMark(string, object) {
-	Object.entries(object).forEach(([key, value]) => {
-		const startComment = string.match(createPtrn(key, 'start'));
-		if (!startComment) {
-			console.warn(`[comment-mark] No start comment found for ${stringify(key)}`);
-			return;
-		}
+	if (object) {
+		for (const key in object) {
+			if (!hasOwnProperty.call(object, key)) {
+				continue;
+			}
 
-		const endComment = string.match(createPtrn(key, 'end'));
-		if (!endComment) {
-			console.warn(`[comment-mark] No end comment found for ${stringify(key)}`);
-			return;
-		}
+			const value = object[key];
+			const startComment = createPtrn(key, 'start');
+			const endComment = createPtrn(key, 'end');
 
-		string = string.slice(0, startComment.index + startComment[0].length) + '\n' + value + '\n' + string.slice(endComment.index);
-	});
+			let startMatch;
+			let endMatch;
+			do {
+				startMatch = startComment.exec(string);
+				if (!startMatch) {
+					continue;
+				}
+
+				endComment.lastIndex = startMatch.index;
+				endMatch = endComment.exec(string);
+
+				if (endMatch) {
+					string = string.slice(0, startMatch.index + startMatch[0].length) + value + string.slice(endMatch.index);
+					endComment.lastIndex += value.length;
+				} else {
+					console.warn(`[comment-mark] No end comment found for "${key}"`);
+				}
+			} while (startMatch);
+		}
+	}
 
 	return string;
 }
