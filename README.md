@@ -2,7 +2,7 @@
 
 Interpolate strings with HTML comment markers!
 
-**Before**
+**Input**
 
 ```html
 <!-- myMessage:start --><!-- myMessage:end -->
@@ -14,7 +14,7 @@ Interpolate strings with HTML comment markers!
 }
 ```
 
-**After <sup>✨</sup>**
+**Output <sup>✨</sup>**
 
 ```html
 <!-- myMessage:start -->Text inserted!<!-- myMessage:end -->
