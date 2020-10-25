@@ -75,10 +75,11 @@ This file is modified by a script
 
 ## ⚙️ Options
 
-`commentMark(contentStr: string, data)`
-- `contentStr` <`String`>
-- `data` - key-value pairs to inject into the string
+`commentMark(contentStr, data)`
+- `contentStr` `<String>` The input string
+- `data` - `{[key: string]: string}` Key-value pairs to inject into the string
 
+Output: The input string with the key-value pairs from data interpolated in it
 
 ## 💁‍♀️ FAQ
 
