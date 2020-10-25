@@ -2,7 +2,7 @@
 
 Interpolate strings with HTML comment markers!
 
-**Before**
+**Input**
 
 ```html
 <!-- myMessage:start --><!-- myMessage:end -->
@@ -14,7 +14,7 @@ Interpolate strings with HTML comment markers!
 }
 ```
 
-**After <sup>✨</sup>**
+**Output <sup>✨</sup>**
 
 ```html
 <!-- myMessage:start -->Text inserted!<!-- myMessage:end -->
@@ -24,7 +24,7 @@ Interpolate strings with HTML comment markers!
 ## 🙋‍♂️ Why?
 - **⚡️ Preserved placeholders** No need for soruce files and compilations!
 - **🔥 Great for Markdown** Insert generated data to your Markdown files!
-- **🐥 Tiny** Only 429 B!
+- **🐥 Tiny** Only 467 B!
 
 
 ## 🚀 Install
@@ -42,7 +42,7 @@ The following example demonstrates how `commentMark` can be used to inject the c
 const fs = require('fs');
 const commentMark = require('comment-mark');
 
-let mdStr = fs.readFileSync('./README.md').toString();
+let mdStr = fs.readFileSync('./README.md');
 
 mdStr = commentMark(mdStr, {
 	lastUpdated: (new Date()).toISOString()
@@ -75,10 +75,11 @@ This file is modified by a script
 
 ## ⚙️ Options
 
-`commentMark(contentStr: string, data)`
-- `contentStr` <`String`>
-- `data` - key-value pairs to inject into the string
+`commentMark(contentStr, data)`
+- `contentStr` `<string>` The input string
+- `data` - `<{[key: string]: string}>` Key-value pairs to inject into the string
 
+Output: The input string with the key-value pairs from data interpolated in it
 
 ## 💁‍♀️ FAQ
 
