@@ -47,6 +47,17 @@ describe('valid', () => {
 		expect(output).toBe('<!-- a:start -->hello world<!-- a:end -->');
 	});
 
+	test('multi-line', () => {
+		const output = commentMark(`
+			# multiline
+			<!-- a:start -->hello world<!-- a:end -->
+		`, {
+			a: 'hello world\n\ngoogbye world\nhello again',
+		});
+
+		expect(output).toMatchSnapshot();
+	});
+
 	test('multiple', () => {
 		const output = commentMark(`
 			<!-- a:start --><!-- a:end -->

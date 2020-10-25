@@ -42,7 +42,7 @@ The following example demonstrates how `commentMark` can be used to inject the c
 const fs = require('fs');
 const commentMark = require('comment-mark');
 
-let mdStr = fs.readFileSync('./README.md');
+let mdStr = fs.readFileSync('./README.md').toString();
 
 mdStr = commentMark(mdStr, {
 	lastUpdated: (new Date()).toISOString()

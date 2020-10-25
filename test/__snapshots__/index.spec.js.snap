@@ -21,6 +21,18 @@ exports[`valid intersecting 1`] = `
 		"
 `;
 
+exports[`valid multi-line 1`] = `
+"
+			# multiline
+			<!-- a:start -->
+hello world
+
+googbye world
+hello again
+<!-- a:end -->
+		"
+`;
+
 exports[`valid multiple 1`] = `
 "
 			<!-- a:start -->hello world<!-- a:end -->

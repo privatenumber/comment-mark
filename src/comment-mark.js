@@ -1,6 +1,8 @@
 const createPtrn = (key, type) => new RegExp(`<!--\\s*${key}:${type}\\s*-->`, 'g');
 const {hasOwnProperty} = Object.prototype;
 
+const multilinePtrn = /\n/;
+
 function commentMark(string, object) {
 	if (object) {
 		for (const key in object) {
@@ -8,7 +10,11 @@ function commentMark(string, object) {
 				continue;
 			}
 
-			const value = object[key];
+			let value = object[key];
+			if (multilinePtrn.test(value)) {
+				value = `\n${value}\n`;
+			}
+
 			const startComment = createPtrn(key, 'start');
 			const endComment = createPtrn(key, 'end');
 
