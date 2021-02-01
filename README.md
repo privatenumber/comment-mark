@@ -1,76 +1,81 @@
 # comment-mark [![Latest version](https://badgen.net/npm/v/comment-mark)](https://npm.im/comment-mark) [![Monthly downloads](https://badgen.net/npm/dm/comment-mark)](https://npm.im/comment-mark) [![Install size](https://packagephobia.now.sh/badge?p=comment-mark)](https://packagephobia.now.sh/result?p=comment-mark) [![Bundle size](https://badgen.net/bundlephobia/minzip/comment-mark)](https://bundlephobia.com/result?p=comment-mark)
 
-Interpolate strings with HTML comment markers!
+Use comment-mark to insert dynamic content in Markdown/HTML:
 
-**Input**
+1. Prepare Markdown content with placeholders
 
-```html
-<!-- myMessage:start --><!-- myMessage:end -->
-```
+	```js
+	let markdownString = `
+	## Last updated
+	<!-- lastUpdated:start --><!-- lastUpdated:end -->
+	`
+	```
 
-```json
-{
-	"myMessage": "Text inserted!"
-}
-```
+2. Apply comment-mark to insert data into the placeholders
 
-**Output <sup>✨</sup>**
+	```js
+	markdownString = commentMark(markdownString, {
+	    lastUpdated: (new Date()).toISOString()
+	})
+	```
 
-```html
-<!-- myMessage:start -->Text inserted!<!-- myMessage:end -->
-```
+3. Done!
 
-
-## 🙋‍♂️ Why?
-- **⚡️ Preserved placeholders** No need for soruce files and compilations!
-- **🔥 Great for Markdown** Insert generated data to your Markdown files!
-- **🐥 Tiny** Only 467 B!
-
+	```md
+	## Last updated
+	<!-- lastUpdated:start -->2021-02-01T02:48:03.797Z<!-- lastUpdated:end -->
+	```
 
 ## 🚀 Install
 ```sh
 npm i comment-mark
 ```
 
+## 🙋‍♂️ Why?
+
+Most approaches to interpolating dynamic data into a Markdown file involves maintaining a _Markdown template_ as the source, and a build step that produces the actual Markdown file.
+
+Comment-mark lets you use a single Markdown file as both the template and distribution file by using persistent placeholders.
+
+Real examples:
+- [My project index](https://github.com/privatenumber/privatenumber) - Auto-renders `projects.json` as a list in `README.md` on Git commit hook
+- [minification-benchmarks](https://github.com/privatenumber/minification-benchmarks) - Benchmarking automatically inserts results in `README.md`
 
 ## 👨🏻‍🏫 Quick demo
-`commentMark` injects content between markers, so it can be executed over and over again without compromising the file—it will only update the content between the markers!
-
-The following example demonstrates how `commentMark` can be used to inject the current date to the markdown file:
+The following example demonstrates how comment-mark can be used to interpolate a list of the project's Git contributors to `README.md`:
 
 ```js
-const fs = require('fs');
-const commentMark = require('comment-mark');
+const fs = require('fs')
+const { execSync } = require('child_process')
+const commentMark = require('comment-mark')
 
-let mdStr = fs.readFileSync('./README.md');
+let mdStr = fs.readFileSync('./README.md')
 
 mdStr = commentMark(mdStr, {
-	lastUpdated: (new Date()).toISOString()
-});
+    contributors: execSync('git shortlog -se HEAD -- .').toString()
+})
 
-fs.writeFileSync('./README.md', mdStr);
+fs.writeFileSync('./README.md', mdStr)
 ```
 
 **Before `README.md`**
 
 ```md
-# Welcome to my markdown
+# Welcome to my project
 
-Last updated: <!-- lastUpdated:start --><!-- lastUpdated:end -->
-
-## About
-This file is modified by a script
+## Contributors
+<!-- contributors:start --><!-- contributors:end -->
 ```
 
-**After `README.md`**
+**After `README.md`<sup>✨</sup>**
 
 ```md
-# Welcome to my markdown
+# Welcome to my project
 
-Last updated: <!-- lastUpdated:start -->2020-10-25T20:21:28.101Z<!-- lastUpdated:end -->
-
-## About
-This file is modified by a script
+## Contributors
+<!-- contributors:start -->
+    17	John Doe <john.doe@gmail.com>
+<!-- contributors:end -->
 ```
 
 ## ⚙️ Options
