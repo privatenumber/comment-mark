@@ -1,4 +1,4 @@
-import commentMark from '..';
+import commentMark from '../src/comment-mark.js';
 
 describe('edge cases', () => {
 	test('no arguments', () => {
