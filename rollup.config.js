@@ -1,28 +1,31 @@
-import babel from '@rollup/plugin-babel';
-import { terser } from 'rollup-plugin-terser';
+import { defineConfig } from 'rollup';
+import esbuild from 'rollup-plugin-esbuild';
+import commonjs from '@rollup/plugin-commonjs';
 import filesize from 'rollup-plugin-filesize';
 
-const isProduction = process.env.NODE_ENV === 'production';
-
-const rollupConfig = {
-	input: 'src/comment-mark.js',
+const rollupConfig = defineConfig({
+	input: 'src/comment-mark.ts',
 	plugins: [
-		babel(),
-		isProduction && terser(),
-		isProduction && filesize(),
+		esbuild({
+			minify: true,
+		}),
+		commonjs({
+			extensions: ['.ts'],
+		}),
+		filesize(),
 	],
 	output: [
 		{
-			format: 'umd',
+			format: 'cjs',
 			file: 'dist/comment-mark.js',
 			name: 'commentMark',
 			exports: 'default',
 		},
 		{
 			format: 'es',
-			file: 'dist/comment-mark.esm.js',
+			file: 'dist/comment-mark.mjs',
 		},
 	],
-};
+});
 
 export default rollupConfig;
