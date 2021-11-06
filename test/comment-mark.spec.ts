@@ -1,4 +1,4 @@
-import commentMark from '../dist/comment-mark';
+import commentMark from '..';
 
 describe('edge cases', () => {
 	test('no arguments', () => {
