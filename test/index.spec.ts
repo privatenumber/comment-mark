@@ -1,7 +1,8 @@
-import commentMark from '../src/comment-mark.js';
+import commentMark from '..';
 
 describe('edge cases', () => {
 	test('no arguments', () => {
+		// @ts-expect-error test error
 		const output = commentMark();
 		expect(output).toBe(undefined);
 	});
@@ -12,6 +13,7 @@ describe('edge cases', () => {
 	});
 
 	test('invalid obj', () => {
+		// @ts-expect-error test error
 		const output = commentMark('', 1);
 		expect(output).toBe('');
 	});
@@ -100,4 +102,7 @@ describe('valid', () => {
 		});
 		expect(output).toMatchSnapshot();
 	});
+
+
+	// Test Buffer
 });

@@ -1,24 +1,28 @@
-const createPtrn = (
-	key,
-	type,
-) => new RegExp(`<!--\\s*${key}:${type}\\s*-->`, 'g');
 const { hasOwnProperty } = Object.prototype;
-
+const createPtrn = (
+	key: string,
+	type: string,
+) => new RegExp(`<!--\\s*${key}:${type}\\s*-->`, 'g');
 const multilinePtrn = /\n/;
 
-function commentMark(string, object) {
-	if (!string || !object) {
+function commentMark(
+	string: string | Buffer,
+	data: Record<string, string>,
+) {
+	if (!string || !data) {
 		return string;
 	}
 
-	string = string.toString();
+	if (Buffer.isBuffer(string)) {
+		string = string.toString();
+	}
 
-	for (const key in object) {
-		if (!hasOwnProperty.call(object, key)) {
+	for (const key in data) {
+		if (!hasOwnProperty.call(data, key)) {
 			continue;
 		}
 
-		let value = object[key];
+		let value = data[key];
 		if (multilinePtrn.test(value)) {
 			value = `\n${value}\n`;
 		}
@@ -56,4 +60,4 @@ function commentMark(string, object) {
 	return string;
 }
 
-export default commentMark;
+export = commentMark;
