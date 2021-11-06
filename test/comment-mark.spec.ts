@@ -1,4 +1,4 @@
-import commentMark from '..';
+import commentMark from '../dist/comment-mark';
 
 describe('edge cases', () => {
 	test('no arguments', () => {
@@ -103,6 +103,10 @@ describe('valid', () => {
 		expect(output).toMatchSnapshot();
 	});
 
-
-	// Test Buffer
+	test('Buffer', () => {
+		const output = commentMark(Buffer.from('<!-- a:start --><!-- a:end -->'), {
+			a: 'hello world',
+		});
+		expect(output).toBe('<!-- a:start -->hello world<!-- a:end -->');
+	});
 });
