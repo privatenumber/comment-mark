@@ -27,7 +27,7 @@
 		"lint": "eslint .",
 		"pretest": "npm run build",
 		"test": "jest",
-		"build:dts": "tsc src/comment-mark.ts --declaration --emitDeclarationOnly --out dist/comment-mark",
+		"build:dts": "tsc",
 		"build": "npm run build:dts && rollup -c rollup.config.js"
 	},
 	"husky": {
