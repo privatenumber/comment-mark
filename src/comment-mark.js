@@ -1,5 +1,8 @@
-const createPtrn = (key, type) => new RegExp(`<!--\\s*${key}:${type}\\s*-->`, 'g');
-const {hasOwnProperty} = Object.prototype;
+const createPtrn = (
+	key,
+	type,
+) => new RegExp(`<!--\\s*${key}:${type}\\s*-->`, 'g');
+const { hasOwnProperty } = Object.prototype;
 
 const multilinePtrn = /\n/;
 
@@ -35,7 +38,14 @@ function commentMark(string, object) {
 			endMatch = endComment.exec(string);
 
 			if (endMatch) {
-				string = string.slice(0, startMatch.index + startMatch[0].length) + value + string.slice(endMatch.index);
+				string = (
+					string.slice(
+						0,
+						startMatch.index + startMatch[0].length,
+					)
+					+ value
+					+ string.slice(endMatch.index)
+				);
 				endComment.lastIndex += value.length;
 			} else {
 				console.warn(`[comment-mark] No end comment found for "${key}"`);
