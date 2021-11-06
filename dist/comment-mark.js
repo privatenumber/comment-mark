@@ -1,0 +1,3 @@
+"use strict";const{hasOwnProperty}=Object.prototype,createPtrn=(e,t)=>new RegExp(`<!--\\s*${e}:${t}\\s*-->`,"g"),multilinePtrn=/\n/;function commentMark(e,t){if(!e||!t)return e;Buffer.isBuffer(e)&&(e=e.toString());for(const o in t){if(!hasOwnProperty.call(t,o))continue;let c=t[o];multilinePtrn.test(c)&&(c=`
+${c}
+`);const r=createPtrn(o,"start"),l=createPtrn(o,"end");let n,m;do n=r.exec(e),!!n&&(l.lastIndex=n.index,m=l.exec(e),m?(e=e.slice(0,n.index+n[0].length)+c+e.slice(m.index),l.lastIndex+=c.length):console.warn(`[comment-mark] No end comment found for "${o}"`));while(n)}return e}var commentMark_1=commentMark;module.exports=commentMark_1;
