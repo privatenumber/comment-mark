@@ -1,7 +1,8 @@
-import commentMark from 'comment-mark';
+import commentMark from '..';
 
 describe('edge cases', () => {
 	test('no arguments', () => {
+		// @ts-expect-error test error
 		const output = commentMark();
 		expect(output).toBe(undefined);
 	});
@@ -12,6 +13,7 @@ describe('edge cases', () => {
 	});
 
 	test('invalid obj', () => {
+		// @ts-expect-error test error
 		const output = commentMark('', 1);
 		expect(output).toBe('');
 	});
@@ -99,5 +101,12 @@ describe('valid', () => {
 			b: 'goodbye world',
 		});
 		expect(output).toMatchSnapshot();
+	});
+
+	test('Buffer', () => {
+		const output = commentMark(Buffer.from('<!-- a:start --><!-- a:end -->'), {
+			a: 'hello world',
+		});
+		expect(output).toBe('<!-- a:start -->hello world<!-- a:end -->');
 	});
 });
