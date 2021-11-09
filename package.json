@@ -28,7 +28,8 @@
 		"pretest": "npm run build",
 		"test": "jest",
 		"build:dts": "tsc",
-		"build": "npm run build:dts && rollup -c rollup.config.js"
+		"build:js": "rollup -c rollup.config.js",
+		"build": "npm run build:dts && npm run build:js"
 	},
 	"husky": {
 		"hooks": {

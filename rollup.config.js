@@ -18,7 +18,6 @@ const rollupConfig = defineConfig({
 		{
 			format: 'cjs',
 			file: 'dist/comment-mark.js',
-			name: 'commentMark',
 			exports: 'default',
 		},
 		{
