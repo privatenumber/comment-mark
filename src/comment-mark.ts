@@ -9,12 +9,12 @@ function commentMark(
 	string: string | Buffer,
 	data: Record<string, string>,
 ) {
-	if (!string || !data) {
-		return string;
+	if (string && Buffer.isBuffer(string)) {
+		string = string.toString();
 	}
 
-	if (Buffer.isBuffer(string)) {
-		string = string.toString();
+	if (!string || !data) {
+		return string;
 	}
 
 	for (const key in data) {
