@@ -1,14 +1,15 @@
-const { hasOwnProperty } = Object.prototype;
-const createPtrn = (
+const createPattern = (
 	key: string,
 	type: string,
 ) => new RegExp(`<!--\\s*${key}:${type}\\s*-->`, 'g');
+
 const multilinePtrn = /\n/;
 
 const commentMark = (
 	string: string | Buffer,
-	data: Record<string, string>,
+	data: Record<string, string | undefined | null>,
 ) => {
+	// Support fs.readFile Buffer
 	if (string && Buffer.isBuffer(string)) {
 		string = string.toString();
 	}
@@ -18,17 +19,22 @@ const commentMark = (
 	}
 
 	for (const key in data) {
-		if (!hasOwnProperty.call(data, key)) {
+		if (!Object.hasOwn(data, key)) {
 			continue;
 		}
 
 		let value = data[key];
+
+		if (value === undefined || value === null) {
+			continue;
+		}
+
 		if (multilinePtrn.test(value)) {
 			value = `\n${value}\n`;
 		}
 
-		const startComment = createPtrn(key, 'start');
-		const endComment = createPtrn(key, 'end');
+		const startComment = createPattern(key, 'start');
+		const endComment = createPattern(key, 'end');
 
 		let startMatch;
 		let endMatch;

@@ -54,6 +54,13 @@ describe('valid', ({ test }) => {
 		expect(output).toBe('<!-- a:start -->hello world<!-- a:end -->');
 	});
 
+	test('skip nullish properties', () => {
+		const output = commentMark('<!-- a:start -->hello world<!-- a:end -->', {
+			a: undefined
+		});
+		expect(output).toBe('<!-- a:start -->hello world<!-- a:end -->');
+	});
+
 	test('multi-line', () => {
 		const output = commentMark(`
 			# multiline

@@ -1,5 +1,6 @@
 {
 	"compilerOptions": {
+		"target": "ES2023", // Node 20
 		"module": "Preserve",
 		"strict": true,
 		"noEmit": true,
