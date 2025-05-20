@@ -1,5 +1,4 @@
 import { describe, expect } from 'manten';
-import { spyOn } from 'tinyspy';
 import { commentMark } from '#comment-mark';
 
 describe('edge cases', ({ test }) => {
@@ -20,29 +19,18 @@ describe('edge cases', ({ test }) => {
 		expect(output).toBe('');
 	});
 
-	test('no end-tag', ({ onTestFinish }) => {
-		const spy = spyOn(globalThis.console, 'warn', () => {});
-		onTestFinish(() => {
-			spy.restore();
-		}); const inp = '<!-- a:start -->';
-		const output = commentMark(inp, {
+	test('no end-tag', () => {
+		const inp = '<!-- a:start -->';
+		expect(() => commentMark(inp, {
 			a: 'hello world',
-		});
-		expect(output).toBe(inp);
-		expect(spy.calls[0][0]).toBe('[comment-mark] No end comment found for "a"');
+		})).toThrowError('[comment-mark] No end comment found for key "a" after start comment at index 0.');
 	});
 
-	test('reversed end-tag', ({ onTestFinish }) => {
-		const spy = spyOn(globalThis.console, 'warn', () => {});
-		onTestFinish(() => {
-			spy.restore();
-		});
+	test('reversed end-tag', () => {
 		const inp = '<!--a:end--><!--a:start -->';
-		const output = commentMark(inp, {
+		expect(() => commentMark(inp, {
 			a: 'hello world',
-		});
-		expect(output).toBe(inp);
-		expect(spy.calls[0][0]).toBe('[comment-mark] No end comment found for "a"');
+		})).toThrowError('[comment-mark] No end comment found for key \"a\" after start comment at index 12.');
 	});
 });
 

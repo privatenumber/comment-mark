@@ -1,3 +1,7 @@
+const escapeRegExp = (
+	text: string,
+): string => text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+
 const createPattern = (
 	key: string,
 	type: string,
@@ -6,16 +10,16 @@ const createPattern = (
 const multilinePtrn = /\n/;
 
 export const commentMark = (
-	string: string | Buffer,
+	inputString: string | Buffer,
 	data: Record<string, string | undefined | null>,
 ) => {
-	// Support fs.readFile Buffer
-	if (string && Buffer.isBuffer(string)) {
-		string = string.toString();
+	if (!inputString || !data) {
+		return inputString;
 	}
 
-	if (!string || !data) {
-		return string;
+	// Support fs.readFile Buffer
+	if (Buffer.isBuffer(inputString)) {
+		inputString = inputString.toString();
 	}
 
 	for (const key in data) {
@@ -33,35 +37,36 @@ export const commentMark = (
 			value = `\n${value}\n`;
 		}
 
-		const startComment = createPattern(key, 'start');
-		const endComment = createPattern(key, 'end');
+		const keyEscaped = escapeRegExp(key);
+		const startComment = createPattern(keyEscaped, 'start');
+		const endComment = createPattern(keyEscaped, 'end');
 
 		let startMatch;
 		let endMatch;
 		do {
-			startMatch = startComment.exec(string);
+			startMatch = startComment.exec(inputString);
 			if (!startMatch) {
 				continue;
 			}
 
 			endComment.lastIndex = startMatch.index;
-			endMatch = endComment.exec(string);
+			endMatch = endComment.exec(inputString);
 
 			if (endMatch) {
-				string = (
-					string.slice(
+				inputString = (
+					inputString.slice(
 						0,
 						startMatch.index + startMatch[0].length,
 					)
 					+ value
-					+ string.slice(endMatch.index)
+					+ inputString.slice(endMatch.index)
 				);
 				endComment.lastIndex += value.length;
 			} else {
-				console.warn(`[comment-mark] No end comment found for "${key}"`);
+				throw new Error(`[comment-mark] No end comment found for key "${key}" after start comment at index ${startMatch.index}.`);
 			}
 		} while (startMatch);
 	}
 
-	return string;
+	return inputString;
 };
