@@ -1,8 +1,9 @@
-import commentMark from '..';
+import { describe, expect } from 'manten';
+import { commentMark } from '#comment-mark';
 
-describe('edge cases', () => {
+describe('edge cases', ({ test }) => {
 	test('no arguments', () => {
-		// @ts-expect-error test error
+		// @ts-expect-error No arguments passed in
 		const output = commentMark();
 		expect(output).toBe(undefined);
 	});
@@ -13,38 +14,37 @@ describe('edge cases', () => {
 	});
 
 	test('invalid obj', () => {
-		// @ts-expect-error test error
+		// @ts-expect-error Invalid argument passed in
 		const output = commentMark('', 1);
 		expect(output).toBe('');
 	});
 
 	test('no end-tag', () => {
-		const spy = jest.spyOn(global.console, 'warn').mockImplementation();
 		const inp = '<!-- a:start -->';
-		const output = commentMark(inp, {
+		expect(() => commentMark(inp, {
 			a: 'hello world',
-		});
-		expect(output).toBe(inp);
-		expect(spy).toHaveBeenCalledWith('[comment-mark] No end comment found for "a"');
-		spy.mockRestore();
+		})).toThrowError('[comment-mark] No end comment found for key "a"');
 	});
 
 	test('reversed end-tag', () => {
-		const spy = jest.spyOn(global.console, 'warn').mockImplementation();
 		const inp = '<!--a:end--><!--a:start -->';
-		const output = commentMark(inp, {
+		expect(() => commentMark(inp, {
 			a: 'hello world',
-		});
-		expect(output).toBe(inp);
-		expect(spy).toHaveBeenCalledWith('[comment-mark] No end comment found for "a"');
-		spy.mockRestore();
+		})).toThrowError('[comment-mark] No end comment found for key "a"');
 	});
 });
 
-describe('valid', () => {
+describe('valid', ({ test }) => {
 	test('basic', () => {
 		const output = commentMark('<!-- a:start --><!-- a:end -->', {
 			a: 'hello world',
+		});
+		expect(output).toBe('<!-- a:start -->hello world<!-- a:end -->');
+	});
+
+	test('skip nullish properties', () => {
+		const output = commentMark('<!-- a:start -->hello world<!-- a:end -->', {
+			a: undefined,
 		});
 		expect(output).toBe('<!-- a:start -->hello world<!-- a:end -->');
 	});
@@ -57,7 +57,7 @@ describe('valid', () => {
 			a: 'hello world\n\ngoogbye world\nhello again',
 		});
 
-		expect(output).toMatchSnapshot();
+		expect(output).toBe('\n\t\t\t# multiline\n\t\t\t<!-- a:start -->\nhello world\n\ngoogbye world\nhello again\n<!-- a:end -->\n\t\t');
 	});
 
 	test('multiple', () => {
@@ -70,7 +70,7 @@ describe('valid', () => {
 			b: 'goodbye world',
 			ba: 'something world',
 		});
-		expect(output).toMatchSnapshot();
+		expect(output).toBe('\n\t\t\t<!-- a:start -->hello world<!-- a:end -->\n\t\t\t<!-- b:start -->goodbye world<!-- b:end -->\n\t\t\t<!-- ba:start -->something world<!-- ba:end -->\n\t\t');
 	});
 
 	test('duplicate', () => {
@@ -90,7 +90,7 @@ describe('valid', () => {
 			b: 'goodbye world',
 			ba: 'something world',
 		});
-		expect(output).toMatchSnapshot();
+		expect(output).toBe('\n\t\t\t<!-- a:start-->hello world<!-- a:end -->\n\t\t\t<!--ba:start -->something world<!--ba:end -->\n\t\t\t<!-- b:start -->goodbye world<!-- b:end -->\n\t\t\t<!-- ba:start -->something world<!-- ba:end -->\n\t\t\t<!--a:start -->hello world<!-- a:end -->\n\t\t\t<!-- b:start -->goodbye world<!--b:end -->\n\t\t\t<!-- ba:start -->something world<!--ba:end -->\n\t\t\t<!--a:start -->hello world<!-- a:end -->\n\t\t\t<!-- ba:start -->something world<!-- ba:end-->\n\t\t\t<!-- b:start-->goodbye world<!-- b:end -->\n\t\t');
 	});
 
 	test('intersecting', () => {
@@ -100,7 +100,8 @@ describe('valid', () => {
 			a: 'hello world',
 			b: 'goodbye world',
 		});
-		expect(output).toMatchSnapshot();
+		// console.log(3, JSON.stringify(output));
+		expect(output).toBe('\n\t\t\t<!-- a:start -->hello world<!-- a:end --><<!-- b:end -->\n\t\t');
 	});
 
 	test('Buffer', () => {

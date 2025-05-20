@@ -20,43 +20,43 @@
 	"files": [
 		"dist"
 	],
-	"main": "dist/comment-mark.js",
-	"module": "dist/comment-mark.mjs",
-	"types": "dist/comment-mark.d.ts",
-	"scripts": {
-		"lint": "eslint .",
-		"pretest": "npm run build",
-		"test": "jest",
-		"build:dts": "tsc",
-		"build:js": "rollup -c rollup.config.js",
-		"build": "npm run build:dts && npm run build:js"
-	},
-	"husky": {
-		"hooks": {
-			"pre-commit": "lint-staged"
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.cts",
+	"exports": {
+		"require": {
+			"types": "./dist/index.d.cts",
+			"default": "./dist/index.cjs"
+		},
+		"import": {
+			"types": "./dist/index.d.mts",
+			"default": "./dist/index.mjs"
 		}
 	},
-	"lint-staged": {
-		"*.js": [
-			"eslint",
-			"jest --bail --findRelatedTests"
-		]
+	"imports": {
+		"#comment-mark": {
+			"types": "./src/index.ts",
+			"development": "./src/index.ts",
+			"default": "./dist/index.mjs"
+		}
+	},
+	"packageManager": "pnpm@10.9.0",
+	"scripts": {
+		"lint": "lintroll . --cache",
+		"pretest": "pnpm build",
+		"test": "tsx tests",
+		"build": "pkgroll",
+		"type-check": "tsc"
+	},
+	"engines": {
+		  "node": ">=20"
 	},
 	"devDependencies": {
-		"@pvtnbr/eslint-config": "^0.4.2",
-		"@rollup/plugin-commonjs": "^21.0.1",
-		"@types/jest": "^27.0.2",
-		"es-jest": "^1.4.1",
-		"eslint": "^8.2.0",
-		"husky": "^4.3.0",
-		"jest": "^27.3.1",
-		"lint-staged": "^11.2.6",
-		"rollup": "^2.32.1",
-		"rollup-plugin-esbuild": "^4.6.0",
-		"rollup-plugin-filesize": "^9.0.2",
-		"typescript": "^4.4.4"
-	},
-	"eslintConfig": {
-		"extends": "@pvtnbr"
+		"@types/node": "^22.15.19",
+		"lintroll": "^1.15.0",
+		"manten": "^1.3.0",
+		"pkgroll": "^2.12.2",
+		"tsx": "^4.19.4",
+		"typescript": "^5.8.3"
 	}
 }
