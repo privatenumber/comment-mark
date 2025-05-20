@@ -48,6 +48,9 @@
 		"build": "pkgroll",
 		"type-check": "tsc"
 	},
+	"engines": {
+		  "node": ">=20"
+	},
 	"devDependencies": {
 		"@types/node": "^22.15.19",
 		"lintroll": "^1.15.0",

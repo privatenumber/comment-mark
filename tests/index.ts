@@ -1,6 +1,6 @@
-import commentMark from '#comment-mark';
 import { describe, expect } from 'manten';
 import { spyOn } from 'tinyspy';
+import commentMark from '#comment-mark';
 
 describe('edge cases', ({ test }) => {
 	test('no arguments', () => {
@@ -24,7 +24,7 @@ describe('edge cases', ({ test }) => {
 		const spy = spyOn(globalThis.console, 'warn', () => {});
 		onTestFinish(() => {
 			spy.restore();
-		});		const inp = '<!-- a:start -->';
+		}); const inp = '<!-- a:start -->';
 		const output = commentMark(inp, {
 			a: 'hello world',
 		});
@@ -61,8 +61,8 @@ describe('valid', ({ test }) => {
 		`, {
 			a: 'hello world\n\ngoogbye world\nhello again',
 		});
-		
-		expect(output).toBe("\n\t\t\t# multiline\n\t\t\t<!-- a:start -->\nhello world\n\ngoogbye world\nhello again\n<!-- a:end -->\n\t\t");
+
+		expect(output).toBe('\n\t\t\t# multiline\n\t\t\t<!-- a:start -->\nhello world\n\ngoogbye world\nhello again\n<!-- a:end -->\n\t\t');
 	});
 
 	test('multiple', () => {
@@ -75,7 +75,7 @@ describe('valid', ({ test }) => {
 			b: 'goodbye world',
 			ba: 'something world',
 		});
-		expect(output).toBe("\n\t\t\t<!-- a:start -->hello world<!-- a:end -->\n\t\t\t<!-- b:start -->goodbye world<!-- b:end -->\n\t\t\t<!-- ba:start -->something world<!-- ba:end -->\n\t\t");
+		expect(output).toBe('\n\t\t\t<!-- a:start -->hello world<!-- a:end -->\n\t\t\t<!-- b:start -->goodbye world<!-- b:end -->\n\t\t\t<!-- ba:start -->something world<!-- ba:end -->\n\t\t');
 	});
 
 	test('duplicate', () => {
@@ -95,7 +95,7 @@ describe('valid', ({ test }) => {
 			b: 'goodbye world',
 			ba: 'something world',
 		});
-		expect(output).toBe("\n\t\t\t<!-- a:start-->hello world<!-- a:end -->\n\t\t\t<!--ba:start -->something world<!--ba:end -->\n\t\t\t<!-- b:start -->goodbye world<!-- b:end -->\n\t\t\t<!-- ba:start -->something world<!-- ba:end -->\n\t\t\t<!--a:start -->hello world<!-- a:end -->\n\t\t\t<!-- b:start -->goodbye world<!--b:end -->\n\t\t\t<!-- ba:start -->something world<!--ba:end -->\n\t\t\t<!--a:start -->hello world<!-- a:end -->\n\t\t\t<!-- ba:start -->something world<!-- ba:end-->\n\t\t\t<!-- b:start-->goodbye world<!-- b:end -->\n\t\t");
+		expect(output).toBe('\n\t\t\t<!-- a:start-->hello world<!-- a:end -->\n\t\t\t<!--ba:start -->something world<!--ba:end -->\n\t\t\t<!-- b:start -->goodbye world<!-- b:end -->\n\t\t\t<!-- ba:start -->something world<!-- ba:end -->\n\t\t\t<!--a:start -->hello world<!-- a:end -->\n\t\t\t<!-- b:start -->goodbye world<!--b:end -->\n\t\t\t<!-- ba:start -->something world<!--ba:end -->\n\t\t\t<!--a:start -->hello world<!-- a:end -->\n\t\t\t<!-- ba:start -->something world<!-- ba:end-->\n\t\t\t<!-- b:start-->goodbye world<!-- b:end -->\n\t\t');
 	});
 
 	test('intersecting', () => {
@@ -106,7 +106,7 @@ describe('valid', ({ test }) => {
 			b: 'goodbye world',
 		});
 		// console.log(3, JSON.stringify(output));
-		expect(output).toBe("\n\t\t\t<!-- a:start -->hello world<!-- a:end --><<!-- b:end -->\n\t\t");
+		expect(output).toBe('\n\t\t\t<!-- a:start -->hello world<!-- a:end --><<!-- b:end -->\n\t\t');
 	});
 
 	test('Buffer', () => {

@@ -1,10 +1,10 @@
 {
 	"compilerOptions": {
-		"strict": true,
 		"module": "Preserve",
+		"strict": true,
+		"noEmit": true,
 		"esModuleInterop": true,
 		"verbatimModuleSyntax": true,
-		"noEmit": true
 	},
 	"include": [
 		"src",
