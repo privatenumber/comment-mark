@@ -1,72 +1,48 @@
-const escapeRegExp = (
-	text: string,
-): string => text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-
-const createPattern = (
-	key: string,
-	type: string,
-) => new RegExp(`<!--\\s*${key}:${type}\\s*-->`, 'g');
-
-const multilinePtrn = /\n/;
-
 export const commentMark = (
-	inputString: string | Buffer,
-	data: Record<string, string | undefined | null>,
+	input: string,
+	data: Record<string, string | null | undefined>,
 ) => {
-	if (!inputString || !data) {
-		return inputString;
+	if (
+		!input
+		|| data === null
+		|| data === undefined
+		|| typeof data !== 'object'
+	) {
+		return input;
 	}
 
-	// Support fs.readFile Buffer
-	if (Buffer.isBuffer(inputString)) {
-		inputString = inputString.toString();
-	}
+	let out = Buffer.isBuffer(input) ? input.toString() : input;
 
 	for (const key in data) {
 		if (!Object.hasOwn(data, key)) {
 			continue;
 		}
-
 		let value = data[key];
-
-		if (value === undefined || value === null) {
+		if (value === null || value === undefined) {
 			continue;
 		}
-
-		if (multilinePtrn.test(value)) {
+		if (value.includes('\n')) {
 			value = `\n${value}\n`;
 		}
 
-		const keyEscaped = escapeRegExp(key);
-		const startComment = createPattern(keyEscaped, 'start');
-		const endComment = createPattern(keyEscaped, 'end');
+		const escKey = key.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+		const startRe = new RegExp(`<!--\\s*${escKey}:start\\s*-->`, 'g');
+		const endRe = new RegExp(`<!--\\s*${escKey}:end\\s*-->`, 'g');
 
-		let startMatch;
-		let endMatch;
-		do {
-			startMatch = startComment.exec(inputString);
-			if (!startMatch) {
-				continue;
+		for (let m = startRe.exec(out); m !== null; m = startRe.exec(out)) {
+			const insertPos = m.index + m[0].length;
+			endRe.lastIndex = m.index;
+			const match = endRe.exec(out);
+			if (!match) {
+				throw new Error(`[comment-mark] No end comment found for key "${key}"`);
 			}
 
-			endComment.lastIndex = startMatch.index;
-			endMatch = endComment.exec(inputString);
+			out = out.slice(0, insertPos) + value + out.slice(match.index);
 
-			if (endMatch) {
-				inputString = (
-					inputString.slice(
-						0,
-						startMatch.index + startMatch[0].length,
-					)
-					+ value
-					+ inputString.slice(endMatch.index)
-				);
-				endComment.lastIndex += value.length;
-			} else {
-				throw new Error(`[comment-mark] No end comment found for key "${key}" after start comment at index ${startMatch.index}.`);
-			}
-		} while (startMatch);
+			startRe.lastIndex = insertPos + value.length;
+			endRe.lastIndex = startRe.lastIndex;
+		}
 	}
 
-	return inputString;
+	return out;
 };

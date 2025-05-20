@@ -23,14 +23,14 @@ describe('edge cases', ({ test }) => {
 		const inp = '<!-- a:start -->';
 		expect(() => commentMark(inp, {
 			a: 'hello world',
-		})).toThrowError('[comment-mark] No end comment found for key "a" after start comment at index 0.');
+		})).toThrowError('[comment-mark] No end comment found for key "a"');
 	});
 
 	test('reversed end-tag', () => {
 		const inp = '<!--a:end--><!--a:start -->';
 		expect(() => commentMark(inp, {
 			a: 'hello world',
-		})).toThrowError('[comment-mark] No end comment found for key \"a\" after start comment at index 12.');
+		})).toThrowError('[comment-mark] No end comment found for key "a"');
 	});
 });
 
