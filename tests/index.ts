@@ -1,6 +1,6 @@
 import { describe, expect } from 'manten';
 import { spyOn } from 'tinyspy';
-import commentMark from '#comment-mark';
+import { commentMark } from '#comment-mark';
 
 describe('edge cases', ({ test }) => {
 	test('no arguments', () => {
@@ -56,7 +56,7 @@ describe('valid', ({ test }) => {
 
 	test('skip nullish properties', () => {
 		const output = commentMark('<!-- a:start -->hello world<!-- a:end -->', {
-			a: undefined
+			a: undefined,
 		});
 		expect(output).toBe('<!-- a:start -->hello world<!-- a:end -->');
 	});

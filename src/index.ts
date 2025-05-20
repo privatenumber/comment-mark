@@ -5,7 +5,7 @@ const createPattern = (
 
 const multilinePtrn = /\n/;
 
-const commentMark = (
+export const commentMark = (
 	string: string | Buffer,
 	data: Record<string, string | undefined | null>,
 ) => {
@@ -65,5 +65,3 @@ const commentMark = (
 
 	return string;
 };
-
-export = commentMark;
