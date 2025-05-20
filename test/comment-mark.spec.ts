@@ -19,7 +19,7 @@ describe('edge cases', () => {
 	});
 
 	test('no end-tag', () => {
-		const spy = jest.spyOn(global.console, 'warn').mockImplementation();
+		const spy = jest.spyOn(globalThis.console, 'warn').mockImplementation();
 		const inp = '<!-- a:start -->';
 		const output = commentMark(inp, {
 			a: 'hello world',
@@ -30,7 +30,7 @@ describe('edge cases', () => {
 	});
 
 	test('reversed end-tag', () => {
-		const spy = jest.spyOn(global.console, 'warn').mockImplementation();
+		const spy = jest.spyOn(globalThis.console, 'warn').mockImplementation();
 		const inp = '<!--a:end--><!--a:start -->';
 		const output = commentMark(inp, {
 			a: 'hello world',

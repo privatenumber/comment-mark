@@ -17,3 +17,6 @@ node_modules
 
 # Bundle output
 dist
+
+# ESLint cache
+.eslintcache

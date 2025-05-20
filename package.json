@@ -23,24 +23,14 @@
 	"main": "dist/comment-mark.js",
 	"module": "dist/comment-mark.mjs",
 	"types": "dist/comment-mark.d.ts",
+	"packageManager": "pnpm@10.9.0",
 	"scripts": {
-		"lint": "eslint .",
-		"pretest": "npm run build",
+		"lint": "lintroll . --cache",
+		"pretest": "pnpm build",
 		"test": "jest",
 		"build:dts": "tsc",
 		"build:js": "rollup -c rollup.config.js",
-		"build": "npm run build:dts && npm run build:js"
-	},
-	"husky": {
-		"hooks": {
-			"pre-commit": "lint-staged"
-		}
-	},
-	"lint-staged": {
-		"*.js": [
-			"eslint",
-			"jest --bail --findRelatedTests"
-		]
+		"build": "pnpm build:dts && pnpm build:js"
 	},
 	"devDependencies": {
 		"@pvtnbr/eslint-config": "^0.4.2",
@@ -48,16 +38,11 @@
 		"@types/jest": "^27.0.2",
 		"es-jest": "^1.4.1",
 		"eslint": "^8.2.0",
-		"husky": "^4.3.0",
 		"jest": "^27.3.1",
-		"lint-staged": "^11.2.6",
+		"lintroll": "^1.15.0",
 		"rollup": "^2.32.1",
 		"rollup-plugin-esbuild": "^4.6.0",
 		"rollup-plugin-filesize": "^9.0.2",
 		"typescript": "^4.4.4"
-	},
-	"eslintConfig": {
-		"extends": "@pvtnbr"
-	},
-	"packageManager": "pnpm@10.9.0"
+	}
 }

@@ -5,7 +5,7 @@ Use comment-mark to insert dynamic content in Markdown/HTML:
 1. Prepare Markdown content with placeholders
 
 	```js
-	let markdownString = `
+	const markdownString = `
 	## Last updated
 	<!-- lastUpdated:start --><!-- lastUpdated:end -->
 	`
@@ -49,13 +49,13 @@ const fs = require('fs')
 const { execSync } = require('child_process')
 const commentMark = require('comment-mark')
 
-let mdStr = fs.readFileSync('./README.md')
+let mdString = fs.readFileSync('./README.md')
 
-mdStr = commentMark(mdStr, {
+mdString = commentMark(mdString, {
     contributors: execSync('git shortlog -se HEAD -- .').toString()
 })
 
-fs.writeFileSync('./README.md', mdStr)
+fs.writeFileSync('./README.md', mdString)
 ```
 
 **Before `README.md`**

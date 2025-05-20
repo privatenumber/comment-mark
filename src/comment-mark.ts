@@ -5,10 +5,10 @@ const createPtrn = (
 ) => new RegExp(`<!--\\s*${key}:${type}\\s*-->`, 'g');
 const multilinePtrn = /\n/;
 
-function commentMark(
+const commentMark = (
 	string: string | Buffer,
 	data: Record<string, string>,
-) {
+) => {
 	if (string && Buffer.isBuffer(string)) {
 		string = string.toString();
 	}
@@ -58,6 +58,6 @@ function commentMark(
 	}
 
 	return string;
-}
+};
 
 export = commentMark;
