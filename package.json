@@ -20,29 +20,34 @@
 	"files": [
 		"dist"
 	],
-	"main": "dist/comment-mark.js",
-	"module": "dist/comment-mark.mjs",
-	"types": "dist/comment-mark.d.ts",
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.cts",
+	"exports": {
+		"require": {
+			"types": "./dist/index.d.cts",
+			"default": "./dist/index.cjs"
+		},
+		"import": {
+			"types": "./dist/index.d.mts",
+			"default": "./dist/index.mjs"
+		}
+	},
 	"packageManager": "pnpm@10.9.0",
 	"scripts": {
 		"lint": "lintroll . --cache",
 		"pretest": "pnpm build",
 		"test": "jest",
-		"build:dts": "tsc",
-		"build:js": "rollup -c rollup.config.js",
-		"build": "pnpm build:dts && pnpm build:js"
+		"build": "pkgroll"
 	},
 	"devDependencies": {
-		"@pvtnbr/eslint-config": "^0.4.2",
-		"@rollup/plugin-commonjs": "^21.0.1",
 		"@types/jest": "^27.0.2",
+		"@types/node": "^22.15.19",
 		"es-jest": "^1.4.1",
 		"eslint": "^8.2.0",
 		"jest": "^27.3.1",
 		"lintroll": "^1.15.0",
-		"rollup": "^2.32.1",
-		"rollup-plugin-esbuild": "^4.6.0",
-		"rollup-plugin-filesize": "^9.0.2",
-		"typescript": "^4.4.4"
+		"pkgroll": "^2.12.2",
+		"typescript": "^5.8.3"
 	}
 }

@@ -10,6 +10,7 @@
 		"outDir": "dist",
 		"esModuleInterop": true,
 		"isolatedModules": true,
+		"noEmit": true
 	},
 	"include": [
 		"src",
