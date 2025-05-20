@@ -21,14 +21,17 @@ jobs:
         with:
           run_install: true
 
-      - name: Build
-        run: pnpm build
-
       - name: Lint
         run: pnpm lint
 
+      - name: Type check
+        run: pnpm type-check
+
+      - name: Build
+        run: pnpm build
+
       - name: Test
-        run: pnpm test --if-present
+        run: pnpm test
 
       - name: Release
         env:

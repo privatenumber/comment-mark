@@ -7,7 +7,4 @@
 		"esModuleInterop": true,
 		"verbatimModuleSyntax": true,
 	},
-	"include": [
-		"src",
-	],
 }

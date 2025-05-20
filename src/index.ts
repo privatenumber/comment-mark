@@ -1,5 +1,5 @@
 export const commentMark = (
-	input: string,
+	input: string | Buffer,
 	data: Record<string, string | null | undefined>,
 ) => {
 	if (
