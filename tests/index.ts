@@ -1,7 +1,7 @@
-import { describe, expect } from 'manten';
+import { describe, test, expect } from 'manten';
 import { commentMark } from '#comment-mark';
 
-describe('edge cases', ({ test }) => {
+describe('edge cases', () => {
 	test('no arguments', () => {
 		// @ts-expect-error No arguments passed in
 		const output = commentMark();
@@ -23,18 +23,18 @@ describe('edge cases', ({ test }) => {
 		const inp = '<!-- a:start -->';
 		expect(() => commentMark(inp, {
 			a: 'hello world',
-		})).toThrowError('[comment-mark] No end comment found for key "a"');
+		})).toThrow('[comment-mark] No end comment found for key "a"');
 	});
 
 	test('reversed end-tag', () => {
 		const inp = '<!--a:end--><!--a:start -->';
 		expect(() => commentMark(inp, {
 			a: 'hello world',
-		})).toThrowError('[comment-mark] No end comment found for key "a"');
+		})).toThrow('[comment-mark] No end comment found for key "a"');
 	});
 });
 
-describe('valid', ({ test }) => {
+describe('valid', () => {
 	test('basic', () => {
 		const output = commentMark('<!-- a:start --><!-- a:end -->', {
 			a: 'hello world',
