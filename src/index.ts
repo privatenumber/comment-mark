@@ -59,6 +59,8 @@ export const getCommentMarks = (input: string | Buffer): Record<string, string> 
 	const content = Buffer.isBuffer(input) ? input.toString() : input;
 	// Null-prototype dictionary so marker keys can never collide with inherited properties.
 	const commentMarks: Record<string, string> = Object.create(null);
+	// Marker keys are unknown upfront (unlike commentMark), so discover them by
+	// scanning one complete HTML comment at a time.
 	const commentRe = /<!--([\s\S]*?)-->/g;
 
 	for (let match = commentRe.exec(content); match !== null; match = commentRe.exec(content)) {
