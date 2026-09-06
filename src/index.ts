@@ -3,7 +3,7 @@ const escapeKey = (key: string) => key.replaceAll(/[.*+?^${}()|[\]\\]/g, String.
 // Locates the end marker that closes a section whose content starts at `contentStart`,
 // or throws when the section was never closed.
 const findSectionEnd = (content: string, key: string, contentStart: number) => {
-	const endRe = new RegExp(`<!--\\s*${escapeKey(key)}:end\\s*-->`, 'g');
+	const endRe = new RegExp(String.raw`<!--\s*${escapeKey(key)}:end\s*-->`, 'g');
 	endRe.lastIndex = contentStart;
 	const endMatch = endRe.exec(content);
 	if (!endMatch) {
@@ -40,7 +40,7 @@ export const commentMark = (
 			value = `\n${value}\n`;
 		}
 
-		const startRe = new RegExp(`<!--\\s*${escapeKey(key)}:start\\s*-->`, 'g');
+		const startRe = new RegExp(String.raw`<!--\s*${escapeKey(key)}:start\s*-->`, 'g');
 
 		for (let m = startRe.exec(out); m !== null; m = startRe.exec(out)) {
 			const contentStart = m.index + m[0].length;
