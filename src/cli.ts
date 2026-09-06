@@ -1,16 +1,26 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { cli } from 'cleye';
 import { commentMark } from './index.js';
 
+const require = createRequire(import.meta.url);
+
+const { name, description, version } = require('../package.json') as {
+	name: string;
+	description: string;
+	version: string;
+};
+
 const argv = cli({
-	name: 'comment-mark',
+	name,
+	version,
 	parameters: ['<file>'],
 	help: {
-		description: 'Update marked sections in a Markdown file with arbitrary values.',
-		usage: 'comment-mark <file> [--<marker>=<value>...]',
+		description,
+		usage: `${name} <file> [--<marker>=<value>...]`,
 		examples: [
-			'comment-mark README.md --last-updated="$(date -Iseconds)"',
-			'comment-mark README.md --contributors="$(git shortlog -se HEAD -- .)"',
+			`${name} README.md --last-updated="$(date -Iseconds)"`,
+			`${name} README.md --contributors="$(git shortlog -se HEAD -- .)"`,
 		],
 	},
 });

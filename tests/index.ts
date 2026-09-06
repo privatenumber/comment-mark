@@ -226,6 +226,23 @@ goodbye world
 });
 
 describe('CLI', () => {
+	test('sources name, description, and version from package.json', async () => {
+		const packageJson = JSON.parse(
+			await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+		) as {
+			name: string;
+			description: string;
+			version: string;
+		};
+
+		const { stdout: versionOutput } = await runCli('--version');
+		expect(versionOutput.trim()).toBe(packageJson.version);
+
+		const { stdout: helpOutput } = await runCli('--help');
+		expect(helpOutput).toContain(packageJson.name);
+		expect(helpOutput).toContain(packageJson.description);
+	});
+
 	test('updates a marked section in place', async () => {
 		const file = await createMarkdownFile(
 			'## Contributors\n<!-- contributors:start -->stale<!-- contributors:end -->\n',
