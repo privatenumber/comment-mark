@@ -94,6 +94,26 @@ fs.writeFileSync('README.md', markdown)
 
 **Returns:** `<string>`: The original string with placeholders replaced by provided values.
 
+### `getCommentMarks(contentStr)`
+
+Returns the contents of every marked section as a key-value object. Contents are preserved exactly, including whitespace.
+
+```js
+import { getCommentMarks } from 'comment-mark'
+
+console.log(getCommentMarks(markdown).lastUpdated)
+```
+
+* `contentStr` `<string | Buffer>`: The Markdown or HTML content.
+
+Whitespace around the marker key is treated as formatting: `<!--  lastUpdated:start  -->` reads as the key `lastUpdated`.
+
+When the same marker appears multiple times, the last occurrence wins.
+
+**Returns:** `<Record<string, string>>`: The marked section contents, keyed by marker name. Missing sections have no property.
+
+**Throws:** When a start marker has no following end marker.
+
 ## FAQ
 
 ### Why HTML comments?
