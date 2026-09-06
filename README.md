@@ -8,6 +8,29 @@
 npm install comment-mark
 ```
 
+## CLI
+
+Update marked sections in a Markdown file directly from the command line. Each `--<marker>=<value>` flag fills the matching marker:
+
+```sh
+comment-mark README.md --last-updated="$(date -Iseconds)"
+```
+
+```md
+## Last updated
+<!-- lastUpdated:start -->2026-09-07T00:00:00+09:00<!-- lastUpdated:end -->
+```
+
+Multiple markers can be set in one invocation:
+
+```sh
+comment-mark README.md \
+    --contributors="$(git shortlog -se HEAD -- .)" \
+    --last-updated="$(date -Iseconds)"
+```
+
+Running without marker flags prints the file's content to stdout instead of writing.
+
 ## Quick start
 
 ### 1. Add placeholders to your Markdown
@@ -86,6 +109,19 @@ fs.writeFileSync('README.md', markdown)
 ```
 
 ## API
+
+### CLI
+
+```sh
+comment-mark <file> [--<marker>=<value>...]
+```
+
+* `file` `<string>`: Path to the Markdown or HTML file to update in place.
+* `--<marker>=<value>`: Value for the marker named `<marker>`. Repeatable for multiple markers. Multiline values are supported.
+
+When at least one marker flag is given, the file is rewritten in place with the marked sections updated. Without marker flags, the processed content is printed to stdout and the file is left untouched.
+
+Markers that don't exist in the file are ignored.
 
 ### `commentMark(contentStr, data)`
 

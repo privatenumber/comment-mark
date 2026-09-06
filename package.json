@@ -20,6 +20,7 @@
 	"files": [
 		"dist"
 	],
+	"bin": "./dist/cli.mjs",
 	"main": "./dist/index.cjs",
 	"module": "./dist/index.mjs",
 	"types": "./dist/index.d.cts",
@@ -52,6 +53,9 @@
 	},
 	"engines": {
 		"node": ">=20"
+	},
+	"dependencies": {
+		"cleye": "^2.6.0"
 	},
 	"devDependencies": {
 		"@types/node": "^24.13.3",

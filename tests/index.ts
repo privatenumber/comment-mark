@@ -1,5 +1,34 @@
+import {
+	mkdtemp, rm, writeFile, readFile,
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { describe, test, expect } from 'manten';
 import { commentMark, getCommentMarks } from '#comment-mark';
+
+const execFileAsync = promisify(execFile);
+const cliPath = new URL('../dist/cli.mjs', import.meta.url).pathname;
+
+const runCli = (...args: string[]) => execFileAsync('node', [cliPath, ...args], {
+	encoding: 'utf8',
+});
+
+const createMarkdownFile = async (content: string) => {
+	const directory = await mkdtemp(path.join(tmpdir(), 'comment-mark-cli-'));
+	const filePath = path.join(directory, 'README.md');
+	await writeFile(filePath, content, 'utf8');
+	return {
+		filePath,
+		cleanup: async () => {
+			await rm(directory, {
+				recursive: true,
+				force: true,
+			});
+		},
+	};
+};
 
 describe('edge cases', () => {
 	test('no arguments', () => {
@@ -193,5 +222,81 @@ goodbye world
 		});
 
 		expect(getCommentMarks(output)).toEqual({ a: 'hello world' });
+	});
+});
+
+describe('CLI', () => {
+	test('updates a marked section in place', async () => {
+		const file = await createMarkdownFile(
+			'## Contributors\n<!-- contributors:start -->stale<!-- contributors:end -->\n',
+		);
+
+		try {
+			await runCli(file.filePath, '--contributors=Jane Doe');
+
+			expect(await readFile(file.filePath, 'utf8')).toBe(
+				'## Contributors\n<!-- contributors:start -->Jane Doe<!-- contributors:end -->\n',
+			);
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('updates multiple markers with multiline values', async () => {
+		const file = await createMarkdownFile(
+			'<!-- a:start --><!-- a:end -->\n<!-- b:start --><!-- b:end -->\n',
+		);
+
+		try {
+			await runCli(file.filePath, '--a=first', '--b=second\nline');
+
+			expect(await readFile(file.filePath, 'utf8')).toBe(
+				'<!-- a:start -->first<!-- a:end -->\n<!-- b:start -->\nsecond\nline\n<!-- b:end -->\n',
+			);
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('prints updated content to stdout without a marker flag', async () => {
+		const file = await createMarkdownFile('<!-- a:start -->value<!-- a:end -->');
+
+		try {
+			const { stdout } = await runCli(file.filePath);
+
+			expect(stdout).toBe('<!-- a:start -->value<!-- a:end -->');
+			expect(await readFile(file.filePath, 'utf8')).toBe('<!-- a:start -->value<!-- a:end -->');
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('exits non-zero when a valueless flag is passed', async () => {
+		const file = await createMarkdownFile('<!-- a:start --><!-- a:end -->');
+
+		try {
+			await expect(runCli(file.filePath, '--a')).rejects.toThrow(/No value provided for flag "--a"/);
+			expect(await readFile(file.filePath, 'utf8')).toBe('<!-- a:start --><!-- a:end -->');
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('leaves the file untouched when a marker is missing from the file', async () => {
+		const file = await createMarkdownFile('<!-- a:start --><!-- a:end -->');
+
+		try {
+			await runCli(file.filePath, '--missing=hi');
+
+			// commentMark ignores data keys with no matching marker, so the CLI
+			// succeeds while the file stays as-is.
+			expect(await readFile(file.filePath, 'utf8')).toBe('<!-- a:start --><!-- a:end -->');
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('exits non-zero when the file does not exist', async () => {
+		await expect(runCli('/nonexistent/path/README.md', '--a=hi')).rejects.toThrow(/ENOENT/);
 	});
 });

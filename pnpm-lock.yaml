@@ -108,6 +108,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      cleye:
+        specifier: ^2.6.0
+        version: 2.6.0
     devDependencies:
       '@types/node':
         specifier: ^24.13.3
