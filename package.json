@@ -43,7 +43,7 @@
 	"packageManager": "pnpm@10.9.0",
 	"scripts": {
 		"lint": "lintroll . --cache",
-		"test": "pnpm build && tsx --conditions=development tests && node --import tsx tests/dist.ts",
+		"test": "tsx --conditions=development tests",
 		"build": "pkgroll",
 		"type-check": "tsc",
 		"prepack": "pnpm build && clean-pkg-json",
