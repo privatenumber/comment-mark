@@ -46,3 +46,35 @@ export const commentMark = (
 
 	return out;
 };
+
+export const getCommentMarks = (input: string | Buffer): Record<string, string> => {
+	const content = Buffer.isBuffer(input) ? input.toString() : input;
+	const commentMarks: Record<string, string> = {};
+	const commentRe = /<!--([\s\S]*?)-->/g;
+
+	for (let match = commentRe.exec(content); match !== null; match = commentRe.exec(content)) {
+		const marker = match[1].trim();
+		if (!marker.endsWith(':start')) {
+			continue;
+		}
+
+		const key = marker.slice(0, -':start'.length);
+		const escapedKey = key.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+		const endRe = new RegExp(`<!--\\s*${escapedKey}:end\\s*-->`, 'g');
+		endRe.lastIndex = match.index + match[0].length;
+		const endMatch = endRe.exec(content);
+
+		if (!endMatch) {
+			throw new Error(`[comment-mark] No end comment found for key "${key}"`);
+		}
+
+		Object.defineProperty(commentMarks, key, {
+			value: content.slice(match.index + match[0].length, endMatch.index),
+			enumerable: true,
+			configurable: true,
+			writable: true,
+		});
+	}
+
+	return commentMarks;
+};
