@@ -58,9 +58,9 @@
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"clean-pkg-json": "^2.0.0",
 		"lintroll": "^1.31.1",
-		"manten": "^2.0.0",
+		"manten": "^2.0.2",
 		"pkgroll": "^2.28.1",
-		"skills-npm": "^1.0.0",
+		"skills-npm": "^1.2.1",
 		"tsx": "^4.23.13",
 		"typescript": "npm:@typescript/typescript6@^6.0.2"
 	}
