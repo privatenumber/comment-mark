@@ -1,3 +1,7 @@
+const escapeKey = (key: string) => key.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+
+const getEndRegex = (key: string) => new RegExp(`<!--\\s*${escapeKey(key)}:end\\s*-->`, 'g');
+
 export const commentMark = (
 	input: string | Buffer,
 	data: Record<string, string | null | undefined>,
@@ -25,9 +29,8 @@ export const commentMark = (
 			value = `\n${value}\n`;
 		}
 
-		const escKey = key.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-		const startRe = new RegExp(`<!--\\s*${escKey}:start\\s*-->`, 'g');
-		const endRe = new RegExp(`<!--\\s*${escKey}:end\\s*-->`, 'g');
+		const startRe = new RegExp(`<!--\\s*${escapeKey(key)}:start\\s*-->`, 'g');
+		const endRe = getEndRegex(key);
 
 		for (let m = startRe.exec(out); m !== null; m = startRe.exec(out)) {
 			const insertPos = m.index + m[0].length;
@@ -59,8 +62,7 @@ export const getCommentMarks = (input: string | Buffer): Record<string, string> 
 		}
 
 		const key = marker.slice(0, -':start'.length);
-		const escapedKey = key.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-		const endRe = new RegExp(`<!--\\s*${escapedKey}:end\\s*-->`, 'g');
+		const endRe = getEndRegex(key);
 		endRe.lastIndex = match.index + match[0].length;
 		const endMatch = endRe.exec(content);
 

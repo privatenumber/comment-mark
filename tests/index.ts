@@ -167,4 +167,12 @@ goodbye world
 			b: '\ngoodbye world\nhello again\n',
 		});
 	});
+
+	test('round trips whitespace marker variants', () => {
+		const output = commentMark('<!--  a:start   --><!--a:end-->', {
+			a: 'hello world',
+		});
+
+		expect(getCommentMarks(output)).toStrictEqual({ a: 'hello world' });
+	});
 });
