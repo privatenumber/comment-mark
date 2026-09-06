@@ -43,8 +43,9 @@
 	"packageManager": "pnpm@10.9.0",
 	"scripts": {
 		"lint": "lintroll . --cache",
-		"test": "tsx --conditions=development tests",
-		"build": "pkgroll",
+		"test": "tsx tests",
+		"dev": "tsx --conditions=development tests",
+		"build": "pkgroll --target=node20.0.0",
 		"type-check": "tsc",
 		"prepack": "pnpm build && clean-pkg-json",
 		"prepare": "skills-npm"
@@ -59,7 +60,7 @@
 		"manten": "^2.0.0",
 		"pkgroll": "^2.12.2",
 		"skills-npm": "^1.0.0",
-		"tsx": "^4.19.4",
+		"tsx": "^4.23.13",
 		"typescript": "^5.8.3"
 	}
 }
