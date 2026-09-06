@@ -275,13 +275,11 @@ describe('CLI', () => {
 		}
 	});
 
-	test('prints updated content to stdout without a marker flag', async () => {
+	test('exits with an error when no marker flags are passed', async () => {
 		const file = await createMarkdownFile('<!-- a:start -->value<!-- a:end -->');
 
 		try {
-			const { stdout } = await runCli(file.filePath);
-
-			expect(stdout).toBe('<!-- a:start -->value<!-- a:end -->');
+			await expect(runCli(file.filePath)).rejects.toThrow(/No marker flags provided/);
 			expect(await readFile(file.filePath, 'utf8')).toBe('<!-- a:start -->value<!-- a:end -->');
 		} finally {
 			await file.cleanup();

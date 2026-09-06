@@ -29,7 +29,7 @@ comment-mark README.md \
     --last-updated="$(date -Iseconds)"
 ```
 
-Running without marker flags prints the file's content to stdout instead of writing.
+Running without marker flags is an error; the file is left untouched.
 
 ## Quick start
 
