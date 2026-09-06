@@ -1,44 +1,66 @@
 {
-  "name": "comment-mark",
-  "version": "0.0.0-semantic-release",
-  "description": "Interpolate strings with HTML comment markers",
-  "keywords": [
-    "string",
-    "interpolation",
-    "inject",
-    "html",
-    "comment",
-    "markdown"
-  ],
-  "license": "MIT",
-  "repository": "privatenumber/comment-mark",
-  "funding": "https://github.com/privatenumber/comment-mark?sponsor=1",
-  "author": {
-    "name": "Hiroki Osame",
-    "email": "hiroki.osame@gmail.com"
-  },
-  "files": [
-    "dist"
-  ],
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.cts",
-  "exports": {
-    "require": {
-      "types": "./dist/index.d.cts",
-      "default": "./dist/index.cjs"
-    },
-    "import": {
-      "types": "./dist/index.d.mts",
-      "default": "./dist/index.mjs"
-    }
-  },
-  "imports": {
-    "#comment-mark": {
-      "default": "./dist/index.mjs"
-    }
-  },
-  "engines": {
-    "node": ">=20"
-  }
+	"name": "comment-mark",
+	"version": "0.0.0-semantic-release",
+	"description": "Interpolate strings with HTML comment markers",
+	"keywords": [
+		"string",
+		"interpolation",
+		"inject",
+		"html",
+		"comment",
+		"markdown"
+	],
+	"license": "MIT",
+	"repository": "privatenumber/comment-mark",
+	"funding": "https://github.com/privatenumber/comment-mark?sponsor=1",
+	"author": {
+		"name": "Hiroki Osame",
+		"email": "hiroki.osame@gmail.com"
+	},
+	"files": [
+		"dist"
+	],
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.cts",
+	"exports": {
+		"require": {
+			"types": "./dist/index.d.cts",
+			"default": "./dist/index.cjs"
+		},
+		"import": {
+			"types": "./dist/index.d.mts",
+			"default": "./dist/index.mjs"
+		}
+	},
+	"imports": {
+		"#comment-mark": {
+			"types": "./src/index.ts",
+			"development": "./src/index.ts",
+			"default": "./dist/index.mjs"
+		}
+	},
+	"packageManager": "pnpm@12.3.4",
+	"scripts": {
+		"lint": "lintroll . --cache",
+		"test": "tsx tests",
+		"dev": "tsx --conditions=development tests",
+		"build": "pkgroll --target=node20.0.0",
+		"type-check": "tsc",
+		"prepack": "pnpm build && clean-pkg-json",
+		"prepare": "skills-npm"
+	},
+	"engines": {
+		"node": ">=20"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.19",
+		"clean-pkg-json": "^2.0.0",
+		"lintroll": "^1.15.0",
+		"manten": "^2.0.0",
+		"pkgroll": "^2.28.1",
+		"skills-npm": "^1.0.0",
+		"tsx": "^4.23.13",
+		"typescript": "^5.8.3"
+	}
 }
