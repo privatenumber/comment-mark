@@ -1,6 +1,17 @@
 const escapeKey = (key: string) => key.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
-const getEndRegex = (key: string) => new RegExp(`<!--\\s*${escapeKey(key)}:end\\s*-->`, 'g');
+// Locates the end marker that closes a section whose content starts at `contentStart`,
+// or throws when the section was never closed.
+const findSectionEnd = (content: string, key: string, contentStart: number) => {
+	const endRe = new RegExp(`<!--\\s*${escapeKey(key)}:end\\s*-->`, 'g');
+	endRe.lastIndex = contentStart;
+	const endMatch = endRe.exec(content);
+	if (!endMatch) {
+		throw new Error(`[comment-mark] No end comment found for key "${key}"`);
+	}
+
+	return endMatch.index;
+};
 
 export const commentMark = (
 	input: string | Buffer,
@@ -30,20 +41,14 @@ export const commentMark = (
 		}
 
 		const startRe = new RegExp(`<!--\\s*${escapeKey(key)}:start\\s*-->`, 'g');
-		const endRe = getEndRegex(key);
 
 		for (let m = startRe.exec(out); m !== null; m = startRe.exec(out)) {
-			const insertPos = m.index + m[0].length;
-			endRe.lastIndex = m.index;
-			const match = endRe.exec(out);
-			if (!match) {
-				throw new Error(`[comment-mark] No end comment found for key "${key}"`);
-			}
+			const contentStart = m.index + m[0].length;
+			const contentEnd = findSectionEnd(out, key, contentStart);
 
-			out = out.slice(0, insertPos) + value + out.slice(match.index);
+			out = out.slice(0, contentStart) + value + out.slice(contentEnd);
 
-			startRe.lastIndex = insertPos + value.length;
-			endRe.lastIndex = startRe.lastIndex;
+			startRe.lastIndex = contentStart + value.length;
 		}
 	}
 
@@ -52,7 +57,8 @@ export const commentMark = (
 
 export const getCommentMarks = (input: string | Buffer): Record<string, string> => {
 	const content = Buffer.isBuffer(input) ? input.toString() : input;
-	const commentMarks: Record<string, string> = {};
+	// Null-prototype dictionary so marker keys can never collide with inherited properties.
+	const commentMarks: Record<string, string> = Object.create(null);
 	const commentRe = /<!--([\s\S]*?)-->/g;
 
 	for (let match = commentRe.exec(content); match !== null; match = commentRe.exec(content)) {
@@ -62,20 +68,9 @@ export const getCommentMarks = (input: string | Buffer): Record<string, string> 
 		}
 
 		const key = marker.slice(0, -':start'.length);
-		const endRe = getEndRegex(key);
-		endRe.lastIndex = match.index + match[0].length;
-		const endMatch = endRe.exec(content);
-
-		if (!endMatch) {
-			throw new Error(`[comment-mark] No end comment found for key "${key}"`);
-		}
-
-		Object.defineProperty(commentMarks, key, {
-			value: content.slice(match.index + match[0].length, endMatch.index),
-			enumerable: true,
-			configurable: true,
-			writable: true,
-		});
+		const contentStart = match.index + match[0].length;
+		const contentEnd = findSectionEnd(content, key, contentStart);
+		commentMarks[key] = content.slice(contentStart, contentEnd);
 	}
 
 	return commentMarks;

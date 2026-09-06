@@ -106,6 +106,10 @@ console.log(getCommentMarks(markdown).lastUpdated)
 
 * `contentStr` `<string | Buffer>`: The Markdown or HTML content.
 
+Whitespace around the marker key is treated as formatting: `<!--  lastUpdated:start  -->` reads as the key `lastUpdated`.
+
+When the same marker appears multiple times, the last occurrence wins.
+
 **Returns:** `<Record<string, string>>`: The marked section contents, keyed by marker name. Missing sections have no property.
 
 **Throws:** When a start marker has no following end marker.

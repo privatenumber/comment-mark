@@ -121,18 +121,18 @@ goodbye world
 <!-- b:end -->
 		`);
 
-		expect(commentMarks).toStrictEqual({
+		expect(commentMarks).toEqual({
 			a: 'hello world',
 			b: '\ngoodbye world\n',
 		});
 	});
 
 	test('returns an empty object when no sections exist', () => {
-		expect(getCommentMarks('<!-- ordinary comment -->')).toStrictEqual({});
+		expect(getCommentMarks('<!-- ordinary comment -->')).toEqual({});
 	});
 
 	test('returns empty marked contents', () => {
-		expect(getCommentMarks('<!-- a:start --><!-- a:end -->')).toStrictEqual({ a: '' });
+		expect(getCommentMarks('<!-- a:start --><!-- a:end -->')).toEqual({ a: '' });
 	});
 
 	test('throws when an end comment is absent', () => {
@@ -144,15 +144,15 @@ goodbye world
 	});
 
 	test('uses the last duplicate section', () => {
-		expect(getCommentMarks('<!-- a:start -->first<!-- a:end --><!--a:start-->last<!--a:end-->')).toStrictEqual({ a: 'last' });
+		expect(getCommentMarks('<!-- a:start -->first<!-- a:end --><!--a:start-->last<!--a:end-->')).toEqual({ a: 'last' });
 	});
 
 	test('supports keys with special characters', () => {
-		expect(getCommentMarks('<!-- a.b:c:start -->value<!-- a.b:c:end -->')).toStrictEqual({ 'a.b:c': 'value' });
+		expect(getCommentMarks('<!-- a.b:c:start -->value<!-- a.b:c:end -->')).toEqual({ 'a.b:c': 'value' });
 	});
 
 	test('supports Buffer input', () => {
-		expect(getCommentMarks(Buffer.from('<!-- a:start -->hello world<!-- a:end -->'))).toStrictEqual({ a: 'hello world' });
+		expect(getCommentMarks(Buffer.from('<!-- a:start -->hello world<!-- a:end -->'))).toEqual({ a: 'hello world' });
 	});
 
 	test('round trips marked values', () => {
@@ -162,7 +162,7 @@ goodbye world
 		};
 		const output = commentMark('<!-- a:start --><!-- a:end --><!-- b:start --><!-- b:end -->', data);
 
-		expect(getCommentMarks(output)).toStrictEqual({
+		expect(getCommentMarks(output)).toEqual({
 			a: 'hello world',
 			b: '\ngoodbye world\nhello again\n',
 		});
@@ -173,6 +173,25 @@ goodbye world
 			a: 'hello world',
 		});
 
-		expect(getCommentMarks(output)).toStrictEqual({ a: 'hello world' });
+		expect(getCommentMarks(output)).toEqual({ a: 'hello world' });
+	});
+
+	test('returned object has no inherited properties', () => {
+		expect(getCommentMarks('<!-- a:start -->hello world<!-- a:end -->').toString).toBe(undefined);
+	});
+
+	test('supports keys named like Object properties', () => {
+		const commentMarks = getCommentMarks('<!-- __proto__:start -->hello world<!-- __proto__:end -->');
+
+		expect(Object.hasOwn(commentMarks, '__proto__')).toBe(true);
+		expect(Object.entries(commentMarks)).toEqual([['__proto__', 'hello world']]);
+	});
+
+	test('treats whitespace around the marker key as formatting', () => {
+		const output = commentMark('<!-- a:start --><!-- a:end -->', {
+			' a': 'hello world',
+		});
+
+		expect(getCommentMarks(output)).toEqual({ a: 'hello world' });
 	});
 });
