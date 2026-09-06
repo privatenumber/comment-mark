@@ -1,15 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import { cli } from 'cleye';
+import { description, name, version } from '../package.json' with { type: 'json' };
 import { commentMark } from './index.js';
-
-const require = createRequire(import.meta.url);
-
-const { name, description, version } = require('../package.json') as {
-	name: string;
-	description: string;
-	version: string;
-};
 
 const argv = cli({
 	name,

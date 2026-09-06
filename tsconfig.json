@@ -2,6 +2,7 @@
 	"compilerOptions": {
 		"target": "ES2023", // Node 20
 		"module": "Preserve",
+		"resolveJsonModule": true,
 		"types": [
 			"node",
 		],
