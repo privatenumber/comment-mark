@@ -243,6 +243,47 @@ describe('CLI', () => {
 		expect(helpOutput).toContain(packageJson.description);
 	});
 
+	test('lists detected values as JSON when no marker flags are passed', async () => {
+		const file = await createMarkdownFile(
+			'<!-- a:start -->hello world<!-- a:end -->\n<!-- b:start -->\nmulti\nline\n<!-- b:end -->\n',
+		);
+
+		try {
+			const { stdout } = await runCli(file.filePath);
+
+			expect(JSON.parse(stdout)).toStrictEqual({
+				a: 'hello world',
+				b: '\nmulti\nline\n',
+			});
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('prints an empty JSON object in get mode when no markers exist', async () => {
+		const file = await createMarkdownFile('<!-- ordinary comment -->\n');
+
+		try {
+			const { stdout } = await runCli(file.filePath);
+
+			expect(JSON.parse(stdout)).toStrictEqual({});
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('allows setting a marker named like a control flag', async () => {
+		const file = await createMarkdownFile('<!-- version:start -->1.0.0<!-- version:end -->');
+
+		try {
+			await runCli(file.filePath, '--version=2.0.0');
+
+			expect(await readFile(file.filePath, 'utf8')).toBe('<!-- version:start -->2.0.0<!-- version:end -->');
+		} finally {
+			await file.cleanup();
+		}
+	});
+
 	test('updates a marked section in place', async () => {
 		const file = await createMarkdownFile(
 			'## Contributors\n<!-- contributors:start -->stale<!-- contributors:end -->\n',
@@ -275,12 +316,60 @@ describe('CLI', () => {
 		}
 	});
 
-	test('exits with an error when no marker flags are passed', async () => {
+	test('reports per-key outcomes and exits non-zero when markers are missing', async () => {
+		const file = await createMarkdownFile(
+			'<!-- a:start -->stale<!-- a:end -->\n<!-- b:start -->same<!-- b:end -->\n',
+		);
+
+		try {
+			const invocation = runCli(file.filePath, '--a=fresh', '--b=same', '--nope=x');
+
+			await expect(invocation).rejects.toMatchObject({ code: 1 });
+			await expect(invocation).rejects.toThrow(/Updated: a[\s\S]*Unchanged: b[\s\S]*Missing: nope/);
+			await expect(invocation).rejects.toThrow(/Saved .*\. Updated 1 key; 1 unchanged; 1 missing\./);
+
+			// Valid updates are still saved when other keys are missing.
+			expect(await readFile(file.filePath, 'utf8')).toBe(
+				'<!-- a:start -->fresh<!-- a:end -->\n<!-- b:start -->same<!-- b:end -->\n',
+			);
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('exits successfully when all requested values already match', async () => {
+		const file = await createMarkdownFile('<!-- a:start -->same<!-- a:end -->');
+
+		try {
+			const { stderr } = await runCli(file.filePath, '--a=same');
+
+			expect(stderr).toContain('is unchanged. All 1 requested values already match.');
+			expect(await readFile(file.filePath, 'utf8')).toBe('<!-- a:start -->same<!-- a:end -->');
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('exits non-zero without writing when every requested marker is missing', async () => {
 		const file = await createMarkdownFile('<!-- a:start -->value<!-- a:end -->');
 
 		try {
-			await expect(runCli(file.filePath)).rejects.toThrow(/No marker flags provided/);
+			await expect(runCli(file.filePath, '--nope1=x', '--nope2=y')).rejects.toThrow(
+				/No matching markers found for any of the 2 requested keys/,
+			);
 			expect(await readFile(file.filePath, 'utf8')).toBe('<!-- a:start -->value<!-- a:end -->');
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('clears a section when the value is empty', async () => {
+		const file = await createMarkdownFile('<!-- a:start -->gone<!-- a:end -->');
+
+		try {
+			await runCli(file.filePath, '--a=');
+
+			expect(await readFile(file.filePath, 'utf8')).toBe('<!-- a:start --><!-- a:end -->');
 		} finally {
 			await file.cleanup();
 		}
@@ -297,15 +386,36 @@ describe('CLI', () => {
 		}
 	});
 
-	test('leaves the file untouched when a marker is missing from the file', async () => {
+	test('exits non-zero when the same flag is passed multiple times', async () => {
 		const file = await createMarkdownFile('<!-- a:start --><!-- a:end -->');
 
 		try {
-			await runCli(file.filePath, '--missing=hi');
-
-			// commentMark ignores data keys with no matching marker, so the CLI
-			// succeeds while the file stays as-is.
+			await expect(runCli(file.filePath, '--a=1', '--a=2')).rejects.toThrow(
+				/Flag "--a" was specified 2 times/,
+			);
 			expect(await readFile(file.filePath, 'utf8')).toBe('<!-- a:start --><!-- a:end -->');
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('exits non-zero on unexpected extra positional arguments', async () => {
+		const file = await createMarkdownFile('<!-- a:start --><!-- a:end -->');
+
+		try {
+			await expect(runCli(file.filePath, 'extra', '--a=1')).rejects.toThrow(/Unexpected extra arguments: extra/);
+			expect(await readFile(file.filePath, 'utf8')).toBe('<!-- a:start --><!-- a:end -->');
+		} finally {
+			await file.cleanup();
+		}
+	});
+
+	test('exits non-zero and leaves the file untouched when a marker is unterminated', async () => {
+		const file = await createMarkdownFile('<!-- a:start -->never closed\n');
+
+		try {
+			await expect(runCli(file.filePath, '--a=x')).rejects.toThrow(/No end comment found for key "a"/);
+			expect(await readFile(file.filePath, 'utf8')).toBe('<!-- a:start -->never closed\n');
 		} finally {
 			await file.cleanup();
 		}

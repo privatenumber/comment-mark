@@ -29,7 +29,23 @@ comment-mark README.md \
     --last-updated="$(date -Iseconds)"
 ```
 
-Running without marker flags is an error; the file is left untouched.
+Running without marker flags lists every detected marker and its content as JSON, which is handy for scripting:
+
+```sh
+comment-mark README.md | jq -r '.contributors'
+```
+
+The setter reports each key's outcome (`Updated`, `Unchanged`, or `Missing`) and always uses `--<marker>=<value>` syntax. A marker that doesn't exist doesn't block the other updates, but the command exits non-zero so typos and stale scripts surface:
+
+```text
+Updated: contributors
+Unchanged: last-updated
+Missing: benchmarks
+
+Saved README.md. Updated 1 key; 1 unchanged; 1 missing.
+```
+
+When every requested value already matches, the file is left untouched and the command exits successfully.
 
 ## Quick start
 
@@ -116,12 +132,24 @@ fs.writeFileSync('README.md', markdown)
 comment-mark <file> [--<marker>=<value>...]
 ```
 
-* `file` `<string>`: Path to the Markdown or HTML file to update in place.
-* `--<marker>=<value>`: Value for the marker named `<marker>`. Repeatable for multiple markers. Multiline values are supported.
+* `file` `<string>`: Path to the Markdown or HTML file.
+* `--<marker>=<value>`: Value for the marker named `<marker>`. Repeat for multiple markers. Multiline values are supported.
 
-When at least one marker flag is given, the file is rewritten in place with the marked sections updated. Without marker flags, the processed content is printed to stdout and the file is left untouched.
+**Get mode.** Without marker flags, prints every detected marker and its exact content as JSON to stdout and exits `0`. Exits non-zero if the file can't be read or contains an unterminated marker.
 
-Markers that don't exist in the file are ignored.
+**Set mode.** With one or more marker flags, validates the whole document first (an unterminated marker aborts without writing), then updates the marked sections in place. Status for each key is printed to stderr:
+
+* `Updated`: the marker existed and its content changed.
+* `Unchanged`: the marker already held the requested value.
+* `Missing`: no matching marker exists in the file.
+
+Valid updates are still saved when other requested markers are missing, but the command exits `1` in that case so automation can detect incomplete runs. When every requested value already matches, the file is not rewritten and the command exits `0`.
+
+Additional rules:
+
+* Each marker can only be set once per invocation; repeated flags are rejected.
+* Marker names are exact; `--last-updated` does not match a `lastUpdated` marker.
+* Bare `--help`, `-h`, and `--version` are reserved. Set a marker named `help` or `version` with `--help=<value>` or `--version=<value>`.
 
 ### `commentMark(contentStr, data)`
 
