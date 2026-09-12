@@ -2,6 +2,14 @@
 
 **comment-mark** lets you seamlessly embed dynamic content into your Markdown using persistent HTML comment placeholders—no separate template files required!
 
+### Features
+
+- Persistent HTML comment placeholders that survive repeated updates
+- Preserves the exact content and whitespace of each marked section
+- Works with any Markdown or HTML file
+- Update from the CLI or a small JavaScript API
+- Typed, with ESM and CommonJS builds
+
 ## Install
 
 ```sh
@@ -187,3 +195,16 @@ Markdown generally supports basic HTML, and HTML comment pairs are a safe, unobt
 ### Why pairs of HTML comments instead of single placeholders?
 
 Pairs ensure the placeholders remain intact after multiple updates, avoiding the need for separate source and distribution files.
+
+## Related
+
+- [mdeval](https://github.com/privatenumber/mdeval): Run JavaScript inside Markdown comments, keeping the logic next to the content it produces
+- [md-pen](https://github.com/privatenumber/md-pen): Typed utilities for formatting Markdown
+
+## Sponsors
+
+<p align="center">
+	<a href="https://github.com/sponsors/privatenumber">
+		<img src="https://cdn.jsdelivr.net/gh/privatenumber/sponsors/sponsorkit/sponsors.svg">
+	</a>
+</p>
