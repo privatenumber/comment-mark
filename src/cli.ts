@@ -19,6 +19,10 @@ const helpOptions = {
 
 const argv = cli({
 	name,
+
+	// Keep `[file]` optional: a required `<file>` aborts inside cli() with
+	// "Missing required parameter" before the manual `--help`/`--version`
+	// handlers below can run. The requirement is enforced after those flags.
 	parameters: ['[file]'],
 
 	// Markers accept arbitrary names, so a marker can be named `help`. cleye's
