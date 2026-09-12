@@ -13,7 +13,7 @@ npm install comment-mark
 Update marked sections in a Markdown file directly from the command line. Each `--<marker>=<value>` flag fills the matching marker:
 
 ```sh
-comment-mark README.md --last-updated="$(date -Iseconds)"
+comment-mark README.md --lastUpdated="$(date -Iseconds)"
 ```
 
 ```md
@@ -26,7 +26,7 @@ Multiple markers can be set in one invocation:
 ```sh
 comment-mark README.md \
     --contributors="$(git shortlog -se HEAD -- .)" \
-    --last-updated="$(date -Iseconds)"
+    --lastUpdated="$(date -Iseconds)"
 ```
 
 Running without marker flags lists every detected marker and its content as JSON, which is handy for scripting:
@@ -39,7 +39,7 @@ The setter reports each key's outcome (`Updated`, `Unchanged`, or `Missing`) and
 
 ```text
 Updated: contributors
-Unchanged: last-updated
+Unchanged: lastUpdated
 Missing: benchmarks
 
 Saved README.md. Updated 1 key; 1 unchanged; 1 missing.
