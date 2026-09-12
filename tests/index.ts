@@ -215,6 +215,9 @@ describe('CLI', () => {
 		const { stdout: helpOutput } = await commentMarkCli('--help');
 		expect(helpOutput).toContain(packageJson.name);
 		expect(helpOutput).toContain(packageJson.description);
+
+		const { stdout: shortHelpOutput } = await commentMarkCli('-h');
+		expect(shortHelpOutput).toBe(helpOutput);
 	});
 
 	test('lists detected values as JSON when no marker flags are passed', async () => {
@@ -238,14 +241,16 @@ describe('CLI', () => {
 		expect(JSON.parse(stdout)).toStrictEqual({});
 	});
 
-	test('allows setting a marker named like a control flag', async () => {
+	test('allows setting markers named like control flags', async () => {
 		await using fixture = await createFixture({
-			'README.md': '<!-- version:start -->1.0.0<!-- version:end -->',
+			'README.md': '<!-- help:start -->stale<!-- help:end -->\n<!-- version:start -->1.0.0<!-- version:end -->\n',
 		});
 
-		await commentMarkCli(fixture.getPath('README.md'), '--version=2.0.0');
+		await commentMarkCli(fixture.getPath('README.md'), '--help=docs', '--version=2.0.0');
 
-		expect(await fixture.readFile('README.md', 'utf8')).toBe('<!-- version:start -->2.0.0<!-- version:end -->');
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(
+			'<!-- help:start -->docs<!-- help:end -->\n<!-- version:start -->2.0.0<!-- version:end -->\n',
+		);
 	});
 
 	test('updates a marked section in place', async () => {

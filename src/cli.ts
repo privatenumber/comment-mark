@@ -8,9 +8,6 @@ const exitWithError = (message: string): never => {
 	process.exit(1);
 };
 
-// `help: false` disables cleye's built-in flag handling so `--help`/`--version`
-// don't intercept `--help=<value>`/`--version=<value>` meant as marker keys.
-// Bare `--help`/`-h`/`--version` are handled manually below.
 const helpOptions = {
 	description,
 	usage: `${name} <file> [--<marker>=<value>...]`,
@@ -23,6 +20,10 @@ const helpOptions = {
 const argv = cli({
 	name,
 	parameters: ['[file]'],
+
+	// Markers accept arbitrary names, so a marker can be named `help`. cleye's
+	// default Boolean `help` flag (alias `-h`) would consume `--help=<value>`
+	// and print help instead, so it's disabled; bare flags are handled below.
 	help: false,
 });
 
@@ -33,8 +34,8 @@ const isBareFlag = (flagName: string) => {
 	return values?.length === 1 && values[0] === true;
 };
 
-// Handle control flags manually, matching cleye's convention that a bare flag
-// anywhere requests the action.
+// Handle control flags manually so only the bare form reserves the action
+// (cleye convention); `--help=<value>`/`--version=<value>` stay as markers.
 if (isBareFlag('help') || isBareFlag('h')) {
 	showHelp(helpOptions);
 	process.exit(0);
