@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { cli } from 'cleye';
 import { description, name, version } from '../package.json' with { type: 'json' };
-import { commentMark, getCommentMarks } from './index.js';
+import { commentMark, getCommentMarks, getCommentMarkers } from './index.js';
 
 const exitWithError = (message: string): never => {
 	console.error(`Error: ${message}`);
@@ -12,7 +12,7 @@ const helpOptions = {
 	description,
 	usage: `${name} <file> [--<marker>=<value>...]`,
 	examples: [
-		`${name} README.md --last-updated="$(date -Iseconds)"`,
+		`${name} README.md --lastUpdated="$(date -Iseconds)"`,
 		`${name} README.md --contributors="$(git shortlog -se HEAD -- .)"`,
 	],
 };
@@ -78,10 +78,10 @@ for (const [marker, values] of Object.entries(unknownFlags)) {
 	}
 }
 
-// Get mode: no marker flags prints detected values as JSON.
+// Get mode: no marker flags prints detected markers as JSON.
 if (Object.keys(data).length === 0) {
 	const content = await readFile(filePath, 'utf8');
-	process.stdout.write(`${JSON.stringify(getCommentMarks(content), null, '\t')}\n`);
+	process.stdout.write(`${JSON.stringify(getCommentMarkers(content), null, '\t')}\n`);
 	process.exit(0);
 }
 

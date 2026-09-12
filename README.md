@@ -10,6 +10,7 @@ Keep generated content, like contributor lists and benchmark results, alongside 
 - Update sections from the CLI or JavaScript
 - Read marked content as JSON or a JavaScript object, preserving whitespace
 - Supports Markdown and HTML files, including multiline content
+- Ignores markers inside code blocks, so documentation examples stay literal
 - TypeScript types, with ESM and CommonJS builds
 
 ## Install
@@ -22,16 +23,18 @@ pnpm add comment-mark
 
 ### 1. Add placeholders
 
-In `README.md`, wrap the content you want to update with matching `:start` and `:end` comments:
+In `README.md`, wrap the content you want to update with a named marker:
 
 ```md
 ## Last updated
-<!-- lastUpdated:start --><!-- lastUpdated:end -->
+<!--comment-mark id="lastUpdated"--><!--/comment-mark-->
 ```
+
+The opening comment declares the marker's `id`. The closing comment marks where the content ends.
 
 ### 2. Fill the section
 
-Read the file, pass values keyed by marker name, and save the result:
+Read the file, pass values keyed by marker id, and save the result:
 
 ```js
 import fs from 'node:fs/promises'
@@ -49,7 +52,7 @@ await fs.writeFile('README.md', updated)
 
 ```md
 ## Last updated
-<!-- lastUpdated:start -->2026-09-07<!-- lastUpdated:end -->
+<!--comment-mark id="lastUpdated"-->2026-09-07<!--/comment-mark-->
 ```
 
 Run the script again with a new value to replace the section. The surrounding document and marker comments stay intact. For a live timestamp, use `new Date().toISOString()` as the value.
@@ -59,14 +62,14 @@ Run the script again with a new value to replace the section. The surrounding do
 Use the CLI to read or update a file without writing a script:
 
 ```sh
-npx comment-mark <file> [--<marker>=<value>...]
+npx comment-mark <file> [--<id>=<value>...]
 ```
 
 `file` is the path to a Markdown or HTML file. The examples below use `npx`; package scripts can call `comment-mark` directly.
 
 ### Update sections
 
-Pass each value as `--<marker>=<value>`. For the placeholder in the quick start:
+Pass each value as `--<id>=<value>`, where `<id>` matches a marker's `id` attribute. For the placeholder in the quick start:
 
 ```sh
 npx comment-mark README.md --lastUpdated="2026-09-07"
@@ -98,7 +101,7 @@ When updates are saved alongside missing markers, the command exits `1`. If ever
 
 ### Read sections
 
-Omit marker flags to print the detected values as JSON on stdout:
+Omit marker flags to print the detected markers as JSON on stdout:
 
 ```sh
 npx comment-mark README.md
@@ -107,27 +110,32 @@ npx comment-mark README.md
 For the quick-start result:
 
 ```json
-{
-    "lastUpdated": "2026-09-07"
-}
+[
+    {
+        "id": "lastUpdated",
+        "attributes": {},
+        "content": "2026-09-07"
+    }
+]
 ```
 
-Pipe the result to `jq` to select a value:
+Select a value with `jq`:
 
 ```sh
-npx comment-mark README.md | jq -r '.lastUpdated'
+npx comment-mark README.md | jq -r '.[] | select(.id == "lastUpdated") | .content'
 ```
 
-Read mode preserves section whitespace and prints `{}` when no markers exist. It exits non-zero if the file cannot be read or a start marker has no matching end comment.
+Read mode preserves section whitespace and prints `[]` when no markers exist. It exits non-zero if the file cannot be read or a marker has no closing comment.
 
 ### Arguments and validation
 
-- Names are exact: `--last-updated` does not match a `lastUpdated` marker.
-- Use `--key=value`, not `--key value`. Quote values containing spaces or newlines.
-- Use `--key=` to clear a section. Multiline values get a newline before and after the supplied content.
+- The flag name is the marker's `id`, matched exactly: `--last-updated` does not match an `id` of `lastUpdated`.
+- Use `--id=value`, not `--id value`. Quote values containing spaces or newlines.
+- Use `--id=` to clear a section. Multiline values get a newline before and after the supplied content.
+- `id` is written as an attribute (`id="lastUpdated"`). Additional attributes are preserved on the marker for future features.
 - Each marker can be set once per invocation. Repeated flags, valueless flags, and extra positional arguments are rejected before writing.
-- Update mode validates the document before writing. An unterminated marker aborts the update.
-- Bare `--help`, `-h`, and `--version` work without a file. Markers named `help` or `version` remain settable with `--help=<value>` or `--version=<value>`.
+- Update mode validates the document before writing. A marker without a closing comment aborts the update.
+- Bare `--help`, `-h`, and `--version` work without a file. Markers with `id="help"` or `id="version"` remain settable with `--help=<value>` or `--version=<value>`.
 
 ## API
 
@@ -138,44 +146,86 @@ Replace marked sections with values from `data`. This function transforms conten
 ```js
 import { commentMark } from 'comment-mark'
 
-const updated = commentMark('Version: <!-- version:start -->1.0.0<!-- version:end -->', {
+const updated = commentMark('Version: <!--comment-mark id="version"-->1.0.0<!--/comment-mark-->', {
     version: '2.0.0'
 })
 
 console.log(updated)
-// Version: <!-- version:start -->2.0.0<!-- version:end -->
+// Version: <!--comment-mark id="version"-->2.0.0<!--/comment-mark-->
 ```
 
 - `input` (`string | Buffer`): Markdown or HTML content
-- `data` (`Record<string, string | null | undefined>`): Values keyed by marker name
+- `data` (`Record<string, string | null | undefined>`): Values keyed by marker `id`
 
 Returns the updated content as a string. Buffer input is decoded as UTF-8.
 
 - Updates every matching occurrence of each supplied key.
 - Skips `null` and `undefined` values. An empty string clears the section.
 - Silently skips keys with no matching marker. Unlike the CLI, the API does not report missing keys.
+- Ignores markers inside fenced code blocks and inline code.
 - Wraps values containing `\n` in an additional newline on each side.
-- Throws if a section being updated has no matching end comment.
+- Throws when a marker has no closing comment.
 
 ### `getCommentMarks(input)`
 
-Read marked sections into an object keyed by marker name:
+Read named markers into an object keyed by `id`:
 
 ```js
 import { getCommentMarks } from 'comment-mark'
 
-const sections = getCommentMarks('Version: <!-- version:start -->2.0.0<!-- version:end -->')
+const sections = getCommentMarks('Version: <!--comment-mark id="version"-->2.0.0<!--/comment-mark-->')
 
 console.log(sections.version)
 // 2.0.0
 ```
 
 - `input` (`string | Buffer`): Markdown or HTML content
-- Returns `Record<string, string>` with no inherited properties. Missing sections have no property.
+- Returns `Record<string, string>` with no inherited properties. Markers without an `id` have no property.
 - Preserves section content exactly, including whitespace and newlines.
 - Uses the last occurrence when a marker appears more than once.
-- Treats whitespace around the comment contents as formatting: `<!--  version:start  -->` reads as the key `version`.
-- Throws when a start marker has no following end comment.
+- Throws when a marker has no closing comment.
+
+### `getCommentMarkers(input)`
+
+Read every marker, including markers without an `id`, in document order:
+
+```js
+import { getCommentMarkers } from 'comment-mark'
+
+const markers = getCommentMarkers('<!--comment-mark file="./LICENSE.md"-->MIT<!--/comment-mark-->')
+
+console.log(markers[0].attributes.file)
+// ./LICENSE.md
+```
+
+- `input` (`string | Buffer`): Markdown or HTML content
+- Returns `CommentMark[]`, where each marker has:
+  - `id` (`string | undefined`): the `id` attribute, when present
+  - `attributes` (`Record<string, string>`): attributes other than `id`
+  - `content` (`string`): raw content between the comments
+- Throws when a marker has no closing comment.
+
+## Migrating from v2
+
+v3 replaces the `<id>:start` / `<id>:end` comments with named `comment-mark` comments. Replace the opening and closing comments:
+
+```diff
+ ## Last updated
+-<!-- lastUpdated:start --><!-- lastUpdated:end -->
++<!--comment-mark id="lastUpdated"--><!--/comment-mark-->
+```
+
+To rewrite a tree of Markdown files:
+
+```sh
+find . -name '*.md' -not -path './node_modules/*' -exec perl -0pi -e 's/<!--\s*(.+?):start\s*-->/<!--comment-mark id="$1"-->/g; s/<!--\s*.+?:end\s*-->/<!--\/comment-mark-->/g' {} +
+```
+
+Other v3 changes:
+
+- The CLI's read mode now prints an array of marker objects instead of an object keyed by id.
+- `getCommentMarks` still returns an object keyed by `id`. Use `getCommentMarkers` to read every marker, including ones without an `id`.
+- Markers inside fenced code blocks and inline code are ignored.
 
 ## Example: Git contributors
 
@@ -183,7 +233,7 @@ Add a section to `README.md`:
 
 ```md
 ## Contributors
-<!-- contributors:start --><!-- contributors:end -->
+<!--comment-mark id="contributors"--><!--/comment-mark-->
 ```
 
 Fill it with the output of `git shortlog`:
@@ -196,10 +246,10 @@ For a repository with two contributors, the result looks like:
 
 ```md
 ## Contributors
-<!-- contributors:start -->
+<!--comment-mark id="contributors"-->
     17  John Doe <john.doe@example.com>
      5  Jane Smith <jane.smith@example.com>
-<!-- contributors:end -->
+<!--/comment-mark-->
 ```
 
 Shell command substitution removes trailing newlines. For multiline values, comment-mark adds a newline at each end so the content sits between the marker lines.
@@ -217,7 +267,11 @@ HTML comments are hidden in rendered Markdown but remain visible in the source. 
 
 ### Why use a pair of comments?
 
-The start and end comments delimit the content to replace. Both stay in the output, so later updates can find the same section without a separate template file.
+The opening and closing comments delimit the content to replace. Both stay in the output, so later updates can find the same section without a separate template file.
+
+### Why does the marker use an `id` attribute?
+
+An attribute form leaves room for additional attributes on the same marker. A marker can also omit `id` entirely, which is how `file` markers that inline another file's contents will work.
 
 ## Related
 
