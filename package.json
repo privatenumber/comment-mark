@@ -60,8 +60,10 @@
 	"devDependencies": {
 		"@types/node": "^24.13.3",
 		"clean-pkg-json": "^2.0.0",
+		"fs-fixture": "^2.16.0",
 		"lintroll": "^1.31.1",
 		"manten": "^2.0.2",
+		"nano-spawn": "^2.1.0",
 		"pkgroll": "^2.28.1",
 		"skills-npm": "^1.2.1",
 		"tsx": "^4.23.13",
