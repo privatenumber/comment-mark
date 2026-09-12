@@ -59,23 +59,23 @@ Run the script again with a new value to replace the section. The surrounding do
 Use the CLI to read or update a file without writing a script:
 
 ```sh
-pnpm exec comment-mark <file> [--<marker>=<value>...]
+npx comment-mark <file> [--<marker>=<value>...]
 ```
 
-`file` is the path to a Markdown or HTML file. The examples below use the locally installed command through `pnpm exec`; package scripts can call `comment-mark` directly.
+`file` is the path to a Markdown or HTML file. The examples below use `npx`; package scripts can call `comment-mark` directly.
 
 ### Update sections
 
 Pass each value as `--<marker>=<value>`. For the placeholder in the quick start:
 
 ```sh
-pnpm exec comment-mark README.md --lastUpdated="2026-09-07"
+npx comment-mark README.md --lastUpdated="2026-09-07"
 ```
 
 Set multiple markers in one invocation:
 
 ```sh
-pnpm exec comment-mark README.md --contributors="Jane Doe" --lastUpdated="2026-09-07" --benchmarks="result"
+npx comment-mark README.md --contributors="Jane Doe" --lastUpdated="2026-09-07" --benchmarks="result"
 ```
 
 For a file with a stale `contributors` section, a `lastUpdated` section already containing `2026-09-07`, and no `benchmarks` marker, the command writes the contributor update and reports on stderr:
@@ -101,7 +101,7 @@ When updates are saved alongside missing markers, the command exits `1`. If ever
 Omit marker flags to print the detected values as JSON on stdout:
 
 ```sh
-pnpm exec comment-mark README.md
+npx comment-mark README.md
 ```
 
 For the quick-start result:
@@ -115,7 +115,7 @@ For the quick-start result:
 Pipe the result to `jq` to select a value:
 
 ```sh
-pnpm exec comment-mark README.md | jq -r '.lastUpdated'
+npx comment-mark README.md | jq -r '.lastUpdated'
 ```
 
 Read mode preserves section whitespace and prints `{}` when no markers exist. It exits non-zero if the file cannot be read or a start marker has no matching end comment.
@@ -128,38 +128,6 @@ Read mode preserves section whitespace and prints `{}` when no markers exist. It
 - Each marker can be set once per invocation. Repeated flags, valueless flags, and extra positional arguments are rejected before writing.
 - Update mode validates the document before writing. An unterminated marker aborts the update.
 - Bare `--help`, `-h`, and `--version` work without a file. Markers named `help` or `version` remain settable with `--help=<value>` or `--version=<value>`.
-
-## Example: Git contributors
-
-Add a section to `README.md`:
-
-```md
-## Contributors
-<!-- contributors:start --><!-- contributors:end -->
-```
-
-Fill it with the output of `git shortlog`:
-
-```sh
-pnpm exec comment-mark README.md --contributors="$(git shortlog -se HEAD -- .)"
-```
-
-For a repository with two contributors, the result looks like:
-
-```md
-## Contributors
-<!-- contributors:start -->
-    17  John Doe <john.doe@example.com>
-     5  Jane Smith <jane.smith@example.com>
-<!-- contributors:end -->
-```
-
-Shell command substitution removes trailing newlines. For multiline values, comment-mark adds a newline at each end so the content sits between the marker lines.
-
-### Real-world examples
-
-- [Project index](https://github.com/privatenumber/privatenumber): Updates the README from `projects.json` on each Git commit
-- [Minification Benchmarks](https://github.com/privatenumber/minification-benchmarks): Inserts benchmark results into the README
 
 ## API
 
@@ -208,6 +176,38 @@ console.log(sections.version)
 - Uses the last occurrence when a marker appears more than once.
 - Treats whitespace around the comment contents as formatting: `<!--  version:start  -->` reads as the key `version`.
 - Throws when a start marker has no following end comment.
+
+## Example: Git contributors
+
+Add a section to `README.md`:
+
+```md
+## Contributors
+<!-- contributors:start --><!-- contributors:end -->
+```
+
+Fill it with the output of `git shortlog`:
+
+```sh
+npx comment-mark README.md --contributors="$(git shortlog -se HEAD -- .)"
+```
+
+For a repository with two contributors, the result looks like:
+
+```md
+## Contributors
+<!-- contributors:start -->
+    17  John Doe <john.doe@example.com>
+     5  Jane Smith <jane.smith@example.com>
+<!-- contributors:end -->
+```
+
+Shell command substitution removes trailing newlines. For multiline values, comment-mark adds a newline at each end so the content sits between the marker lines.
+
+### Real-world examples
+
+- [Project index](https://github.com/privatenumber/privatenumber): Updates the README from `projects.json` on each Git commit
+- [Minification Benchmarks](https://github.com/privatenumber/minification-benchmarks): Inserts benchmark results into the README
 
 ## FAQ
 
