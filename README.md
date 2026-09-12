@@ -1,49 +1,84 @@
 # comment-mark [![Latest version](https://badgen.net/npm/v/comment-mark)](https://npm.im/comment-mark) [![Monthly downloads](https://badgen.net/npm/dm/comment-mark)](https://npm.im/comment-mark) [![Bundle size](https://badgen.net/bundlephobia/minzip/comment-mark)](https://bundlephobia.com/result?p=comment-mark)
 
-**comment-mark** lets you seamlessly embed dynamic content into your Markdown using persistent HTML comment placeholders—no separate template files required!
+Read and update sections of Markdown using HTML comment placeholders.
 
-### Features
+Keep generated content, like contributor lists and benchmark results, alongside handwritten documentation. The placeholders stay in the file after each update, so the same Markdown serves as both the template and the output.
 
-- Persistent HTML comment placeholders that survive repeated updates
-- Preserves the exact content and whitespace of each marked section
-- Works with any Markdown or HTML file
-- Update from the CLI or a small JavaScript API
-- Typed, with ESM and CommonJS builds
+## Features
+
+- Reusable placeholders that are hidden when Markdown is rendered
+- Update sections from the CLI or JavaScript
+- Read marked content as JSON or a JavaScript object, preserving whitespace
+- Supports Markdown and HTML files, including multiline content
+- TypeScript types, with ESM and CommonJS builds
 
 ## Install
 
 ```sh
-npm install comment-mark
+pnpm add comment-mark
 ```
 
-## CLI
+## Quick start
 
-Update marked sections in a Markdown file directly from the command line. Each `--<marker>=<value>` flag fills the matching marker:
+### 1. Add placeholders
 
-```sh
-comment-mark README.md --lastUpdated="$(date -Iseconds)"
-```
+In `README.md`, wrap the content you want to update with matching `:start` and `:end` comments:
 
 ```md
 ## Last updated
-<!-- lastUpdated:start -->2026-09-07T00:00:00+09:00<!-- lastUpdated:end -->
+<!-- lastUpdated:start --><!-- lastUpdated:end -->
 ```
 
-Multiple markers can be set in one invocation:
+### 2. Fill the section
+
+Read the file, pass values keyed by marker name, and save the result:
+
+```js
+import fs from 'node:fs/promises'
+import { commentMark } from 'comment-mark'
+
+const markdown = await fs.readFile('README.md', 'utf8')
+const updated = commentMark(markdown, {
+    lastUpdated: '2026-09-07'
+})
+
+await fs.writeFile('README.md', updated)
+```
+
+### Result
+
+```md
+## Last updated
+<!-- lastUpdated:start -->2026-09-07<!-- lastUpdated:end -->
+```
+
+Run the script again with a new value to replace the section. The surrounding document and marker comments stay intact. For a live timestamp, use `new Date().toISOString()` as the value.
+
+## CLI
+
+Use the CLI to read or update a file without writing a script:
 
 ```sh
-comment-mark README.md \
-    --contributors="$(git shortlog -se HEAD -- .)" \
-    --lastUpdated="$(date -Iseconds)"
+pnpm exec comment-mark <file> [--<marker>=<value>...]
 ```
 
-Running without marker flags lists every detected marker and its content as JSON, which is handy for scripting:
+`file` is the path to a Markdown or HTML file. The examples below use the locally installed command through `pnpm exec`; package scripts can call `comment-mark` directly.
+
+### Update sections
+
+Pass each value as `--<marker>=<value>`. For the placeholder in the quick start:
 
 ```sh
-comment-mark README.md | jq -r '.contributors'
+pnpm exec comment-mark README.md --lastUpdated="2026-09-07"
 ```
 
-The setter reports each key's outcome (`Updated`, `Unchanged`, or `Missing`) and always uses `--<marker>=<value>` syntax. A marker that doesn't exist doesn't block the other updates, but the command exits non-zero so typos and stale scripts surface:
+Set multiple markers in one invocation:
+
+```sh
+pnpm exec comment-mark README.md --contributors="Jane Doe" --lastUpdated="2026-09-07" --benchmarks="result"
+```
+
+For a file with a stale `contributors` section, a `lastUpdated` section already containing `2026-09-07`, and no `benchmarks` marker, the command writes the contributor update and reports on stderr:
 
 ```text
 Updated: contributors
@@ -53,148 +88,136 @@ Missing: benchmarks
 Saved README.md. Updated 1 key; 1 unchanged; 1 missing.
 ```
 
-When every requested value already matches, the file is left untouched and the command exits successfully.
+| Status | Meaning |
+| --- | --- |
+| `Updated` | The marker exists and applying the value changes the document |
+| `Unchanged` | Applying the value leaves the section unchanged |
+| `Missing` | No matching marker exists |
 
-## Quick start
+When updates are saved alongside missing markers, the command exits `1`. If every requested marker is missing, it exits `1` without writing. If all requested markers exist and their values already match, it exits `0` without rewriting the file.
 
-### 1. Add placeholders to your Markdown
+### Read sections
 
-```md
-## Last updated
-<!-- lastUpdated:start --><!-- lastUpdated:end -->
+Omit marker flags to print the detected values as JSON on stdout:
+
+```sh
+pnpm exec comment-mark README.md
 ```
 
-### 2. Insert dynamic content
+For the quick-start result:
 
-```js
-import fs from 'fs'
-import { commentMark } from 'comment-mark'
-
-let markdown = fs.readFileSync('README.md', 'utf8')
-
-markdown = commentMark(markdown, {
-    lastUpdated: new Date().toISOString()
-})
-
-fs.writeFileSync('README.md', markdown)
+```json
+{
+    "lastUpdated": "2026-09-07"
+}
 ```
 
-### Result
+Pipe the result to `jq` to select a value:
 
-```md
-## Last updated
-<!-- lastUpdated:start -->2024-05-20T13:45:00.000Z<!-- lastUpdated:end -->
+```sh
+pnpm exec comment-mark README.md | jq -r '.lastUpdated'
 ```
 
-## Why use comment-mark?
+Read mode preserves section whitespace and prints `{}` when no markers exist. It exits non-zero if the file cannot be read or a start marker has no matching end comment.
 
-Most Markdown templating requires separate template files and a build step. **comment-mark** eliminates this complexity by allowing a single Markdown file to act as both the template and the output.
+### Arguments and validation
 
-### Real-world examples
+- Names are exact: `--last-updated` does not match a `lastUpdated` marker.
+- Use `--key=value`, not `--key value`. Quote values containing spaces or newlines.
+- Use `--key=` to clear a section. Multiline values get a newline before and after the supplied content.
+- Each marker can be set once per invocation. Repeated flags, valueless flags, and extra positional arguments are rejected before writing.
+- Update mode validates the document before writing. An unterminated marker aborts the update.
+- Bare `--help`, `-h`, and `--version` work without a file. Markers named `help` or `version` remain settable with `--help=<value>` or `--version=<value>`.
 
-- [Project index](https://github.com/privatenumber/privatenumber): Automatically updates `README.md` from `projects.json` on each Git commit.
-- [Minification Benchmarks](https://github.com/privatenumber/minification-benchmarks): Inserts benchmarking results directly into `README.md`.
+## Example: Git contributors
 
-## Demo: Embed Git contributors
-
-Here's a practical example showing how to auto-update a list of Git contributors in your README:
-
-### Markdown Setup
+Add a section to `README.md`:
 
 ```md
 ## Contributors
 <!-- contributors:start --><!-- contributors:end -->
 ```
 
-### Script
+Fill it with the output of `git shortlog`:
 
-```js
-import fs from 'fs'
-import { execSync } from 'child_process'
-import { commentMark } from 'comment-mark'
-
-let markdown = fs.readFileSync('README.md')
-
-markdown = commentMark(markdown, {
-    contributors: execSync('git shortlog -se HEAD -- .').toString().trim()
-})
-
-fs.writeFileSync('README.md', markdown)
+```sh
+pnpm exec comment-mark README.md --contributors="$(git shortlog -se HEAD -- .)"
 ```
 
-### Output
+For a repository with two contributors, the result looks like:
 
 ```md
 ## Contributors
 <!-- contributors:start -->
-17	John Doe <john.doe@gmail.com>
-5	Jane Smith <jane.smith@example.com>
+    17  John Doe <john.doe@example.com>
+     5  Jane Smith <jane.smith@example.com>
 <!-- contributors:end -->
 ```
 
+Shell command substitution removes trailing newlines. For multiline values, comment-mark adds a newline at each end so the content sits between the marker lines.
+
+### Real-world examples
+
+- [Project index](https://github.com/privatenumber/privatenumber): Updates the README from `projects.json` on each Git commit
+- [Minification Benchmarks](https://github.com/privatenumber/minification-benchmarks): Inserts benchmark results into the README
+
 ## API
 
-### CLI
+### `commentMark(input, data)`
 
-```sh
-comment-mark <file> [--<marker>=<value>...]
+Replace marked sections with values from `data`. This function transforms content in memory; it does not read or write files.
+
+```js
+import { commentMark } from 'comment-mark'
+
+const updated = commentMark('Version: <!-- version:start -->1.0.0<!-- version:end -->', {
+    version: '2.0.0'
+})
+
+console.log(updated)
+// Version: <!-- version:start -->2.0.0<!-- version:end -->
 ```
 
-* `file` `<string>`: Path to the Markdown or HTML file.
-* `--<marker>=<value>`: Value for the marker named `<marker>`. Repeat for multiple markers. Multiline values are supported.
+- `input` (`string | Buffer`): Markdown or HTML content
+- `data` (`Record<string, string | null | undefined>`): Values keyed by marker name
 
-**Get mode.** Without marker flags, prints every detected marker and its exact content as JSON to stdout and exits `0`. Exits non-zero if the file can't be read or contains an unterminated marker.
+Returns the updated content as a string. Buffer input is decoded as UTF-8.
 
-**Set mode.** With one or more marker flags, validates the whole document first (an unterminated marker aborts without writing), then updates the marked sections in place. Status for each key is printed to stderr:
+- Updates every matching occurrence of each supplied key.
+- Skips `null` and `undefined` values. An empty string clears the section.
+- Silently skips keys with no matching marker. Unlike the CLI, the API does not report missing keys.
+- Wraps values containing `\n` in an additional newline on each side.
+- Throws if a section being updated has no matching end comment.
 
-* `Updated`: the marker existed and its content changed.
-* `Unchanged`: the marker already held the requested value.
-* `Missing`: no matching marker exists in the file.
+### `getCommentMarks(input)`
 
-Valid updates are still saved when other requested markers are missing, but the command exits `1` in that case so automation can detect incomplete runs. When every requested value already matches, the file is not rewritten and the command exits `0`.
-
-Additional rules:
-
-* Each marker can only be set once per invocation; repeated flags are rejected.
-* Marker names are exact; `--last-updated` does not match a `lastUpdated` marker.
-* Bare `--help`, `-h`, and `--version` are reserved. Set a marker named `help` or `version` with `--help=<value>` or `--version=<value>`.
-
-### `commentMark(contentStr, data)`
-
-* `contentStr` `<string>`: The Markdown or HTML content.
-* `data` `<Record<string, string | undefined | null>>`: Key-value pairs representing placeholders and their replacements.
-
-**Returns:** `<string>`: The original string with placeholders replaced by provided values.
-
-### `getCommentMarks(contentStr)`
-
-Returns the contents of every marked section as a key-value object. Contents are preserved exactly, including whitespace.
+Read marked sections into an object keyed by marker name:
 
 ```js
 import { getCommentMarks } from 'comment-mark'
 
-console.log(getCommentMarks(markdown).lastUpdated)
+const sections = getCommentMarks('Version: <!-- version:start -->2.0.0<!-- version:end -->')
+
+console.log(sections.version)
+// 2.0.0
 ```
 
-* `contentStr` `<string | Buffer>`: The Markdown or HTML content.
-
-Whitespace around the marker key is treated as formatting: `<!--  lastUpdated:start  -->` reads as the key `lastUpdated`.
-
-When the same marker appears multiple times, the last occurrence wins.
-
-**Returns:** `<Record<string, string>>`: The marked section contents, keyed by marker name. Missing sections have no property.
-
-**Throws:** When a start marker has no following end marker.
+- `input` (`string | Buffer`): Markdown or HTML content
+- Returns `Record<string, string>` with no inherited properties. Missing sections have no property.
+- Preserves section content exactly, including whitespace and newlines.
+- Uses the last occurrence when a marker appears more than once.
+- Treats whitespace around the comment contents as formatting: `<!--  version:start  -->` reads as the key `version`.
+- Throws when a start marker has no following end comment.
 
 ## FAQ
 
 ### Why HTML comments?
 
-Markdown generally supports basic HTML, and HTML comment pairs are a safe, unobtrusive way to mark placeholders.
+HTML comments are hidden in rendered Markdown but remain visible in the source. They mark where generated content belongs without adding visible template syntax to the document.
 
-### Why pairs of HTML comments instead of single placeholders?
+### Why use a pair of comments?
 
-Pairs ensure the placeholders remain intact after multiple updates, avoiding the need for separate source and distribution files.
+The start and end comments delimit the content to replace. Both stay in the output, so later updates can find the same section without a separate template file.
 
 ## Related
 
@@ -205,6 +228,6 @@ Pairs ensure the placeholders remain intact after multiple updates, avoiding the
 
 <p align="center">
 	<a href="https://github.com/sponsors/privatenumber">
-		<img src="https://cdn.jsdelivr.net/gh/privatenumber/sponsors/sponsorkit/sponsors.svg">
+		<img src="https://cdn.jsdelivr.net/gh/privatenumber/sponsors/sponsorkit/sponsors.svg" alt="Sponsors">
 	</a>
 </p>
