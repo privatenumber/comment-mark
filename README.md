@@ -69,7 +69,7 @@ npx comment-mark <file> [--<id>=<value>...]
 
 ### Update sections
 
-Pass each value as `--<id>=<value>`, where `<id>` matches a marker's `id` attribute. For the placeholder in the quick start:
+Pass each value as `--<id>=<value>`, where `<id>` matches a marker's `id` attribute verbatim, including case and dashes. For the placeholder in the quick start:
 
 ```sh
 npx comment-mark README.md --lastUpdated="2026-09-07"
@@ -129,7 +129,7 @@ Read mode preserves section whitespace and prints `[]` when no markers exist. It
 
 ### Arguments and validation
 
-- The flag name is the marker's `id`, matched exactly: `--last-updated` does not match an `id` of `lastUpdated`.
+- Flag names map verbatim to marker `id`s, with no case or dash conversion: `--lastUpdated` and `--last-updated` are different flags, and each matches only a marker whose `id` is spelled the same way.
 - Use `--id=value`, not `--id value`. Quote values containing spaces or newlines.
 - Use `--id=` to clear a section. Multiline values get a newline before and after the supplied content.
 - `id` is written as an attribute (`id="lastUpdated"`). Additional attributes are preserved on the marker for future features.
