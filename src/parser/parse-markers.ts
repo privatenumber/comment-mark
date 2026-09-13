@@ -5,7 +5,7 @@ import { scanComments } from './scan-comments.js';
 
 export type CommentMark = {
 	id?: string;
-	attributes: Record<string, string>;
+	attrs: Record<string, string>;
 	content: string;
 };
 
@@ -68,7 +68,7 @@ export const parseMarks = (source: string, visit: MarkVisitor) => {
 			if (active) {
 				const { contentStart } = active;
 				const mark: CommentMark = {
-					attributes: active.attributes,
+					attrs: active.attributes,
 					content: source.slice(contentStart, start),
 				};
 				if (active.id !== undefined) {

@@ -113,7 +113,7 @@ For the quick-start result:
 [
     {
         "id": "lastUpdated",
-        "attributes": {},
+        "attrs": {},
         "content": "2026-09-07"
     }
 ]
@@ -198,14 +198,14 @@ import { getCommentMarkers } from 'comment-mark'
 
 const markers = getCommentMarkers('<!--comment-mark file="./LICENSE.md"-->MIT<!--/comment-mark-->')
 
-console.log(markers[0].attributes.file)
+console.log(markers[0].attrs.file)
 // ./LICENSE.md
 ```
 
 - `input` (`string | Buffer`): Markdown or HTML content
 - Returns `CommentMark[]`, where each marker has:
   - `id` (`string | undefined`): the `id` attribute, when present
-  - `attributes` (`Record<string, string>`): attributes other than `id`
+  - `attrs` (`Record<string, string>`): attributes other than `id`
   - `content` (`string`): raw content between the comments
 - Throws when a marker is malformed, nested, or missing its closing comment.
 

@@ -60,7 +60,7 @@ describe('edge cases', () => {
 		expect(getCommentMarkers(`${createMarker('a', 'value')}<!--/comment-mark-->`)).toStrictEqual([
 			{
 				id: 'a',
-				attributes: {},
+				attrs: {},
 				content: 'value',
 			},
 		]);
@@ -145,7 +145,7 @@ describe('attributes', () => {
 		expect(getCommentMarkers("<!--comment-mark id='a b'-->x<!--/comment-mark-->")).toStrictEqual([
 			{
 				id: 'a b',
-				attributes: {},
+				attrs: {},
 				content: 'x',
 			},
 		]);
@@ -155,7 +155,7 @@ describe('attributes', () => {
 		expect(getCommentMarkers('<!--comment-mark id=a-->x<!--/comment-mark-->')).toStrictEqual([
 			{
 				id: 'a',
-				attributes: {},
+				attrs: {},
 				content: 'x',
 			},
 		]);
@@ -172,7 +172,7 @@ describe('attributes', () => {
 		expect(getCommentMarkers('<!--comment-mark id="license" file="./LICENSE.md"-->cached<!--/comment-mark-->')).toStrictEqual([
 			{
 				id: 'license',
-				attributes: { file: './LICENSE.md' },
+				attrs: { file: './LICENSE.md' },
 				content: 'cached',
 			},
 		]);
@@ -182,7 +182,7 @@ describe('attributes', () => {
 		expect(getCommentMarkers('<!--comment-mark id="a" query="x=1&y=/z"-->x<!--/comment-mark-->')).toStrictEqual([
 			{
 				id: 'a',
-				attributes: { query: 'x=1&y=/z' },
+				attrs: { query: 'x=1&y=/z' },
 				content: 'x',
 			},
 		]);
@@ -191,7 +191,7 @@ describe('attributes', () => {
 	test('supports markers without attributes', () => {
 		expect(getCommentMarkers('<!--comment-mark-->x<!--/comment-mark-->')).toStrictEqual([
 			{
-				attributes: {},
+				attrs: {},
 				content: 'x',
 			},
 		]);
@@ -230,7 +230,7 @@ describe('attributes', () => {
 	test('treats an empty id as absent', () => {
 		expect(getCommentMarkers('<!--comment-mark id=""-->x<!--/comment-mark-->')).toStrictEqual([
 			{
-				attributes: {},
+				attrs: {},
 				content: 'x',
 			},
 		]);
@@ -265,7 +265,7 @@ describe('code blocks', () => {
 		expect(getCommentMarkers(content)).toStrictEqual([
 			{
 				id: 'b',
-				attributes: {},
+				attrs: {},
 				content: 'real',
 			},
 		]);
@@ -277,7 +277,7 @@ describe('code blocks', () => {
 		expect(getCommentMarkers(content)).toStrictEqual([
 			{
 				id: 'a',
-				attributes: {},
+				attrs: {},
 				content: '\n```md\n<!--/comment-mark-->\n```\nKEEP\n',
 			},
 		]);
@@ -304,7 +304,7 @@ describe('code blocks', () => {
 		expect(getCommentMarkers(content)).toStrictEqual([
 			{
 				id: 'a',
-				attributes: {},
+				attrs: {},
 				content: 'real',
 			},
 		]);
@@ -315,7 +315,7 @@ describe('code blocks', () => {
 		expect(getCommentMarkers(content)).toStrictEqual([
 			{
 				id: 'a',
-				attributes: {},
+				attrs: {},
 				content: 'real',
 			},
 		]);
@@ -395,12 +395,12 @@ describe('getCommentMarkers', () => {
 		expect(getCommentMarkers(`${createMarker('a', 'first')}\n${createMarker('b', 'second')}`)).toStrictEqual([
 			{
 				id: 'a',
-				attributes: {},
+				attrs: {},
 				content: 'first',
 			},
 			{
 				id: 'b',
-				attributes: {},
+				attrs: {},
 				content: 'second',
 			},
 		]);
@@ -409,7 +409,7 @@ describe('getCommentMarkers', () => {
 	test('includes markers without an id', () => {
 		expect(getCommentMarkers('<!--comment-mark file="./LICENSE.md"-->cached<!--/comment-mark-->')).toStrictEqual([
 			{
-				attributes: { file: './LICENSE.md' },
+				attrs: { file: './LICENSE.md' },
 				content: 'cached',
 			},
 		]);
@@ -451,12 +451,12 @@ describe('CLI', () => {
 		expect(JSON.parse(stdout)).toStrictEqual([
 			{
 				id: 'a',
-				attributes: {},
+				attrs: {},
 				content: 'hello world',
 			},
 			{
 				id: 'b',
-				attributes: {},
+				attrs: {},
 				content: '\nmulti\nline\n',
 			},
 		]);

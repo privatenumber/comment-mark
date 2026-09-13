@@ -15,7 +15,7 @@ This skill covers comment-mark's marker syntax, JavaScript API, and CLI. Read `r
 
 - The opening comment declares `id` and any additional attributes. The closing comment is always `<!--/comment-mark-->`.
 - Whitespace inside the tags is padding, so `<!-- comment-mark id="contributors" -->` is equivalent.
-- Markers without an `id` are valid. `attributes` holds every attribute except `id`.
+- Markers without an `id` are valid. `attrs` holds every attribute except `id`.
 - Updates replace only the content between the comments. The comments themselves are preserved.
 - Markers cannot nest. An opening marker inside another open marker aborts parsing.
 - Characters are case-sensitive and matched verbatim, including `id` casing and dashes.
@@ -31,7 +31,7 @@ This skill covers comment-mark's marker syntax, JavaScript API, and CLI. Read `r
 - `commentMark` skips `null`/`undefined` values, updates every occurrence of an `id`, and silently ignores keys with no marker.
 - A multiline value gets a newline added on each side.
 - `getCommentMarks` keeps the last occurrence of a duplicate `id`.
-- Each `CommentMark` is `{ id?, attributes, content }`.
+- Each `CommentMark` is `{ id?, attrs, content }`.
 
 ## CLI
 
