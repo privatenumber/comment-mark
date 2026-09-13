@@ -3,3 +3,8 @@
 allowBuilds:
   esbuild: false
   unrs-resolver: false
+
+# type-flag is an in-house package, so its releases skip the release-age soak.
+# This lets a type-flag fix be adopted as soon as it is published.
+minimumReleaseAgeExclude:
+  - type-flag
