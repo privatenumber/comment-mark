@@ -1,0 +1,107 @@
+import { isNameChar, skipWhitespace } from './characters.js';
+import { findCodeRanges } from './code-ranges.js';
+import { parseAttributes } from './parse-attributes.js';
+import { scanComments } from './scan-comments.js';
+
+export type CommentMark = {
+	id?: string;
+	attributes: Record<string, string>;
+	content: string;
+};
+
+export type ParsedMark = CommentMark & {
+	contentStart: number;
+	contentEnd: number;
+};
+
+type ActiveMarker = {
+	id?: string;
+	attributes: Record<string, string>;
+	contentStart: number;
+};
+
+const keyword = 'comment-mark';
+const openDelimiter = '<!--';
+const closeDelimiter = '-->';
+
+/**
+ * Parses comment-mark markers from a document.
+ *
+ * Markers inside fenced code blocks or single-line inline code spans are
+ * ignored, and both the opening and closing comments must sit outside code.
+ * Indented code blocks and code spans that wrap across lines are not
+ * recognized.
+ */
+export const parseMarks = (source: string): ParsedMark[] => {
+	if (!source.includes(openDelimiter)) {
+		return [];
+	}
+
+	const codeRanges = (source.includes('`') || source.includes('~'))
+		? findCodeRanges(source)
+		: [];
+	const marks: ParsedMark[] = [];
+	let active: ActiveMarker | undefined;
+	let codeIndex = 0;
+
+	scanComments(source, (start, innerStart, innerEnd) => {
+		while (codeIndex < codeRanges.length && codeRanges[codeIndex][1] <= start) {
+			codeIndex += 1;
+		}
+		if (codeIndex < codeRanges.length && codeRanges[codeIndex][0] <= start) {
+			return;
+		}
+
+		const index = skipWhitespace(source, innerStart, innerEnd);
+
+		if (source[index] === '/') {
+			const after = skipWhitespace(source, index + 1, innerEnd);
+			if (
+				!source.startsWith(keyword, after)
+				|| after + keyword.length > innerEnd
+				|| skipWhitespace(source, after + keyword.length, innerEnd) !== innerEnd
+			) {
+				return;
+			}
+
+			if (active) {
+				marks.push({
+					id: active.id,
+					attributes: active.attributes,
+					contentStart: active.contentStart,
+					contentEnd: start,
+					content: source.slice(active.contentStart, start),
+				});
+				active = undefined;
+			}
+			return;
+		}
+
+		if (!source.startsWith(keyword, index) || index + keyword.length > innerEnd) {
+			return;
+		}
+		const after = index + keyword.length;
+		if (after !== innerEnd && isNameChar(source[after])) {
+			return;
+		}
+
+		const { id, ...attributes } = parseAttributes(source, after, innerEnd);
+		const markerId = id || undefined;
+		if (active) {
+			const label = markerId === undefined ? 'without an id' : JSON.stringify(markerId);
+			throw new Error(`[comment-mark] Nested marker ${label} is not supported`);
+		}
+		active = {
+			id: markerId,
+			attributes,
+			contentStart: innerEnd + closeDelimiter.length,
+		};
+	});
+
+	if (active) {
+		const label = active.id === undefined ? 'without an id' : JSON.stringify(active.id);
+		throw new Error(`[comment-mark] No closing comment found for marker ${label}`);
+	}
+
+	return marks;
+};

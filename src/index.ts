@@ -1,6 +1,6 @@
-import { type CommentMark, parseMarks } from './parse.js';
+import { type CommentMark, parseMarks } from './parser/parse-markers.js';
 
-export type { CommentMark } from './parse.js';
+export type { CommentMark } from './parser/parse-markers.js';
 
 export const commentMark = (
 	input: string | Buffer,
