@@ -422,6 +422,30 @@ describe('code blocks', () => {
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
+
+	test('a thematic break does not create list context for a following fence', () => {
+		const content = ['* * *', '  ~~~md', createMarker('x', 'example'), '  ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('an escaped multi-backtick run cannot close an existing span', () => {
+		const content = ['`example \\', '`` ', createMarker('x', 'example'), '`'].join('');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('a tab-indented line continues a list fence', () => {
+		const content = ['- item', '', '  ~~~md', `\t${createMarker('x', 'example')}`, '  ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('a tab after a blockquote marker still opens a fence', () => {
+		const content = ['>\t~~~md', `> ${createMarker('x', 'example')}`, '> ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
 });
 
 describe('parser scaling', () => {

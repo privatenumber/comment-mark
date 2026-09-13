@@ -22,6 +22,7 @@ type BacktickRun = {
 	start: number;
 	length: number;
 	escaped: boolean;
+	synthetic: boolean;
 	next: number;
 };
 
@@ -30,12 +31,29 @@ const closeDelimiter = '-->';
 
 const isBlank = (line: string) => line.trim() === '';
 
-const countIndent = (line: string, index: number) => {
-	let indent = 0;
-	while (line[index + indent] === ' ') {
-		indent += 1;
+const tabSize = 4;
+
+/**
+ * Consumes whitespace until `columns` indentation columns are reached and
+ * returns the source index after it, or -1 when the line is not indented
+ * enough. A tab advances to the next tab stop, while the returned value stays a
+ * source offset.
+ */
+const matchIndent = (line: string, start: number, columns: number) => {
+	let index = start;
+	let column = 0;
+	while (column < columns) {
+		if (line[index] === ' ') {
+			index += 1;
+			column += 1;
+		} else if (line[index] === '\t') {
+			index += 1;
+			column += tabSize - (column % tabSize);
+		} else {
+			return -1;
+		}
 	}
-	return indent;
+	return index;
 };
 
 /**
@@ -55,7 +73,7 @@ const matchBlockquote = (line: string, start: number) => {
 	}
 
 	index += 1;
-	if (line[index] === ' ') {
+	if (line[index] === ' ' || line[index] === '\t') {
 		index += 1;
 	}
 	return index;
@@ -144,6 +162,37 @@ const matchFence = (line: string, start: number) => {
 };
 
 /**
+ * Matches a thematic break (horizontal rule): three or more `-`, `_`, or `*`
+ * characters separated only by spaces or tabs. A thematic break is not a list
+ * item, so it must be recognized before a list container opens.
+ */
+const isThematicBreak = (line: string, start: number) => {
+	let marker = '';
+	let count = 0;
+
+	for (let index = start; index < line.length; index += 1) {
+		const char = line[index];
+		if (char === ' ' || char === '\t') {
+			continue;
+		}
+		if (char === '\r') {
+			break;
+		}
+		if (char !== '-' && char !== '_' && char !== '*') {
+			return false;
+		}
+		if (marker === '') {
+			marker = char;
+		} else if (char !== marker) {
+			return false;
+		}
+		count += 1;
+	}
+
+	return count >= 3;
+};
+
+/**
  * Matches the current block containers and returns how much of the line they
  * consume. `matched` is the number of containers that continue on this line.
  */
@@ -159,10 +208,11 @@ const matchContainers = (line: string, containers: Container[]) => {
 			}
 			contentOffset = next;
 		} else {
-			if (countIndent(line, contentOffset) < container.indent) {
+			const next = matchIndent(line, contentOffset, container.indent);
+			if (next === -1) {
 				break;
 			}
-			contentOffset += container.indent;
+			contentOffset = next;
 		}
 		matched += 1;
 	}
@@ -206,6 +256,7 @@ const findBacktickRuns = (line: string, start: number) => {
 			start: index,
 			length,
 			escaped,
+			synthetic: false,
 			next: -1,
 		});
 		// Only the first backtick is escaped; the rest form a run that can open.
@@ -214,6 +265,7 @@ const findBacktickRuns = (line: string, start: number) => {
 				start: index + 1,
 				length: length - 1,
 				escaped: false,
+				synthetic: true,
 				next: -1,
 			});
 		}
@@ -226,7 +278,11 @@ const findBacktickRuns = (line: string, start: number) => {
 		if (next !== undefined) {
 			run.next = next;
 		}
-		lastByLength.set(run.length, run.start);
+		// A synthetic run can only open a span; inside a span the escaped
+		// backtick is literal, so the run's real length is the full run.
+		if (!run.synthetic) {
+			lastByLength.set(run.length, run.start);
+		}
 	}
 
 	return runs;
@@ -299,6 +355,10 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				containers.push({ type: 'blockquote' });
 				contentOffset = blockquote;
 				continue;
+			}
+
+			if (isThematicBreak(line, contentOffset)) {
+				break;
 			}
 
 			const list = matchListMarker(line, contentOffset);
