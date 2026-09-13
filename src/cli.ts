@@ -17,12 +17,6 @@ const helpOptions = {
 	],
 };
 
-// type-flag stores unknown flags on a plain object, so assigning a
-// `--__proto__` flag replaces that object's prototype instead of creating an
-// entry (privatenumber/type-flag#83). Route that one name through the ignore
-// hook so it can be recovered.
-const reservedFlags = new Map<string, (string | boolean)[]>();
-
 const argv = cli({
 	name,
 
@@ -35,16 +29,6 @@ const argv = cli({
 	// default Boolean `help` flag (alias `-h`) would consume `--help=<value>`
 	// and print help instead, so it's disabled; bare flags are handled below.
 	help: false,
-
-	ignoreArgv(type, flagName, value) {
-		if (type === 'unknown-flag' && flagName === '__proto__') {
-			const values = reservedFlags.get(flagName) ?? [];
-			values.push(value ?? true);
-			reservedFlags.set(flagName, values);
-			return true;
-		}
-		return undefined;
-	},
 });
 
 const { unknownFlags, showHelp } = argv;
@@ -82,10 +66,7 @@ if (argv._.length > 1) {
 // Null-prototype so marker names never collide with inherited properties.
 const data: Record<string, string> = Object.create(null);
 
-for (const [marker, values] of [
-	...Object.entries(unknownFlags),
-	...reservedFlags,
-]) {
+for (const [marker, values] of Object.entries(unknownFlags)) {
 	if (values.length > 1) {
 		exitWithError(`Flag "--${marker}" was specified ${values.length} times; each marker can only be set once`);
 	}
