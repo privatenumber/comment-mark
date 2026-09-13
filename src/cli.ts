@@ -17,6 +17,11 @@ const helpOptions = {
 	],
 };
 
+// type-flag stores unknown flags on a plain object, so assigning a
+// `--__proto__` flag replaces that object's prototype instead of creating an
+// entry. Route that one name through the ignore hook so it can be recovered.
+const reservedFlags = new Map<string, (string | boolean)[]>();
+
 const argv = cli({
 	name,
 
@@ -29,6 +34,16 @@ const argv = cli({
 	// default Boolean `help` flag (alias `-h`) would consume `--help=<value>`
 	// and print help instead, so it's disabled; bare flags are handled below.
 	help: false,
+
+	ignoreArgv(type, flagName, value) {
+		if (type === 'unknown-flag' && flagName === '__proto__') {
+			const values = reservedFlags.get(flagName) ?? [];
+			values.push(value ?? true);
+			reservedFlags.set(flagName, values);
+			return true;
+		}
+		return undefined;
+	},
 });
 
 const { unknownFlags, showHelp } = argv;
@@ -63,9 +78,13 @@ if (argv._.length > 1) {
 	exitWithError(`Unexpected extra arguments: ${argv._.slice(1).join(', ')}`);
 }
 
-const data: Record<string, string> = {};
+// Null-prototype so marker names never collide with inherited properties.
+const data: Record<string, string> = Object.create(null);
 
-for (const [marker, values] of Object.entries(unknownFlags)) {
+for (const [marker, values] of [
+	...Object.entries(unknownFlags),
+	...reservedFlags,
+]) {
 	if (values.length > 1) {
 		exitWithError(`Flag "--${marker}" was specified ${values.length} times; each marker can only be set once`);
 	}
@@ -142,6 +161,11 @@ if (missing.length === Object.keys(data).length) {
 }
 
 if (updated.length === 0) {
+	report();
+	// Missing keys still fail here; only an all-unchanged request exits 0.
+	if (missing.length > 0) {
+		process.exit(1);
+	}
 	console.error(`${filePath} is unchanged. All ${Object.keys(data).length} requested values already match.`);
 	process.exit(0);
 }
