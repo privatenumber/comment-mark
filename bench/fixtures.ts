@@ -1,4 +1,4 @@
-export const marker = (id: string, content = '') => (
+export const createMarker = (id: string, content = '') => (
 	`<!--comment-mark id="${id}"-->${content}<!--/comment-mark-->`
 );
 
@@ -6,11 +6,11 @@ const prose = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. ';
 
 export const fixtures = {
 	'prose only': prose.repeat(20_000),
-	'sparse markers': prose.repeat(20_000) + marker('x', 'value') + prose.repeat(5000),
-	'dense markers': `${marker('x', 'value')}\n`.repeat(10_000),
+	'sparse markers': prose.repeat(20_000) + createMarker('x', 'value') + prose.repeat(5000),
+	'dense markers': `${createMarker('x', 'value')}\n`.repeat(10_000),
 	'ordinary comments': `<!-- note -->${prose.repeat(100)}\n`.repeat(1000),
-	'code fences': `# Title\n\n\`\`\`js\nconst value = 1;\n\`\`\`\n\n${marker('a', 'value')}\n\n`.repeat(1000),
-	'long attribute': marker('a'.repeat(50_000), 'value'),
+	'code fences': `# Title\n\n\`\`\`js\nconst value = 1;\n\`\`\`\n\n${createMarker('a', 'value')}\n\n`.repeat(1000),
+	'long attribute': createMarker('a'.repeat(50_000), 'value'),
 };
 
 /**
@@ -23,5 +23,5 @@ export const distinctBacktickRuns = (count: number) => {
 	for (let length = 1; length <= count; length += 1) {
 		runs.push('`'.repeat(length));
 	}
-	return `${runs.join(' ')} ${marker('x', 'value')}`;
+	return `${runs.join(' ')} ${createMarker('x', 'value')}`;
 };

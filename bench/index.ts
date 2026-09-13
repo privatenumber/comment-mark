@@ -1,6 +1,6 @@
 import { bench, run, summary } from 'mitata';
 import { commentMark, getCommentMarks, getCommentMarkers } from '../src/index.js';
-import { distinctBacktickRuns, fixtures, marker } from './fixtures.js';
+import { createMarker, distinctBacktickRuns, fixtures } from './fixtures.js';
 
 type BenchState = {
 	get: (name: string) => number;
@@ -22,7 +22,7 @@ for (const [name, input] of Object.entries(fixtures)) {
 
 // Scaling with marker count.
 bench('getCommentMarkers - markers by count $size', function* markersByCount(state: BenchState) {
-	const input = `${marker('x', 'value')}\n`.repeat(state.get('size'));
+	const input = `${createMarker('x', 'value')}\n`.repeat(state.get('size'));
 	yield () => getCommentMarkers(input);
 }).args('size', [100, 1000, 10_000]);
 

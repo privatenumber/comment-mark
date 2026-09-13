@@ -4,7 +4,7 @@ import { describe, test, expect } from 'manten';
 import { commentMark, getCommentMarks, getCommentMarkers } from '#comment-mark';
 import { commentMarkCli } from './utils/comment-mark-cli.js';
 
-const marker = (id: string, content = '') => `<!--comment-mark id="${id}"-->${content}<!--/comment-mark-->`;
+const createMarker = (id: string, content = '') => `<!--comment-mark id="${id}"-->${content}<!--/comment-mark-->`;
 
 describe('edge cases', () => {
 	test('no arguments', () => {
@@ -57,7 +57,7 @@ describe('edge cases', () => {
 	});
 
 	test('ignores an unmatched closing comment', () => {
-		expect(getCommentMarkers(`${marker('a', 'value')}<!--/comment-mark-->`)).toStrictEqual([
+		expect(getCommentMarkers(`${createMarker('a', 'value')}<!--/comment-mark-->`)).toStrictEqual([
 			{
 				id: 'a',
 				attributes: {},
@@ -75,23 +75,23 @@ describe('edge cases', () => {
 
 describe('valid', () => {
 	test('basic', () => {
-		const output = commentMark(marker('a'), {
+		const output = commentMark(createMarker('a'), {
 			a: 'hello world',
 		});
-		expect(output).toBe(marker('a', 'hello world'));
+		expect(output).toBe(createMarker('a', 'hello world'));
 	});
 
 	test('skip nullish properties', () => {
-		const output = commentMark(marker('a', 'hello world'), {
+		const output = commentMark(createMarker('a', 'hello world'), {
 			a: undefined,
 		});
-		expect(output).toBe(marker('a', 'hello world'));
+		expect(output).toBe(createMarker('a', 'hello world'));
 	});
 
 	test('multi-line', () => {
 		const output = commentMark(`
 			# multiline
-			${marker('a', 'hello world')}
+			${createMarker('a', 'hello world')}
 		`, {
 			a: 'hello world\n\ngoogbye world\nhello again',
 		});
@@ -101,30 +101,30 @@ describe('valid', () => {
 
 	test('multiple', () => {
 		const output = commentMark(`
-			${marker('a')}
-			${marker('b')}
-			${marker('ba')}
+			${createMarker('a')}
+			${createMarker('b')}
+			${createMarker('ba')}
 		`, {
 			a: 'hello world',
 			b: 'goodbye world',
 			ba: 'something world',
 		});
 
-		expect(output).toBe(`\n\t\t\t${marker('a', 'hello world')}\n\t\t\t${marker('b', 'goodbye world')}\n\t\t\t${marker('ba', 'something world')}\n\t\t`);
+		expect(output).toBe(`\n\t\t\t${createMarker('a', 'hello world')}\n\t\t\t${createMarker('b', 'goodbye world')}\n\t\t\t${createMarker('ba', 'something world')}\n\t\t`);
 	});
 
 	test('updates every occurrence', () => {
-		const output = commentMark(`${marker('a', 'one')}\n${marker('a', 'two')}`, {
+		const output = commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
 			a: 'hello world',
 		});
-		expect(output).toBe(`${marker('a', 'hello world')}\n${marker('a', 'hello world')}`);
+		expect(output).toBe(`${createMarker('a', 'hello world')}\n${createMarker('a', 'hello world')}`);
 	});
 
 	test('leaves markers without a matching key untouched', () => {
-		const output = commentMark(marker('a', 'hello world'), {
+		const output = commentMark(createMarker('a', 'hello world'), {
 			b: 'goodbye world',
 		});
-		expect(output).toBe(marker('a', 'hello world'));
+		expect(output).toBe(createMarker('a', 'hello world'));
 	});
 
 	test('leaves markers without an id untouched', () => {
@@ -133,10 +133,10 @@ describe('valid', () => {
 	});
 
 	test('Buffer', () => {
-		const output = commentMark(Buffer.from(marker('a')), {
+		const output = commentMark(Buffer.from(createMarker('a')), {
 			a: 'hello world',
 		});
-		expect(output).toBe(marker('a', 'hello world'));
+		expect(output).toBe(createMarker('a', 'hello world'));
 	});
 });
 
@@ -240,28 +240,28 @@ describe('attributes', () => {
 
 describe('code blocks', () => {
 	test('ignores markers inside fenced code blocks', () => {
-		const content = ['```md', marker('a', 'example'), '```'].join('\n');
+		const content = ['```md', createMarker('a', 'example'), '```'].join('\n');
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 		expect(commentMark(content, { a: 'hello world' })).toBe(content);
 	});
 
 	test('ignores markers inside tilde fences', () => {
-		const content = ['~~~', marker('a', 'example'), '~~~'].join('\n');
+		const content = ['~~~', createMarker('a', 'example'), '~~~'].join('\n');
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 	});
 
 	test('ignores markers inside an unterminated fence', () => {
-		const content = `\`\`\`\n${marker('a', 'example')}`;
+		const content = `\`\`\`\n${createMarker('a', 'example')}`;
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 	});
 
 	test('ignores markers inside inline code', () => {
-		const content = `See \`${marker('a', 'example')}\` for details`;
+		const content = `See \`${createMarker('a', 'example')}\` for details`;
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 	});
 
 	test('parses markers outside of code', () => {
-		const content = `\`${marker('a', 'inline')}\`\n${marker('b', 'real')}`;
+		const content = `\`${createMarker('a', 'inline')}\`\n${createMarker('b', 'real')}`;
 		expect(getCommentMarkers(content)).toStrictEqual([
 			{
 				id: 'b',
@@ -285,22 +285,22 @@ describe('code blocks', () => {
 	});
 
 	test('a closing fence with trailing text does not close the fence', () => {
-		const content = `\`\`\`md\n${marker('a', 'example')}\n\`\`\`not-a-close\n${marker('b', 'real')}\n\`\`\``;
+		const content = `\`\`\`md\n${createMarker('a', 'example')}\n\`\`\`not-a-close\n${createMarker('b', 'real')}\n\`\`\``;
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 	});
 
 	test('a longer fence contains shorter fences', () => {
-		const content = `\`\`\`\`\n\`\`\`md\n${marker('a', 'example')}\n\`\`\`\n\`\`\`\``;
+		const content = `\`\`\`\`\n\`\`\`md\n${createMarker('a', 'example')}\n\`\`\`\n\`\`\`\``;
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 	});
 
 	test('ignores markers in blockquote fences', () => {
-		const content = `> \`\`\`md\n> ${marker('a', 'example')}\n> \`\`\``;
+		const content = `> \`\`\`md\n> ${createMarker('a', 'example')}\n> \`\`\``;
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 	});
 
 	test('an escaped backtick does not open inline code', () => {
-		const content = `\\\`${marker('a', 'real')}\``;
+		const content = `\\\`${createMarker('a', 'real')}\``;
 		expect(getCommentMarkers(content)).toStrictEqual([
 			{
 				id: 'a',
@@ -311,7 +311,7 @@ describe('code blocks', () => {
 	});
 
 	test('an unterminated inline code span does not hide later markers', () => {
-		const content = `\`unclosed\n${marker('a', 'real')}`;
+		const content = `\`unclosed\n${createMarker('a', 'real')}`;
 		expect(getCommentMarkers(content)).toStrictEqual([
 			{
 				id: 'a',
@@ -325,7 +325,7 @@ describe('code blocks', () => {
 describe('getCommentMarks', () => {
 	test('returns marked contents', () => {
 		const commentMarks = getCommentMarks(`
-			${marker('a', 'hello world')}
+			${createMarker('a', 'hello world')}
 			<!--comment-mark id="b"-->
 goodbye world
 <!--/comment-mark-->
@@ -342,7 +342,7 @@ goodbye world
 	});
 
 	test('returns empty marked contents', () => {
-		expect(getCommentMarks(marker('a'))).toEqual({ a: '' });
+		expect(getCommentMarks(createMarker('a'))).toEqual({ a: '' });
 	});
 
 	test('omits markers without an id', () => {
@@ -354,7 +354,7 @@ goodbye world
 	});
 
 	test('uses the last duplicate marker', () => {
-		expect(getCommentMarks(`${marker('a', 'first')}${marker('a', 'last')}`)).toEqual({ a: 'last' });
+		expect(getCommentMarks(`${createMarker('a', 'first')}${createMarker('a', 'last')}`)).toEqual({ a: 'last' });
 	});
 
 	test('supports ids with special characters', () => {
@@ -362,7 +362,7 @@ goodbye world
 	});
 
 	test('supports Buffer input', () => {
-		expect(getCommentMarks(Buffer.from(marker('a', 'hello world')))).toEqual({ a: 'hello world' });
+		expect(getCommentMarks(Buffer.from(createMarker('a', 'hello world')))).toEqual({ a: 'hello world' });
 	});
 
 	test('round trips marked values', () => {
@@ -370,7 +370,7 @@ goodbye world
 			a: 'hello world',
 			b: 'goodbye world\nhello again',
 		};
-		const output = commentMark(`${marker('a')}${marker('b')}`, data);
+		const output = commentMark(`${createMarker('a')}${createMarker('b')}`, data);
 
 		expect(getCommentMarks(output)).toEqual({
 			a: 'hello world',
@@ -379,11 +379,11 @@ goodbye world
 	});
 
 	test('returned object has no inherited properties', () => {
-		expect(getCommentMarks(marker('a', 'hello world')).toString).toBe(undefined);
+		expect(getCommentMarks(createMarker('a', 'hello world')).toString).toBe(undefined);
 	});
 
 	test('supports ids named like Object properties', () => {
-		const commentMarks = getCommentMarks(marker('__proto__', 'hello world'));
+		const commentMarks = getCommentMarks(createMarker('__proto__', 'hello world'));
 
 		expect(Object.hasOwn(commentMarks, '__proto__')).toBe(true);
 		expect(Object.entries(commentMarks)).toEqual([['__proto__', 'hello world']]);
@@ -392,7 +392,7 @@ goodbye world
 
 describe('getCommentMarkers', () => {
 	test('returns markers in document order', () => {
-		expect(getCommentMarkers(`${marker('a', 'first')}\n${marker('b', 'second')}`)).toStrictEqual([
+		expect(getCommentMarkers(`${createMarker('a', 'first')}\n${createMarker('b', 'second')}`)).toStrictEqual([
 			{
 				id: 'a',
 				attributes: {},
@@ -443,7 +443,7 @@ describe('CLI', () => {
 
 	test('lists detected markers as JSON when no marker flags are passed', async () => {
 		await using fixture = await createFixture({
-			'README.md': `${marker('a', 'hello world')}\n<!--comment-mark id="b"-->\nmulti\nline\n<!--/comment-mark-->\n`,
+			'README.md': `${createMarker('a', 'hello world')}\n<!--comment-mark id="b"-->\nmulti\nline\n<!--/comment-mark-->\n`,
 		});
 
 		const { stdout } = await commentMarkCli(fixture.getPath('README.md'));
@@ -472,43 +472,43 @@ describe('CLI', () => {
 
 	test('allows setting markers named like control flags', async () => {
 		await using fixture = await createFixture({
-			'README.md': `${marker('help', 'stale')}\n${marker('version', '1.0.0')}\n`,
+			'README.md': `${createMarker('help', 'stale')}\n${createMarker('version', '1.0.0')}\n`,
 		});
 
 		await commentMarkCli(fixture.getPath('README.md'), '--help=docs', '--version=2.0.0');
 
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(
-			`${marker('help', 'docs')}\n${marker('version', '2.0.0')}\n`,
+			`${createMarker('help', 'docs')}\n${createMarker('version', '2.0.0')}\n`,
 		);
 	});
 
 	test('updates a marked section in place', async () => {
 		await using fixture = await createFixture({
-			'README.md': `## Contributors\n${marker('contributors', 'stale')}\n`,
+			'README.md': `## Contributors\n${createMarker('contributors', 'stale')}\n`,
 		});
 
 		await commentMarkCli(fixture.getPath('README.md'), '--contributors=Jane Doe');
 
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(
-			`## Contributors\n${marker('contributors', 'Jane Doe')}\n`,
+			`## Contributors\n${createMarker('contributors', 'Jane Doe')}\n`,
 		);
 	});
 
 	test('updates multiple markers with multiline values', async () => {
 		await using fixture = await createFixture({
-			'README.md': `${marker('a')}\n${marker('b')}\n`,
+			'README.md': `${createMarker('a')}\n${createMarker('b')}\n`,
 		});
 
 		await commentMarkCli(fixture.getPath('README.md'), '--a=first', '--b=second\nline');
 
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(
-			`${marker('a', 'first')}\n<!--comment-mark id="b"-->\nsecond\nline\n<!--/comment-mark-->\n`,
+			`${createMarker('a', 'first')}\n<!--comment-mark id="b"-->\nsecond\nline\n<!--/comment-mark-->\n`,
 		);
 	});
 
 	test('reports per-key outcomes and exits non-zero when markers are missing', async () => {
 		await using fixture = await createFixture({
-			'README.md': `${marker('a', 'stale')}\n${marker('b', 'same')}\n`,
+			'README.md': `${createMarker('a', 'stale')}\n${createMarker('b', 'same')}\n`,
 		});
 
 		const invocation = commentMarkCli(fixture.getPath('README.md'), '--a=fresh', '--b=same', '--nope=x');
@@ -523,65 +523,65 @@ describe('CLI', () => {
 
 		// Valid updates are still saved when other keys are missing.
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(
-			`${marker('a', 'fresh')}\n${marker('b', 'same')}\n`,
+			`${createMarker('a', 'fresh')}\n${createMarker('b', 'same')}\n`,
 		);
 	});
 
 	test('exits successfully when all requested values already match', async () => {
-		await using fixture = await createFixture({ 'README.md': marker('a', 'same') });
+		await using fixture = await createFixture({ 'README.md': createMarker('a', 'same') });
 
 		const { stderr } = await commentMarkCli(fixture.getPath('README.md'), '--a=same');
 
 		expect(stderr).toContain('is unchanged. All 1 requested values already match.');
-		expect(await fixture.readFile('README.md', 'utf8')).toBe(marker('a', 'same'));
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a', 'same'));
 	});
 
 	test('exits non-zero without writing when every requested marker is missing', async () => {
-		await using fixture = await createFixture({ 'README.md': marker('a', 'value') });
+		await using fixture = await createFixture({ 'README.md': createMarker('a', 'value') });
 
 		await expect(commentMarkCli(fixture.getPath('README.md'), '--nope1=x', '--nope2=y')).rejects.toMatchObject({
 			exitCode: 1,
 			stderr: expect.stringContaining('No matching markers found for any of the 2 requested keys'),
 		});
-		expect(await fixture.readFile('README.md', 'utf8')).toBe(marker('a', 'value'));
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a', 'value'));
 	});
 
 	test('clears a section when the value is empty', async () => {
-		await using fixture = await createFixture({ 'README.md': marker('a', 'gone') });
+		await using fixture = await createFixture({ 'README.md': createMarker('a', 'gone') });
 
 		await commentMarkCli(fixture.getPath('README.md'), '--a=');
 
-		expect(await fixture.readFile('README.md', 'utf8')).toBe(marker('a'));
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a'));
 	});
 
 	test('exits non-zero when a valueless flag is passed', async () => {
-		await using fixture = await createFixture({ 'README.md': marker('a') });
+		await using fixture = await createFixture({ 'README.md': createMarker('a') });
 
 		await expect(commentMarkCli(fixture.getPath('README.md'), '--a')).rejects.toMatchObject({
 			exitCode: 1,
 			stderr: expect.stringContaining('No value provided for flag "--a"'),
 		});
-		expect(await fixture.readFile('README.md', 'utf8')).toBe(marker('a'));
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a'));
 	});
 
 	test('exits non-zero when the same flag is passed multiple times', async () => {
-		await using fixture = await createFixture({ 'README.md': marker('a') });
+		await using fixture = await createFixture({ 'README.md': createMarker('a') });
 
 		await expect(commentMarkCli(fixture.getPath('README.md'), '--a=1', '--a=2')).rejects.toMatchObject({
 			exitCode: 1,
 			stderr: expect.stringContaining('Flag "--a" was specified 2 times'),
 		});
-		expect(await fixture.readFile('README.md', 'utf8')).toBe(marker('a'));
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a'));
 	});
 
 	test('exits non-zero on unexpected extra positional arguments', async () => {
-		await using fixture = await createFixture({ 'README.md': marker('a') });
+		await using fixture = await createFixture({ 'README.md': createMarker('a') });
 
 		await expect(commentMarkCli(fixture.getPath('README.md'), 'extra', '--a=1')).rejects.toMatchObject({
 			exitCode: 1,
 			stderr: expect.stringContaining('Unexpected extra arguments: extra'),
 		});
-		expect(await fixture.readFile('README.md', 'utf8')).toBe(marker('a'));
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a'));
 	});
 
 	test('exits non-zero and leaves the file untouched when a marker is unterminated', async () => {
