@@ -238,6 +238,63 @@ describe('attributes', () => {
 	});
 });
 
+describe('comment and code boundaries', () => {
+	test('a fenced example containing <!-- does not hide the next marker', () => {
+		const content = ['```html', '<!--', '```', createMarker('x', 'old')].join('\n');
+
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'x',
+				attrs: {},
+				content: 'old',
+			},
+		]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(
+			['```html', '<!--', '```', createMarker('x', 'NEW')].join('\n'),
+		);
+	});
+
+	test('an inline example containing <!-- does not hide the next marker', () => {
+		const content = `\`<!--\` ${createMarker('x', 'old')}`;
+
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'x',
+				attrs: {},
+				content: 'old',
+			},
+		]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(`\`<!--\` ${createMarker('x', 'NEW')}`);
+	});
+
+	test('a backtick in an attribute value does not hide the closing comment', () => {
+		const content = '<!--comment-mark id="x" note="`"-->old<!--/comment-mark-->' + '`';
+
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'x',
+				attrs: { note: '`' },
+				content: 'old',
+			},
+		]);
+	});
+
+	test('a fence-looking line inside an HTML comment does not hide later markers', () => {
+		const content = ['<!--', '```', '-->', createMarker('x', 'old')].join('\n');
+
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'x',
+				attrs: {},
+				content: 'old',
+			},
+		]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(
+			['<!--', '```', '-->', createMarker('x', 'NEW')].join('\n'),
+		);
+	});
+});
+
 describe('code blocks', () => {
 	test('ignores markers inside fenced code blocks', () => {
 		const content = ['```md', createMarker('a', 'example'), '```'].join('\n');
@@ -319,6 +376,76 @@ describe('code blocks', () => {
 				content: 'real',
 			},
 		]);
+	});
+
+	test('two backslashes before an opening backtick do not escape it', () => {
+		// The backslashes escape each other, so the backtick still opens a span.
+		const content = '\\\\`' + createMarker('x', 'example') + '`';
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+	});
+
+	test('a backslash before a closing backtick does not escape it inside a span', () => {
+		const content = '`' + createMarker('x', 'example') + '\\`';
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+	});
+
+	test('a blockquote fence line inside a top-level fence does not close it', () => {
+		const content = ['```md', '> ```', createMarker('x', 'example'), '```'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('a blockquote that ends before its unclosed fence does not hide later markers', () => {
+		const content = ['> ```', '> code', '', createMarker('x', 'real')].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'x',
+				attrs: {},
+				content: 'real',
+			},
+		]);
+	});
+
+	test('a backtick in a fence info string does not open a fence', () => {
+		const content = ['``` `', createMarker('x', 'real'), '```'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'x',
+				attrs: {},
+				content: 'real',
+			},
+		]);
+	});
+
+	test('a fence indented to a list item content column is recognized', () => {
+		const content = ['- item', '', '    ```', `    ${createMarker('x', 'example')}`, '    ```'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+});
+
+describe('parser scaling', () => {
+	test('parses adversarial backtick runs within a linear-time budget', () => {
+		// A line whose backtick runs all have distinct lengths forces the
+		// inline scanner to search the rest of the line for each run.
+		const runs: string[] = [];
+		for (let length = 1; length <= 2048; length += 1) {
+			runs.push('`'.repeat(length));
+		}
+		const content = `${runs.join(' ')} ${createMarker('x', 'value')}`;
+
+		const start = performance.now();
+		const markers = getCommentMarkers(content);
+		const elapsed = performance.now() - start;
+
+		expect(markers).toStrictEqual([
+			{
+				id: 'x',
+				attrs: {},
+				content: 'value',
+			},
+		]);
+		expect(elapsed).toBeLessThan(1500);
 	});
 });
 
@@ -599,5 +726,23 @@ describe('CLI', () => {
 			exitCode: 1,
 			stderr: expect.stringContaining('ENOENT'),
 		});
+	});
+
+	test('reports missing keys when the remaining requested values already match', async () => {
+		await using fixture = await createFixture({ 'README.md': createMarker('a', 'same') });
+
+		await expect(commentMarkCli(fixture.getPath('README.md'), '--a=same', '--nope=x')).rejects.toMatchObject({
+			exitCode: 1,
+			stderr: expect.stringMatching(/Unchanged: a[\s\S]*Missing: nope/),
+		});
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a', 'same'));
+	});
+
+	test('updates a marker named like an Object prototype property', async () => {
+		await using fixture = await createFixture({ 'README.md': createMarker('__proto__', 'old') });
+
+		await commentMarkCli(fixture.getPath('README.md'), '--__proto__=NEW');
+
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('__proto__', 'NEW'));
 	});
 });
