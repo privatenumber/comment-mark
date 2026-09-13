@@ -168,7 +168,7 @@ Returns the updated content as a string. Buffer input is decoded as UTF-8.
 - Wraps values containing `\n` in an additional newline on each side.
 - Throws when a marker has no closing comment, is nested, or has malformed attributes.
 
-Indented code blocks and code spans that wrap across lines are not detected as code, so a marker placed there is treated as real. Keep markers in prose or inside fenced code and single-line inline code.
+Indented code blocks and code spans that wrap across lines are not detected as code, so a marker placed there is treated as real. Put active markers in prose, and put literal examples inside fenced code or single-line inline code.
 
 ### `getCommentMarks(input)`
 
@@ -196,10 +196,10 @@ Read every marker, including markers without an `id`, in document order:
 ```js
 import { getCommentMarkers } from 'comment-mark'
 
-const markers = getCommentMarkers('<!--comment-mark file="./LICENSE.md"-->MIT<!--/comment-mark-->')
+const markers = getCommentMarkers('<!--comment-mark id="license" source="LICENSE.md"-->MIT<!--/comment-mark-->')
 
-console.log(markers[0].attrs.file)
-// ./LICENSE.md
+console.log(markers[0].id, markers[0].attrs.source)
+// license LICENSE.md
 ```
 
 - `input` (`string | Buffer`): Markdown or HTML content
@@ -253,7 +253,7 @@ The opening and closing comments delimit the content to replace. Both stay in th
 
 ### How are code examples ignored?
 
-Fenced code blocks (backtick or tilde, including blockquote prefixes) and single-line inline code spans are skipped, so a marker shown as an example is not treated as real. Indented code blocks and code spans that wrap across lines are not detected, so keep real markers in prose or inside fenced code and single-line inline code.
+Fenced code blocks (backtick or tilde, including blockquote prefixes) and single-line inline code spans are skipped, so a marker shown as an example is not treated as real. Indented code blocks and code spans that wrap across lines are not detected, so a marker there is treated as real. Put active markers in prose, and put literal examples inside fenced code or single-line inline code.
 
 ### Why are nested markers rejected?
 
@@ -261,7 +261,7 @@ A marker's content runs until its closing comment. Allowing another opening mark
 
 ### Why does the marker use an `id` attribute?
 
-An attribute form leaves room for additional attributes on the same marker. A marker can also omit `id` entirely, which is how `file` markers that inline another file's contents will work.
+The attribute form leaves room for additional, caller-defined attributes. comment-mark stores them on `CommentMark.attrs` and does not interpret them. A marker can also omit `id`; `getCommentMarkers` still returns it, while `commentMark` and `getCommentMarks` key off `id` and skip unnamed markers.
 
 ## Related
 

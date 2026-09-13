@@ -24,7 +24,7 @@ This skill covers comment-mark's marker syntax, JavaScript API, and CLI. Read `r
 
 | Function | Purpose | Returns |
 | --- | --- | --- |
-| `commentMark(input, data)` | Replace each marker's content with `data[id]` | Updated `string`, or the original `Buffer` |
+| `commentMark(input, data)` | Replace each marker's content with `data[id]` | Updated `string`; returns the input unchanged when required arguments are invalid |
 | `getCommentMarks(input)` | Read content keyed by `id` | `Record<string, string>`, null prototype |
 | `getCommentMarkers(input)` | Read every marker, including unnamed ones | `CommentMark[]` |
 
@@ -51,7 +51,7 @@ npx comment-mark <file> [--<id>=<value>...]
 | Value is multiline | Pass it as-is; surrounding newlines are added automatically |
 | v2 `<!-- name:start -->` markers | Read `references/migration-v2.md` |
 
-Code regions: fenced code blocks (backtick or tilde, including `>` blockquote prefixes) and single-line inline code are ignored, so documentation examples stay literal. Indented code blocks and code spans that wrap across lines are not detected; keep real markers in prose or inside fenced and single-line inline code.
+Code regions: fenced code blocks (backtick or tilde, including `>` blockquote prefixes) and single-line inline code are ignored, so documentation examples stay literal. Indented code blocks and code spans that wrap across lines are not detected. Put active markers in prose; put literal examples inside fenced or single-line inline code.
 
 ## Resources
 

@@ -1,6 +1,6 @@
 # Migrating from v2 to v3
 
-Use this reference when upgrading content or code that uses v2 `<!-- name:start -->` / `<!-- name:end -->` markers. The syntax change is mechanical; two behavior changes are silent.
+Use this reference when upgrading content or code that uses v2 `<!-- name:start -->` / `<!-- name:end -->` markers. The syntax change is mechanical, but several behaviors change.
 
 ## Syntax
 
@@ -18,9 +18,9 @@ The closing comment no longer repeats the name.
 
 | v2 | v3 |
 | --- | --- |
-| `commentMark(input, data)` | unchanged |
-| `getCommentMarks(input)` | unchanged, still an object keyed by `id` |
-| none | `getCommentMarkers(input)` reads every marker, including unnamed ones |
+| `commentMark(input, data)` | Same signature; now validates the whole document and throws on malformed, nested, or unterminated markers |
+| `getCommentMarks(input)` | Same signature and object shape; also validates the whole document |
+| none | New: `getCommentMarkers(input)` reads every marker, including unnamed ones |
 
 ## CLI
 
@@ -32,14 +32,15 @@ The closing comment no longer repeats the name.
 +comment-mark README.md | jq -r '.[] | select(.id == "contributors") | .content'
 ```
 
-## Silent behavior changes
+## Behavior changes
 
 | Change | Consequence |
 | --- | --- |
 | Markers in fenced code and inline code are ignored | A v2 marker shown as a documentation example no longer updates. This is the fix that stops examples from being treated as real markers |
-| Nested markers abort parsing | v2 paired an outer opening with an inner closing; v3 throws `Nested marker ... is not supported` |
-| Unnamed markers are readable | `getCommentMarkers` returns markers with no `id`; `getCommentMarks` still omits them |
-| Attributes must be separated by whitespace | `id="a"file="b"` now throws `Expected whitespace between attributes` |
+| Nested markers abort parsing | v3 throws `Nested marker ... is not supported`. v2 matched a start with the next same-named end, so same-named nesting silently paired an outer start with an inner end, while differently named markers were independent |
+| Unnamed markers are readable | New capability: `getCommentMarkers` returns markers with no `id`; `getCommentMarks` still omits them |
+| Attributes must be separated by whitespace | New grammar: v2 marker names were free-form text. `id="a"file="b"` now throws `Expected whitespace between attributes` |
+| Updates validate the whole document | A malformed, nested, or unterminated marker anywhere aborts the update, even when it is unrelated to the requested keys |
 
 ## Rewriting a tree
 
@@ -49,4 +50,4 @@ There is no bundled codemod. For each file, replace the opening comment `<name>:
 npx comment-mark path/to/file.md
 ```
 
-Read mode exits non-zero on a malformed or unterminated marker, so it doubles as a check. Do not rewrite quoted or non-ASCII names with an unescaped shell one-liner; check each result when the names vary.
+Read mode validates only `comment-mark` syntax. It ignores v2 markers, so an entirely unmigrated document prints `[]` and still exits 0; it does not confirm that a migration is complete. To check a tree, look for remaining `:start`/`:end` comments (for example, `grep -rE '<!--[^>]*:(start|end)[^>]*-->' path/to/tree`) and confirm read mode lists the markers you expect. Do not rewrite quoted or non-ASCII names with an unescaped shell one-liner; check each result when the names vary.
