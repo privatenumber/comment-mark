@@ -209,29 +209,6 @@ console.log(markers[0].attributes.file)
   - `content` (`string`): raw content between the comments
 - Throws when a marker is malformed, nested, or missing its closing comment.
 
-## Migrating from v2
-
-v3 replaces the `<id>:start` / `<id>:end` comments with named `comment-mark` comments. Replace the opening and closing comments:
-
-```diff
- ## Last updated
--<!-- lastUpdated:start --><!-- lastUpdated:end -->
-+<!--comment-mark id="lastUpdated"--><!--/comment-mark-->
-```
-
-To rewrite a tree of Markdown files:
-
-```sh
-find . -name '*.md' -not -path './node_modules/*' -exec perl -0pi -e 's/<!--\s*(.+?):start\s*-->/<!--comment-mark id="$1"-->/g; s/<!--\s*.+?:end\s*-->/<!--\/comment-mark-->/g' {} +
-```
-
-Other v3 changes:
-
-- The CLI's read mode now prints an array of marker objects instead of an object keyed by id.
-- `getCommentMarks` still returns an object keyed by `id`. Use `getCommentMarkers` to read every marker, including ones without an `id`.
-- Markers inside fenced code blocks and inline code are ignored.
-- Nested markers and malformed attributes now abort parsing instead of being silently mis-paired.
-
 ## Example: Git contributors
 
 Add a section to `README.md`:
