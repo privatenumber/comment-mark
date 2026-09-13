@@ -43,6 +43,34 @@ describe('edge cases', () => {
 			'[comment-mark] No closing comment found for marker without an id',
 		);
 	});
+
+	test('rejects nested markers', () => {
+		expect(() => getCommentMarkers(
+			'<!--comment-mark id="a"-->outer<!--comment-mark id="b"-->inner<!--/comment-mark-->',
+		)).toThrow('[comment-mark] Nested marker "b" is not supported');
+	});
+
+	test('rejects nested markers without an id', () => {
+		expect(() => getCommentMarkers(
+			'<!--comment-mark id="a"-->outer<!--comment-mark file="./b.md"-->inner<!--/comment-mark-->',
+		)).toThrow('[comment-mark] Nested marker without an id is not supported');
+	});
+
+	test('ignores an unmatched closing comment', () => {
+		expect(getCommentMarkers(`${marker('a', 'value')}<!--/comment-mark-->`)).toStrictEqual([
+			{
+				id: 'a',
+				attributes: {},
+				content: 'value',
+			},
+		]);
+	});
+
+	test('scans many unterminated openers without rescanning', () => {
+		// A document with a long run of `<!--` and no `-->` must not trigger a
+		// terminator search at every opener.
+		expect(getCommentMarkers('<!--comment-mark '.repeat(50_000))).toStrictEqual([]);
+	});
 });
 
 describe('valid', () => {
@@ -180,6 +208,34 @@ describe('attributes', () => {
 			'[comment-mark] Invalid marker attribute: "id"',
 		);
 	});
+
+	test('requires whitespace between attributes', () => {
+		expect(() => getCommentMarkers('<!--comment-mark id="a"file="./b.md"-->x<!--/comment-mark-->')).toThrow(
+			'[comment-mark] Expected whitespace between attributes',
+		);
+	});
+
+	test('rejects an unterminated attribute value', () => {
+		expect(() => getCommentMarkers('<!--comment-mark id="a-->x<!--/comment-mark-->')).toThrow(
+			'[comment-mark] Unterminated attribute value for "id"',
+		);
+	});
+
+	test('rejects a quote inside an unquoted value', () => {
+		expect(() => getCommentMarkers('<!--comment-mark id=a"b"-->x<!--/comment-mark-->')).toThrow(
+			'Invalid marker attribute',
+		);
+	});
+
+	test('treats an empty id as absent', () => {
+		expect(getCommentMarkers('<!--comment-mark id=""-->x<!--/comment-mark-->')).toStrictEqual([
+			{
+				attributes: {},
+				content: 'x',
+			},
+		]);
+		expect(getCommentMarks('<!--comment-mark id=""-->x<!--/comment-mark-->')).toEqual({});
+	});
 });
 
 describe('code blocks', () => {
@@ -209,6 +265,56 @@ describe('code blocks', () => {
 		expect(getCommentMarkers(content)).toStrictEqual([
 			{
 				id: 'b',
+				attributes: {},
+				content: 'real',
+			},
+		]);
+	});
+
+	test('a closing marker inside a fence does not close a marker', () => {
+		const content = '<!--comment-mark id="a"-->\n```md\n<!--/comment-mark-->\n```\nKEEP\n<!--/comment-mark-->';
+
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'a',
+				attributes: {},
+				content: '\n```md\n<!--/comment-mark-->\n```\nKEEP\n',
+			},
+		]);
+		expect(commentMark(content, { a: 'NEW' })).toBe('<!--comment-mark id="a"-->NEW<!--/comment-mark-->');
+	});
+
+	test('a closing fence with trailing text does not close the fence', () => {
+		const content = `\`\`\`md\n${marker('a', 'example')}\n\`\`\`not-a-close\n${marker('b', 'real')}\n\`\`\``;
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+	});
+
+	test('a longer fence contains shorter fences', () => {
+		const content = `\`\`\`\`\n\`\`\`md\n${marker('a', 'example')}\n\`\`\`\n\`\`\`\``;
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+	});
+
+	test('ignores markers in blockquote fences', () => {
+		const content = `> \`\`\`md\n> ${marker('a', 'example')}\n> \`\`\``;
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+	});
+
+	test('an escaped backtick does not open inline code', () => {
+		const content = `\\\`${marker('a', 'real')}\``;
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'a',
+				attributes: {},
+				content: 'real',
+			},
+		]);
+	});
+
+	test('an unterminated inline code span does not hide later markers', () => {
+		const content = `\`unclosed\n${marker('a', 'real')}`;
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'a',
 				attributes: {},
 				content: 'real',
 			},

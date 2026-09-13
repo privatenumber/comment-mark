@@ -10,7 +10,7 @@ Keep generated content, like contributor lists and benchmark results, alongside 
 - Update sections from the CLI or JavaScript
 - Read marked content as JSON or a JavaScript object, preserving whitespace
 - Supports Markdown and HTML files, including multiline content
-- Ignores markers inside code blocks, so documentation examples stay literal
+- Ignores markers inside fenced code blocks and inline code, so documentation examples stay literal
 - TypeScript types, with ESM and CommonJS builds
 
 ## Install
@@ -125,7 +125,7 @@ Select a value with `jq`:
 npx comment-mark README.md | jq -r '.[] | select(.id == "lastUpdated") | .content'
 ```
 
-Read mode preserves section whitespace and prints `[]` when no markers exist. It exits non-zero if the file cannot be read or a marker has no closing comment.
+Read mode preserves section whitespace and prints `[]` when no markers exist. It exits non-zero if the file cannot be read or a marker is malformed.
 
 ### Arguments and validation
 
@@ -133,8 +133,10 @@ Read mode preserves section whitespace and prints `[]` when no markers exist. It
 - Use `--id=value`, not `--id value`. Quote values containing spaces or newlines.
 - Use `--id=` to clear a section. Multiline values get a newline before and after the supplied content.
 - `id` is written as an attribute (`id="lastUpdated"`). Additional attributes are preserved on the marker for future features.
+- Attributes must be separated by whitespace and appear at most once: `id="a"file="b"` and `id="a" id="b"` are rejected.
+- Markers cannot nest. An opening marker inside another open marker aborts the update.
 - Each marker can be set once per invocation. Repeated flags, valueless flags, and extra positional arguments are rejected before writing.
-- Update mode validates the document before writing. A marker without a closing comment aborts the update.
+- Update mode validates the document before writing. A marker that is malformed, nested, or missing its closing comment aborts the update.
 - Bare `--help`, `-h`, and `--version` work without a file. Markers with `id="help"` or `id="version"` remain settable with `--help=<value>` or `--version=<value>`.
 
 ## API
@@ -162,9 +164,11 @@ Returns the updated content as a string. Buffer input is decoded as UTF-8.
 - Updates every matching occurrence of each supplied key.
 - Skips `null` and `undefined` values. An empty string clears the section.
 - Silently skips keys with no matching marker. Unlike the CLI, the API does not report missing keys.
-- Ignores markers inside fenced code blocks and inline code.
+- Ignores markers inside fenced code blocks and inline code spans.
 - Wraps values containing `\n` in an additional newline on each side.
-- Throws when a marker has no closing comment.
+- Throws when a marker has no closing comment, is nested, or has malformed attributes.
+
+Indented code blocks and code spans that wrap across lines are not detected as code, so a marker placed there is treated as real. Keep markers in prose or inside fenced code and single-line inline code.
 
 ### `getCommentMarks(input)`
 
@@ -183,7 +187,7 @@ console.log(sections.version)
 - Returns `Record<string, string>` with no inherited properties. Markers without an `id` have no property.
 - Preserves section content exactly, including whitespace and newlines.
 - Uses the last occurrence when a marker appears more than once.
-- Throws when a marker has no closing comment.
+- Throws when a marker is malformed, nested, or missing its closing comment.
 
 ### `getCommentMarkers(input)`
 
@@ -203,7 +207,7 @@ console.log(markers[0].attributes.file)
   - `id` (`string | undefined`): the `id` attribute, when present
   - `attributes` (`Record<string, string>`): attributes other than `id`
   - `content` (`string`): raw content between the comments
-- Throws when a marker has no closing comment.
+- Throws when a marker is malformed, nested, or missing its closing comment.
 
 ## Migrating from v2
 
@@ -226,6 +230,7 @@ Other v3 changes:
 - The CLI's read mode now prints an array of marker objects instead of an object keyed by id.
 - `getCommentMarks` still returns an object keyed by `id`. Use `getCommentMarkers` to read every marker, including ones without an `id`.
 - Markers inside fenced code blocks and inline code are ignored.
+- Nested markers and malformed attributes now abort parsing instead of being silently mis-paired.
 
 ## Example: Git contributors
 
@@ -268,6 +273,14 @@ HTML comments are hidden in rendered Markdown but remain visible in the source. 
 ### Why use a pair of comments?
 
 The opening and closing comments delimit the content to replace. Both stay in the output, so later updates can find the same section without a separate template file.
+
+### How are code examples ignored?
+
+Fenced code blocks (backtick or tilde, including blockquote prefixes) and single-line inline code spans are skipped, so a marker shown as an example is not treated as real. Indented code blocks and code spans that wrap across lines are not detected, so keep real markers in prose or inside fenced code and single-line inline code.
+
+### Why are nested markers rejected?
+
+A marker's content runs until its closing comment. Allowing another opening marker inside would make that boundary ambiguous, so nested markers abort parsing instead of pairing unpredictably.
 
 ### Why does the marker use an `id` attribute?
 
