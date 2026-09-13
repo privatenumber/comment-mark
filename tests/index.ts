@@ -268,7 +268,7 @@ describe('comment and code boundaries', () => {
 	});
 
 	test('a backtick in an attribute value does not hide the closing comment', () => {
-		const content = '<!--comment-mark id="x" note="`"-->old<!--/comment-mark-->' + '`';
+		const content = '<!--comment-mark id="x" note="`"-->old<!--/comment-mark-->`';
 
 		expect(getCommentMarkers(content)).toStrictEqual([
 			{
@@ -380,12 +380,12 @@ describe('code blocks', () => {
 
 	test('two backslashes before an opening backtick do not escape it', () => {
 		// The backslashes escape each other, so the backtick still opens a span.
-		const content = '\\\\`' + createMarker('x', 'example') + '`';
+		const content = `\\\\\`${createMarker('x', 'example')}\``;
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 	});
 
 	test('a backslash before a closing backtick does not escape it inside a span', () => {
-		const content = '`' + createMarker('x', 'example') + '\\`';
+		const content = `\`${createMarker('x', 'example')}\\\``;
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 	});
 
