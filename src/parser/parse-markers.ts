@@ -9,10 +9,11 @@ export type CommentMark = {
 	content: string;
 };
 
-export type ParsedMark = CommentMark & {
-	contentStart: number;
-	contentEnd: number;
-};
+export type MarkVisitor = (
+	mark: CommentMark,
+	contentStart: number,
+	contentEnd: number,
+) => void;
 
 type ActiveMarker = {
 	id?: string;
@@ -25,22 +26,22 @@ const openDelimiter = '<!--';
 const closeDelimiter = '-->';
 
 /**
- * Parses comment-mark markers from a document.
+ * Visits markers in document order, with the offsets that bound each marker's
+ * content.
  *
  * Markers inside fenced code blocks or single-line inline code spans are
  * ignored, and both the opening and closing comments must sit outside code.
  * Indented code blocks and code spans that wrap across lines are not
  * recognized.
  */
-export const parseMarks = (source: string): ParsedMark[] => {
+export const parseMarks = (source: string, visit: MarkVisitor) => {
 	if (!source.includes(openDelimiter)) {
-		return [];
+		return;
 	}
 
 	const codeRanges = (source.includes('`') || source.includes('~'))
 		? findCodeRanges(source)
 		: [];
-	const marks: ParsedMark[] = [];
 	let active: ActiveMarker | undefined;
 	let codeIndex = 0;
 
@@ -65,13 +66,15 @@ export const parseMarks = (source: string): ParsedMark[] => {
 			}
 
 			if (active) {
-				marks.push({
-					id: active.id,
+				const { contentStart } = active;
+				const mark: CommentMark = {
 					attributes: active.attributes,
-					contentStart: active.contentStart,
-					contentEnd: start,
-					content: source.slice(active.contentStart, start),
-				});
+					content: source.slice(contentStart, start),
+				};
+				if (active.id !== undefined) {
+					mark.id = active.id;
+				}
+				visit(mark, contentStart, start);
 				active = undefined;
 			}
 			return;
@@ -102,6 +105,4 @@ export const parseMarks = (source: string): ParsedMark[] => {
 		const label = active.id === undefined ? 'without an id' : JSON.stringify(active.id);
 		throw new Error(`[comment-mark] No closing comment found for marker ${label}`);
 	}
-
-	return marks;
 };

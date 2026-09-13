@@ -19,17 +19,17 @@ export const commentMark = (
 
 	let output = '';
 	let cursor = 0;
-	for (const mark of parseMarks(source)) {
+	parseMarks(source, (mark, contentStart, contentEnd) => {
 		const value = mark.id !== undefined && Object.hasOwn(data, mark.id) ? data[mark.id] : undefined;
 
-		output += source.slice(cursor, mark.contentStart);
+		output += source.slice(cursor, contentStart);
 		if (value === null || value === undefined) {
 			output += mark.content;
 		} else {
 			output += value.includes('\n') ? `\n${value}\n` : value;
 		}
-		cursor = mark.contentEnd;
-	}
+		cursor = contentEnd;
+	});
 
 	return output + source.slice(cursor);
 };
@@ -39,26 +39,22 @@ export const getCommentMarks = (input: string | Buffer): Record<string, string> 
 	// Null-prototype dictionary so marker ids never collide with inherited properties.
 	const commentMarks: Record<string, string> = Object.create(null);
 
-	for (const mark of parseMarks(source)) {
+	parseMarks(source, (mark) => {
 		if (mark.id !== undefined) {
 			commentMarks[mark.id] = mark.content;
 		}
-	}
+	});
 
 	return commentMarks;
 };
 
 export const getCommentMarkers = (input: string | Buffer): CommentMark[] => {
 	const source = Buffer.isBuffer(input) ? input.toString() : input;
+	const markers: CommentMark[] = [];
 
-	return parseMarks(source).map((mark) => {
-		const marker: CommentMark = {
-			attributes: mark.attributes,
-			content: mark.content,
-		};
-		if (mark.id !== undefined) {
-			marker.id = mark.id;
-		}
-		return marker;
+	parseMarks(source, (mark) => {
+		markers.push(mark);
 	});
+
+	return markers;
 };
