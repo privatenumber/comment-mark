@@ -1,5 +1,4 @@
 import { isNameChar, skipWhitespace } from './characters.js';
-import { findCodeRanges } from './code-ranges.js';
 import { parseAttributes } from './parse-attributes.js';
 import { scanComments } from './scan-comments.js';
 
@@ -39,20 +38,9 @@ export const parseMarks = (source: string, visit: MarkVisitor) => {
 		return;
 	}
 
-	const codeRanges = (source.includes('`') || source.includes('~'))
-		? findCodeRanges(source)
-		: [];
 	let active: ActiveMarker | undefined;
-	let codeIndex = 0;
 
 	scanComments(source, (start, innerStart, innerEnd) => {
-		while (codeIndex < codeRanges.length && codeRanges[codeIndex][1] <= start) {
-			codeIndex += 1;
-		}
-		if (codeIndex < codeRanges.length && codeRanges[codeIndex][0] <= start) {
-			return;
-		}
-
 		const index = skipWhitespace(source, innerStart, innerEnd);
 
 		if (source[index] === '/') {
