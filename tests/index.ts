@@ -418,7 +418,7 @@ describe('code blocks', () => {
 	});
 
 	test('a fence indented to a list item content column is recognized', () => {
-		const content = ['- item', '', '    ```', `    ${createMarker('x', 'example')}`, '    ```'].join('\n');
+		const content = ['1. item', '', '    ```', `    ${createMarker('x', 'example')}`, '    ```'].join('\n');
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
@@ -744,5 +744,15 @@ describe('CLI', () => {
 		await commentMarkCli(fixture.getPath('README.md'), '--__proto__=NEW');
 
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('__proto__', 'NEW'));
+	});
+
+	test('exits non-zero when a reserved marker name is passed multiple times', async () => {
+		await using fixture = await createFixture({ 'README.md': createMarker('__proto__') });
+
+		await expect(commentMarkCli(fixture.getPath('README.md'), '--__proto__=1', '--__proto__=2')).rejects.toMatchObject({
+			exitCode: 1,
+			stderr: expect.stringContaining('Flag "--__proto__" was specified 2 times'),
+		});
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('__proto__'));
 	});
 });
