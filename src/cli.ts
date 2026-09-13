@@ -19,7 +19,8 @@ const helpOptions = {
 
 // type-flag stores unknown flags on a plain object, so assigning a
 // `--__proto__` flag replaces that object's prototype instead of creating an
-// entry. Route that one name through the ignore hook so it can be recovered.
+// entry (privatenumber/type-flag#83). Route that one name through the ignore
+// hook so it can be recovered.
 const reservedFlags = new Map<string, (string | boolean)[]>();
 
 const argv = cli({
