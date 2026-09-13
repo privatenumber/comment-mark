@@ -1,17 +1,6 @@
-const escapeKey = (key: string) => key.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+import { type CommentMark, parseMarks } from './parser/parse-markers.js';
 
-// Locates the end marker that closes a section whose content starts at `contentStart`,
-// or throws when the section was never closed.
-const findSectionEnd = (content: string, key: string, contentStart: number) => {
-	const endRe = new RegExp(String.raw`<!--\s*${escapeKey(key)}:end\s*-->`, 'g');
-	endRe.lastIndex = contentStart;
-	const endMatch = endRe.exec(content);
-	if (!endMatch) {
-		throw new Error(`[comment-mark] No end comment found for key "${key}"`);
-	}
-
-	return endMatch.index;
-};
+export type { CommentMark } from './parser/parse-markers.js';
 
 export const commentMark = (
 	input: string | Buffer,
@@ -26,54 +15,46 @@ export const commentMark = (
 		return input;
 	}
 
-	let out = Buffer.isBuffer(input) ? input.toString() : input;
+	const source = Buffer.isBuffer(input) ? input.toString() : input;
 
-	for (const key in data) {
-		if (!Object.hasOwn(data, key)) {
-			continue;
-		}
-		let value = data[key];
+	let output = '';
+	let cursor = 0;
+	parseMarks(source, (mark, contentStart, contentEnd) => {
+		const value = mark.id !== undefined && Object.hasOwn(data, mark.id) ? data[mark.id] : undefined;
+
+		output += source.slice(cursor, contentStart);
 		if (value === null || value === undefined) {
-			continue;
+			output += mark.content;
+		} else {
+			output += value.includes('\n') ? `\n${value}\n` : value;
 		}
-		if (value.includes('\n')) {
-			value = `\n${value}\n`;
-		}
+		cursor = contentEnd;
+	});
 
-		const startRe = new RegExp(String.raw`<!--\s*${escapeKey(key)}:start\s*-->`, 'g');
-
-		for (let m = startRe.exec(out); m !== null; m = startRe.exec(out)) {
-			const contentStart = m.index + m[0].length;
-			const contentEnd = findSectionEnd(out, key, contentStart);
-
-			out = out.slice(0, contentStart) + value + out.slice(contentEnd);
-
-			startRe.lastIndex = contentStart + value.length;
-		}
-	}
-
-	return out;
+	return output + source.slice(cursor);
 };
 
 export const getCommentMarks = (input: string | Buffer): Record<string, string> => {
-	const content = Buffer.isBuffer(input) ? input.toString() : input;
-	// Null-prototype dictionary so marker keys can never collide with inherited properties.
+	const source = Buffer.isBuffer(input) ? input.toString() : input;
+	// Null-prototype dictionary so marker ids never collide with inherited properties.
 	const commentMarks: Record<string, string> = Object.create(null);
-	// Marker keys are unknown upfront (unlike commentMark), so discover them by
-	// scanning one complete HTML comment at a time.
-	const commentRe = /<!--([\s\S]*?)-->/g;
 
-	for (let match = commentRe.exec(content); match !== null; match = commentRe.exec(content)) {
-		const marker = match[1].trim();
-		if (!marker.endsWith(':start')) {
-			continue;
+	parseMarks(source, (mark) => {
+		if (mark.id !== undefined) {
+			commentMarks[mark.id] = mark.content;
 		}
-
-		const key = marker.slice(0, -':start'.length);
-		const contentStart = match.index + match[0].length;
-		const contentEnd = findSectionEnd(content, key, contentStart);
-		commentMarks[key] = content.slice(contentStart, contentEnd);
-	}
+	});
 
 	return commentMarks;
+};
+
+export const getCommentMarkers = (input: string | Buffer): CommentMark[] => {
+	const source = Buffer.isBuffer(input) ? input.toString() : input;
+	const markers: CommentMark[] = [];
+
+	parseMarks(source, (mark) => {
+		markers.push(mark);
+	});
+
+	return markers;
 };

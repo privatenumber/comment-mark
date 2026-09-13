@@ -18,7 +18,8 @@
 		"email": "hiroki.osame@gmail.com"
 	},
 	"files": [
-		"dist"
+		"dist",
+		"skills"
 	],
 	"bin": "./dist/cli.mjs",
 	"main": "./dist/index.cjs",
@@ -43,6 +44,7 @@
 	},
 	"packageManager": "pnpm@12.3.4",
 	"scripts": {
+		"bench": "pnpm build && tsx --expose-gc bench/index.ts",
 		"lint": "lintroll . --cache",
 		"test": "tsx tests",
 		"dev": "tsx --conditions=development tests",
@@ -63,6 +65,7 @@
 		"fs-fixture": "^2.16.0",
 		"lintroll": "^1.31.1",
 		"manten": "^2.0.2",
+		"mitata": "^1.0.34",
 		"nano-spawn": "^2.1.0",
 		"pkgroll": "^2.28.1",
 		"skills-npm": "^1.2.1",

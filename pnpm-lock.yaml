@@ -128,6 +128,9 @@ importers:
       manten:
         specifier: ^2.0.2
         version: 2.0.2
+      mitata:
+        specifier: ^1.0.34
+        version: 1.0.34
       nano-spawn:
         specifier: ^2.1.0
         version: 2.1.0
@@ -2260,6 +2263,9 @@ packages:
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
 
+  mitata@1.0.34:
+    resolution: {integrity: sha512-Mc3zrtNBKIMeHSCQ0XqRLo1vbdIx1wvFV9c8NJAiyho6AjNfMY8bVhbS12bwciUdd1t4rj8099CH3N3NFahaUA==}
+
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
@@ -2698,8 +2704,8 @@ packages:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
 
-  type-flag@4.5.0:
-    resolution: {integrity: sha512-1aLzxcL6u1O9XHieAJBBX9U4QzwzDTWN0ER9M7QQSvS24NBmGM+N8FcghlgHAzOvDlEEpOx4hEml9CVcDnflcw==}
+  type-flag@4.5.1:
+    resolution: {integrity: sha512-N2/vEWpQqPGg2rKtugFvtbgd7DF5ULGf3vp4e1ZurtZWJViOfcvoPSQMZ04NMZdC0RpRWzIMYKtV+2YeBywkQA==}
 
   typed-array-buffer@1.0.3:
     resolution: {integrity: sha512-nAYYwfY3qnzX30IkA6AQZjVbtK6duGontcQm1WSG1MD94YLqK0515GNApXkoxKOWMusVssAHWLh9SeaoefYFGw==}
@@ -3788,7 +3794,7 @@ snapshots:
   cleye@2.6.0:
     dependencies:
       terminal-columns: 2.0.0
-      type-flag: 4.5.0
+      type-flag: 4.5.1
 
   color-convert@2.0.1:
     dependencies:
@@ -5278,6 +5284,8 @@ snapshots:
   minimist@1.2.8:
     optional: true
 
+  mitata@1.0.34: {}
+
   ms@2.1.3: {}
 
   nano-spawn@2.1.0: {}
@@ -5793,7 +5801,7 @@ snapshots:
     dependencies:
       prelude-ls: 1.2.1
 
-  type-flag@4.5.0: {}
+  type-flag@4.5.1: {}
 
   typed-array-buffer@1.0.3:
     dependencies:
