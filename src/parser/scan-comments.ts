@@ -96,8 +96,8 @@ const consumeIndent = (line: string, cursor: Cursor, columns: number) => {
  * index after it, or -1 when this level has no marker.
  */
 const matchBlockquote = (line: string, cursor: Cursor) => {
-	let { index, column, pending } = cursor;
-	let indent = pending;
+	let { index, column } = cursor;
+	let indent = cursor.pending;
 
 	while (indent < 3 && line[index] === ' ') {
 		index += 1;
@@ -139,8 +139,8 @@ const matchBlockquote = (line: string, cursor: Cursor) => {
  * content indentation and content start, or undefined when there is no marker.
  */
 const matchListMarker = (line: string, cursor: Cursor) => {
-	let { index, column, pending } = cursor;
-	let spaces = pending;
+	let { index, column } = cursor;
+	let spaces = cursor.pending;
 
 	while (spaces < 4 && line[index] === ' ') {
 		index += 1;
@@ -439,7 +439,11 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	for (const line of source.split('\n')) {
 		const lineStart = offset;
 		offset = lineStart + line.length + 1;
-		const cursor: Cursor = { index: 0, column: 0, pending: 0 };
+		const cursor: Cursor = {
+			index: 0,
+			column: 0,
+			pending: 0,
+		};
 
 		if (commentStart !== -1) {
 			const close = line.indexOf(closeDelimiter);
