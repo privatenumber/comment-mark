@@ -57,7 +57,7 @@
 		"node": ">=20"
 	},
 	"dependencies": {
-		"cleye": "^2.6.0"
+		"cleye": "^2.7.0"
 	},
 	"devDependencies": {
 		"@types/node": "^24.13.3",
