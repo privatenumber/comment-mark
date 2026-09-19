@@ -1,6 +1,6 @@
 ---
 name: comment-mark
-description: Editing, updating, or reading comment-mark sections in Markdown or HTML, including the `comment-mark` CLI, the `commentMark` / `updateCommentMarks` / `getCommentMarks` / `getCommentMarkers` API, or migrating v2 `<!-- name:start -->` markers.
+description: Editing, updating, or reading comment-mark sections in Markdown or HTML, including the `comment-mark` CLI, the `commentMark` / `getCommentMarks` / `getCommentMarkers` API, or migrating v2 `<!-- name:start -->` markers.
 ---
 
 # comment-mark
@@ -24,14 +24,13 @@ This skill covers comment-mark's marker syntax, JavaScript API, and CLI. Read `r
 
 | Function | Purpose | Returns |
 | --- | --- | --- |
-| `commentMark(input, data)` | Replace each marker's content with `data[id]` | Updated `string`; returns the input unchanged when required arguments are invalid |
-| `updateCommentMarks(input, updaters)` | Compute each marker's content from its attributes and current content | Updated `string` |
+| `commentMark(input, data)` | Replace each marker's content with `data[id]`, or compute it with a function value | Updated `string`; returns the input unchanged when required arguments are invalid |
 | `getCommentMarks(input)` | Read content keyed by `id` | `Record<string, string>`, null prototype |
 | `getCommentMarkers(input)` | Read every marker, including unnamed ones | `CommentMark[]` |
 
 - `commentMark` skips `null`/`undefined` values, updates every occurrence of an `id`, and silently ignores keys with no marker.
-- A multiline value gets a newline added on each side.
-- `updateCommentMarks` calls each updater with `(attributes, content)`. Returning `null`/`undefined` leaves the section unchanged, and the returned value is inserted verbatim, with no added newline.
+- A multiline static string value gets a newline added on each side.
+- A function value receives `(attributes, content)` once per matching occurrence and its return value is inserted verbatim, with no added newline. Returning `null`/`undefined` preserves the section.
 - `getCommentMarks` keeps the last occurrence of a duplicate `id`.
 - Each `CommentMark` is `{ id?, attrs, content }`.
 
@@ -49,9 +48,9 @@ npx comment-mark <file> [--<id>=<value>...]
 | --- | --- |
 | A file documents the marker syntax | Put examples in a fenced code block or inline code so they are ignored |
 | `id` appears more than once | `commentMark` updates all; `getCommentMarks` keeps the last |
-| Section content must be computed from its current value | Use `updateCommentMarks`; each occurrence receives its own `attributes` and `content` |
+| Section content must be computed from its current value | Pass a function in `commentMark`; it receives `(attributes, content)` for each occurrence |
 | Marker missing during update | The API skips it; the CLI prints `Missing` and exits `1` |
-| Value is multiline | Pass it as-is; surrounding newlines are added automatically |
+| Value is multiline | A static string gets surrounding newlines; a function return value is inserted verbatim |
 | v2 `<!-- name:start -->` markers | Read `references/migration-v2.md` |
 
 Code regions: fenced code blocks (backtick or tilde, including `>` blockquote prefixes) and single-line inline code are ignored, so documentation examples stay literal. Indented code blocks and code spans that wrap across lines are not detected. Put active markers in prose; put literal examples inside fenced or single-line inline code.

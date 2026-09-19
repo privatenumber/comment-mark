@@ -18,10 +18,9 @@ The closing comment no longer repeats the name.
 
 | v2 | v3 |
 | --- | --- |
-| `commentMark(input, data)` | Same signature; now validates the whole document and throws on malformed, nested, or unterminated markers |
+| `commentMark(input, data)` | Same signature and validation; `data` entries may also be functions that receive `(attributes, content)` and return the replacement |
 | `getCommentMarks(input)` | Same signature and object shape; also validates the whole document |
 | none | New: `getCommentMarkers(input)` reads every marker, including unnamed ones |
-| none | New: `updateCommentMarks(input, updaters)` computes each marker's content from its attributes and current content |
 
 ## CLI
 
@@ -32,6 +31,10 @@ The closing comment no longer repeats the name.
 -comment-mark README.md | jq -r '.contributors'
 +comment-mark README.md | jq -r '.[] | select(.id == "contributors") | .content'
 ```
+
+## Runtime
+
+v3 requires Node.js 22.22.2 or newer. v2 supported Node.js 20.
 
 ## Behavior changes
 
