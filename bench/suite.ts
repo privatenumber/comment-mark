@@ -1,16 +1,14 @@
 import assert from 'node:assert/strict';
 import { bench, summary } from 'mitata';
-import {
-	commentMark, getCommentMarks, getCommentMarkers, updateCommentMarks,
-} from '#comment-mark';
+import { commentMark, getCommentMarks, getCommentMarkers } from '#comment-mark';
 import { createMarker, distinctBacktickRuns, fixtures } from './fixtures.js';
 
 type BenchState = {
 	get: (name: string) => number;
 };
 
-const updateData = { x: 'updated value' };
-const updaters = { x: () => 'updated value' };
+const staticData = { x: 'updated value' };
+const resolverData = { x: () => 'updated value' };
 
 // Verify each fixture's parser result before timing, so a fixture that stops
 // exercising the intended path fails loudly instead of skewing the numbers.
@@ -23,16 +21,17 @@ assert.strictEqual(getCommentMarkers(fixtures['long attribute']).length, 1);
 assert.strictEqual(getCommentMarkers('<!--comment-mark '.repeat(64)).length, 0);
 assert.strictEqual(getCommentMarkers(distinctBacktickRuns(64)).length, 1);
 assert.strictEqual(getCommentMarks(fixtures['dense markers']).x, 'value');
-assert.strictEqual(updateCommentMarks(createMarker('x', 'old'), updaters), createMarker('x', 'updated value'));
+assert.strictEqual(commentMark(createMarker('x', 'old'), staticData), createMarker('x', 'updated value'));
+assert.strictEqual(commentMark(createMarker('x', 'old'), resolverData), createMarker('x', 'updated value'));
 
-// Each summary groups the four APIs on one input, so only rows within the same
+// Each summary groups the APIs on one input, so only rows within the same
 // group share an input and are comparable.
 for (const [name, input] of Object.entries(fixtures)) {
 	summary(() => {
 		bench(`getCommentMarkers - ${name}`, () => getCommentMarkers(input));
 		bench(`getCommentMarks - ${name}`, () => getCommentMarks(input));
-		bench(`commentMark - ${name}`, () => commentMark(input, updateData));
-		bench(`updateCommentMarks - ${name}`, () => updateCommentMarks(input, updaters));
+		bench(`commentMark - ${name}`, () => commentMark(input, staticData));
+		bench(`commentMark resolver - ${name}`, () => commentMark(input, resolverData));
 	});
 }
 

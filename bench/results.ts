@@ -15,7 +15,12 @@ const formatTime = (nanoseconds: number) => {
 };
 
 (async () => {
-	const { context, benchmarks } = await run({ format: 'quiet' });
+	// `throw` rejects the run when a benchmark fails, so a broken benchmark is
+	// never recorded as a result row.
+	const { context, benchmarks } = await run({
+		format: 'quiet',
+		throw: true,
+	});
 	const runtime = context.runtime as string;
 	const { version } = context as { version?: string };
 
@@ -23,9 +28,8 @@ const formatTime = (nanoseconds: number) => {
 	for (const benchmark of benchmarks) {
 		for (const result of benchmark.runs) {
 			const { stats } = result;
-			if (result.error || !stats) {
-				rows.push([code(result.name), 'error', '', '']);
-				continue;
+			if (!stats) {
+				throw new Error(`Benchmark "${result.name}" produced no statistics`);
 			}
 			rows.push([
 				code(result.name),
