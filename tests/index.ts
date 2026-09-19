@@ -446,6 +446,24 @@ describe('code blocks', () => {
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
+
+	test('a tab can satisfy indentation for nested list levels', () => {
+		const content = ['- outer', '  - inner', '    ~~~md', `\t${createMarker('x', 'example')}`, '    ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('indentation from a blockquote tab cannot close a fence', () => {
+		const content = ['> ~~~md', '>\t  ~~~', `> ${createMarker('x', 'example')}`, '> ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('indentation from a list tab cannot close a fence', () => {
+		const content = ['- item', '  ~~~md', '\t  ~~~', `  ${createMarker('x', 'example')}`, '  ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
 });
 
 describe('parser scaling', () => {
