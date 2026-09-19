@@ -170,14 +170,27 @@ export const matchListMarker = (line: string, cursor: Cursor, inParagraph: boole
 	const char = line[index];
 	let markerWidth = 1;
 	if (char !== '-' && char !== '+' && char !== '*') {
-		const match = /^(\d{1,9})[.)]/.exec(line.slice(index));
-		if (!match) {
+		// An ordered marker is one to nine digits followed by `.` or `)`. The
+		// digits are read one index at a time, so the marker grammar stays
+		// explicit and independent of pattern syntax.
+		let digits = 0;
+		while (digits < 9) {
+			const digit = line[index + digits];
+			if (digit === undefined || digit < '0' || digit > '9') {
+				break;
+			}
+			digits += 1;
+		}
+
+		const terminator = line[index + digits];
+		if (digits === 0 || (terminator !== '.' && terminator !== ')')) {
 			return undefined;
 		}
-		if (inParagraph && match[1] !== '1') {
+		// Only `1.` may interrupt an open paragraph.
+		if (inParagraph && (digits !== 1 || char !== '1')) {
 			return undefined;
 		}
-		markerWidth = match[0].length;
+		markerWidth = digits + 1;
 	}
 
 	const afterMarker = index + markerWidth;
@@ -341,4 +354,70 @@ export const isThematicBreak = (line: string, cursor: Cursor) => {
 	}
 
 	return count >= 3;
+};
+
+/**
+ * Matches an ATX heading: one to six `#` followed by a space, a tab, or the end
+ * of the line, indented up to three columns.
+ *
+ * A heading is a leaf block. The scanner treats it like a paragraph while it is
+ * being read, but it must not leave a paragraph open for the next line, or a
+ * following ordered list would be rejected as a paragraph interruption and its
+ * fenced example would be treated as a real marker.
+ */
+export const isAtxHeading = (line: string, cursor: Cursor) => {
+	let { index } = cursor;
+	let indent = cursor.pending;
+
+	while (indent < 4 && line[index] === ' ') {
+		index += 1;
+		indent += 1;
+	}
+	if (indent > 3) {
+		return false;
+	}
+
+	let hashes = 0;
+	while (hashes < 7 && line[index + hashes] === '#') {
+		hashes += 1;
+	}
+	if (hashes < 1 || hashes > 6) {
+		return false;
+	}
+
+	const next = line[index + hashes];
+	return next === undefined || next === ' ' || next === '\t';
+};
+
+/**
+ * Matches a setext heading underline: a run of `=` or `-` followed by only
+ * spaces and tabs, indented up to three columns.
+ *
+ * An underline turns the open paragraph into a heading, so it ends the
+ * paragraph rather than extending it. It must also be recognized before a list
+ * marker, because a bare `-` would otherwise become an empty list item.
+ */
+export const isSetextUnderline = (line: string, cursor: Cursor) => {
+	let { index } = cursor;
+	let indent = cursor.pending;
+
+	while (indent < 4 && line[index] === ' ') {
+		index += 1;
+		indent += 1;
+	}
+	if (indent > 3) {
+		return false;
+	}
+
+	const char = line[index];
+	if (char !== '=' && char !== '-') {
+		return false;
+	}
+
+	let underline = 0;
+	while (line[index + underline] === char) {
+		underline += 1;
+	}
+
+	return isBlank(line, index + underline);
 };

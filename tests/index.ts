@@ -1,6 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createFixture } from 'fs-fixture';
 import { describe, test, expect } from 'manten';
+import ts from 'typescript';
 import { commentMark, getCommentMarks } from '#comment-mark';
 import { getCommentMarkers } from '../src/parser/parse-markers.js';
 import { commentMarkCli } from './utils/comment-mark-cli.js';
@@ -532,6 +535,28 @@ describe('paragraph interruption', () => {
 	});
 });
 
+describe('heading context', () => {
+	test('an ATX heading does not leave a paragraph open', () => {
+		// The heading ends the paragraph, so `2.` starts a real list and its
+		// fence hides the example that follows.
+		const content = ['# Heading', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('a setext heading does not leave a paragraph open', () => {
+		const content = ['Heading', '===', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('a setext dash underline does not leave a paragraph open', () => {
+		const content = ['Heading', '---', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+});
+
 describe('line endings', () => {
 	test('a marker after a closed fence is recognized in a CR-only document', () => {
 		const content = ['~~~', 'code', '~~~', createMarker('x', 'real')].join('\r');
@@ -561,8 +586,8 @@ describe('line endings', () => {
 
 describe('parser scaling', () => {
 	test('parses adversarial backtick runs within a linear-time budget', () => {
-		// A line whose backtick runs all have distinct lengths forces the
-		// inline scanner to search the rest of the line for each run.
+		// Every run length is unique, so no run finds a partner and each one is
+		// literal text. That is the worst case for span matching.
 		const runs: string[] = [];
 		for (let length = 1; length <= 2048; length += 1) {
 			runs.push('`'.repeat(length));
@@ -687,6 +712,79 @@ describe('public API', () => {
 		const module = await import('#comment-mark');
 
 		expect(Object.keys(module).sort()).toStrictEqual(['commentMark', 'getCommentMarks']);
+	});
+});
+
+describe('source constraints', () => {
+	// Methods that coerce their argument to a regular expression.
+	const regexMethods = new Set(['match', 'matchAll', 'search']);
+
+	const classifyRegexUsage = (node: ts.Node) => {
+		if (ts.isRegularExpressionLiteral(node)) {
+			return 'a regular expression literal';
+		}
+		if (
+			(ts.isCallExpression(node) || ts.isNewExpression(node))
+			&& ts.isIdentifier(node.expression)
+			&& node.expression.text === 'RegExp'
+		) {
+			return 'a RegExp construction';
+		}
+		if (
+			ts.isPropertyAccessExpression(node)
+			&& regexMethods.has(node.name.text)
+		) {
+			return `String#${node.name.text}`;
+		}
+		return undefined;
+	};
+
+	const findRegexUsages = (fileName: string, source: string) => {
+		const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.ESNext);
+		const usages: string[] = [];
+
+		const visit = (node: ts.Node) => {
+			const usage = classifyRegexUsage(node);
+			if (usage) {
+				const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+				usages.push(`${fileName}:${line + 1} uses ${usage}`);
+			}
+			ts.forEachChild(node, visit);
+		};
+
+		visit(sourceFile);
+		return usages;
+	};
+
+	const listSourceFiles = async (directory: string): Promise<string[]> => {
+		const entries = await readdir(directory, { withFileTypes: true });
+		const grouped = await Promise.all(entries.map(async (entry) => {
+			const fullPath = path.join(directory, entry.name);
+			if (entry.isDirectory()) {
+				return listSourceFiles(fullPath);
+			}
+			return entry.name.endsWith('.ts') ? [fullPath] : [];
+		}));
+
+		return grouped.flat();
+	};
+
+	// The scanner reads by character index. Regular expressions are banned in
+	// source because shared pattern state let a reentrant parse corrupt an outer
+	// one, and because pattern-based block rules hid the order the scanner
+	// actually reads in. This walks the syntax tree, so it reports real regular
+	// expressions rather than text that resembles one.
+	test('src contains no regular expressions', async () => {
+		const sourceDirectory = fileURLToPath(new URL('../src', import.meta.url));
+		const files = await listSourceFiles(sourceDirectory);
+
+		const perFile = await Promise.all(files.map(async (file) => {
+			const source = await readFile(file, 'utf8');
+			return findRegexUsages(path.relative(process.cwd(), file), source);
+		}));
+		const usages = perFile.flat();
+
+		expect(usages).toStrictEqual([]);
 	});
 });
 

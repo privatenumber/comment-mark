@@ -4,7 +4,9 @@ import {
 	type Fence,
 	closesFence,
 	continueContainer,
+	isAtxHeading,
 	isBlank,
+	isSetextUnderline,
 	isThematicBreak,
 	matchBlockquote,
 	matchFence,
@@ -28,9 +30,10 @@ type BacktickRun = {
 const openDelimiter = '<!--';
 const closeDelimiter = '-->';
 
-// Reused instead of splitting per call, and reset before the scan so a thrown
-// error cannot leave `lastIndex` mid-document for the next call.
-const lineEnding = /\r\n|\n|\r/g;
+// This scanner parses by character index. Regular expressions are not allowed
+// in source: shared pattern state let a reentrant parse corrupt an outer one,
+// and pattern-based block rules hid the order the scanner actually reads in.
+// tests/index.ts asserts that src/ stays free of them.
 
 /**
  * Collects the backtick runs in one line and links each run to the next run of
@@ -230,6 +233,13 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				return;
 			}
 
+			// An underline converts the open paragraph into a heading, so it has
+			// to be recognized before a leading `-` is read as a list marker.
+			if (inParagraph && isSetextUnderline(line, cursor)) {
+				inParagraph = false;
+				return;
+			}
+
 			const list = matchListMarker(line, cursor, inParagraph);
 			if (!list) {
 				break;
@@ -238,6 +248,15 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				type: 'listItem',
 				indent: list.contentIndent,
 			});
+		}
+
+		// A heading is a leaf block, so it closes a paragraph instead of opening
+		// one. Leaving a paragraph open would make a following ordered list look
+		// like a paragraph interruption, and the list's fence would then expose
+		// an example marker as real.
+		if (isAtxHeading(line, cursor)) {
+			inParagraph = false;
+			return;
 		}
 
 		const match = matchFence(line, cursor);
@@ -255,17 +274,36 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		scanInline(line, lineStart, cursor.index);
 	};
 
-	// Split on every line ending so a CR-only document is read as lines without
-	// normalizing the source or shifting its offsets. Scanning for the endings
-	// stays inside the regular-expression engine rather than walking each
-	// character in JavaScript.
-	lineEnding.lastIndex = 0;
+	// Lines end with LF, CRLF, or CR. Both searches only move forward, and the
+	// one that was consumed is refreshed, so locating line boundaries stays
+	// linear without a pattern. Every position is local to this invocation, so a
+	// resolver that reenters the parser cannot disturb the outer scan.
 	let lineStart = 0;
-	let match = lineEnding.exec(source);
-	while (match !== null) {
-		scanLine(source.slice(lineStart, match.index), lineStart);
-		lineStart = match.index + match[0].length;
-		match = lineEnding.exec(source);
+	let lineFeed = source.indexOf('\n', lineStart);
+	let carriageReturn = source.indexOf('\r', lineStart);
+
+	while (lineFeed !== -1 || carriageReturn !== -1) {
+		let lineEnd: number;
+		let endingLength: number;
+
+		if (carriageReturn !== -1 && (lineFeed === -1 || carriageReturn < lineFeed)) {
+			lineEnd = carriageReturn;
+			endingLength = source[carriageReturn + 1] === '\n' ? 2 : 1;
+		} else {
+			lineEnd = lineFeed;
+			endingLength = 1;
+		}
+
+		scanLine(source.slice(lineStart, lineEnd), lineStart);
+		lineStart = lineEnd + endingLength;
+
+		if (lineFeed !== -1 && lineFeed < lineStart) {
+			lineFeed = source.indexOf('\n', lineStart);
+		}
+		if (carriageReturn !== -1 && carriageReturn < lineStart) {
+			carriageReturn = source.indexOf('\r', lineStart);
+		}
 	}
+
 	scanLine(source.slice(lineStart), lineStart);
 };
