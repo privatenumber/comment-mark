@@ -464,6 +464,24 @@ describe('code blocks', () => {
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
+
+	test('a fence with mixed space and tab padding is recognized', () => {
+		const content = ['- \t~~~md', `\t${createMarker('x', 'example')}`, '\t~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('a blank line ends a fence inside a blockquote', () => {
+		const content = ['> ~~~', '', '> ~~~', `> ${createMarker('x', 'example')}`, '> ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('a blank line continues a fence inside a list item', () => {
+		const content = ['- ~~~md', '', `  ${createMarker('x', 'example')}`, '  ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
 });
 
 describe('parser scaling', () => {

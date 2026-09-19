@@ -166,16 +166,36 @@ const matchListMarker = (line: string, cursor: Cursor) => {
 		return undefined;
 	}
 
+	// Measure the padding after the marker in rendered columns, because a tab
+	// spans to the next tab stop and can satisfy several indentation columns.
+	// Five or more columns collapse to a single space.
+	let paddingIndex = afterMarker;
+	let paddingColumn = column + markerWidth;
 	let padding = 0;
-	while (line[afterMarker + padding] === ' ') {
-		padding += 1;
-	}
-	if (padding < 1 || padding > 4) {
-		padding = 1;
+	while (padding < 5) {
+		const paddingChar = line[paddingIndex];
+		if (paddingChar === ' ') {
+			paddingIndex += 1;
+			paddingColumn += 1;
+			padding += 1;
+		} else if (paddingChar === '\t') {
+			const width = tabSize - (paddingColumn % tabSize);
+			paddingIndex += 1;
+			paddingColumn += width;
+			padding += width;
+		} else {
+			break;
+		}
 	}
 
-	cursor.index = afterMarker + padding;
-	cursor.column = column + markerWidth + padding;
+	if (padding > 4) {
+		padding = 1;
+		paddingIndex = afterMarker + 1;
+		paddingColumn = column + markerWidth + 1;
+	}
+
+	cursor.index = paddingIndex;
+	cursor.column = paddingColumn;
 	cursor.pending = 0;
 
 	return {
@@ -275,6 +295,20 @@ const matchContainers = (line: string, cursor: Cursor, containers: Container[]) 
 	}
 
 	return matched;
+};
+
+/**
+ * Reports whether any container is a blockquote. A blockquote does not continue
+ * across a blank line, unlike a list item, so a blank line ends a fence whose
+ * container is a blockquote.
+ */
+const hasBlockquote = (containers: Container[]) => {
+	for (const container of containers) {
+		if (container.type === 'blockquote') {
+			return true;
+		}
+	}
+	return false;
 };
 
 /**
@@ -463,7 +497,9 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		}
 
 		if (fence) {
-			if (isBlank(line)) {
+			// A blank line continues a fence inside a list item, but ends a fence
+			// inside a blockquote, whose `>` marker the blank line lacks.
+			if (isBlank(line) && !hasBlockquote(fence.containers)) {
 				continue;
 			}
 
