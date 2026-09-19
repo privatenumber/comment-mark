@@ -94,3 +94,18 @@ export const parseMarks = (source: string, visit: MarkVisitor) => {
 		throw new Error(`[comment-mark] No closing comment found for marker ${label}`);
 	}
 };
+
+/**
+ * Collects every marker in document order, including markers without an `id`.
+ * Internal to the package: the CLI's read mode exposes this shape as JSON, but
+ * the JavaScript API only reads content by `id` through `getCommentMarks`.
+ */
+export const getCommentMarkers = (source: string): CommentMark[] => {
+	const markers: CommentMark[] = [];
+
+	parseMarks(source, (mark) => {
+		markers.push(mark);
+	});
+
+	return markers;
+};

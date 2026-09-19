@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { createFixture } from 'fs-fixture';
 import { describe, test, expect } from 'manten';
-import { commentMark, getCommentMarks, getCommentMarkers } from '#comment-mark';
+import { commentMark, getCommentMarks } from '#comment-mark';
+import { getCommentMarkers } from '../src/parser/parse-markers.js';
 import { commentMarkCli } from './utils/comment-mark-cli.js';
 
 const createMarker = (id: string, content = '') => `<!--comment-mark id="${id}"-->${content}<!--/comment-mark-->`;
@@ -482,6 +483,80 @@ describe('code blocks', () => {
 		expect(getCommentMarkers(content)).toStrictEqual([]);
 		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
+
+	test('a quote-prefixed blank line keeps a list fence open', () => {
+		const content = ['> - ~~~', '>', `>   ${createMarker('x', 'example')}`, '>   ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('a list padding tab that overshoots five columns does not open a fence', () => {
+		const content = ['-\t  ~~~', '', '  ~~~', `  ${createMarker('x', 'example')}`, '  ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+});
+
+describe('paragraph interruption', () => {
+	test('an ordered marker other than one does not interrupt a paragraph', () => {
+		const content = ['paragraph', '2. ~~~', `   ${createMarker('x', 'real')}`, '   ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'x',
+				attrs: {},
+				content: 'real',
+			},
+		]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(
+			['paragraph', '2. ~~~', `   ${createMarker('x', 'NEW')}`, '   ~~~'].join('\n'),
+		);
+	});
+
+	test('a marker after a dropped container is not treated as paragraph text', () => {
+		// The list item ends before `2.`, so the ordered marker is a real list
+		// and hides the fenced example that follows.
+		const content = ['- item', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('an ordered marker inside a blockquote paragraph does not interrupt it', () => {
+		const content = ['> paragraph', '> 2. ~~~', `>    ${createMarker('x', 'real')}`, '>    ~~~'].join('\n');
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'x',
+				attrs: {},
+				content: 'real',
+			},
+		]);
+	});
+});
+
+describe('line endings', () => {
+	test('a marker after a closed fence is recognized in a CR-only document', () => {
+		const content = ['~~~', 'code', '~~~', createMarker('x', 'real')].join('\r');
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'x',
+				attrs: {},
+				content: 'real',
+			},
+		]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(
+			['~~~', 'code', '~~~', createMarker('x', 'NEW')].join('\r'),
+		);
+	});
+
+	test('a marker after a closed fence is recognized in a CRLF document', () => {
+		const content = ['~~~', 'code', '~~~', createMarker('x', 'real')].join('\r\n');
+		expect(getCommentMarkers(content)).toStrictEqual([
+			{
+				id: 'x',
+				attrs: {},
+				content: 'real',
+			},
+		]);
+	});
 });
 
 describe('parser scaling', () => {
@@ -604,6 +679,14 @@ describe('getCommentMarkers', () => {
 
 	test('returns an empty array when no markers exist', () => {
 		expect(getCommentMarkers('<!-- ordinary comment -->')).toStrictEqual([]);
+	});
+});
+
+describe('public API', () => {
+	test('exposes only commentMark and getCommentMarks', async () => {
+		const module = await import('#comment-mark');
+
+		expect(Object.keys(module).sort()).toStrictEqual(['commentMark', 'getCommentMarks']);
 	});
 });
 

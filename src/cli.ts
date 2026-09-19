@@ -1,7 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { cli } from 'cleye';
 import { description, name, version } from '../package.json' with { type: 'json' };
-import { commentMark, getCommentMarks, getCommentMarkers } from './index.js';
+import { getCommentMarkers } from './parser/parse-markers.js';
+import { commentMark, getCommentMarks } from './index.js';
 
 const exitWithError = (message: string): never => {
 	console.error(`Error: ${message}`);

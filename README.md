@@ -189,26 +189,6 @@ console.log(sections.version)
 - Uses the last occurrence when a marker appears more than once.
 - Throws when a marker is malformed, nested, or missing its closing comment.
 
-### `getCommentMarkers(input)`
-
-Read every marker, including markers without an `id`, in document order:
-
-```js
-import { getCommentMarkers } from 'comment-mark'
-
-const markers = getCommentMarkers('<!--comment-mark id="license" source="LICENSE.md"-->MIT<!--/comment-mark-->')
-
-console.log(markers[0].id, markers[0].attrs.source)
-// license LICENSE.md
-```
-
-- `input` (`string | Buffer`): Markdown or HTML content
-- Returns `CommentMark[]`, where each marker has:
-  - `id` (`string | undefined`): the `id` attribute, when present
-  - `attrs` (`Record<string, string>`): attributes other than `id`
-  - `content` (`string`): raw content between the comments
-- Throws when a marker is malformed, nested, or missing its closing comment.
-
 ## Example: Git contributors
 
 Add a section to `README.md`:
@@ -261,7 +241,7 @@ A marker's content runs until its closing comment. Allowing another opening mark
 
 ### Why does the marker use an `id` attribute?
 
-The attribute form leaves room for additional, caller-defined attributes. comment-mark stores them on `CommentMark.attrs` and does not interpret them. A marker can also omit `id`; `getCommentMarkers` still returns it, while `commentMark` and `getCommentMarks` key off `id` and skip unnamed markers.
+The attribute form leaves room for additional, caller-defined attributes. comment-mark stores them on the marker's `attrs` and does not interpret them. A marker can also omit `id`; read mode in the CLI still lists it, while `commentMark` and `getCommentMarks` key off `id` and skip unnamed markers.
 
 ## Related
 

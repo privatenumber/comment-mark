@@ -1,6 +1,4 @@
-import { type CommentMark, parseMarks } from './parser/parse-markers.js';
-
-export type { CommentMark } from './parser/parse-markers.js';
+import { parseMarks } from './parser/parse-markers.js';
 
 export const commentMark = (
 	input: string | Buffer,
@@ -46,15 +44,4 @@ export const getCommentMarks = (input: string | Buffer): Record<string, string> 
 	});
 
 	return commentMarks;
-};
-
-export const getCommentMarkers = (input: string | Buffer): CommentMark[] => {
-	const source = Buffer.isBuffer(input) ? input.toString() : input;
-	const markers: CommentMark[] = [];
-
-	parseMarks(source, (mark) => {
-		markers.push(mark);
-	});
-
-	return markers;
 };

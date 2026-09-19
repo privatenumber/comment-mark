@@ -1,22 +1,21 @@
+import {
+	type Container,
+	type Cursor,
+	type Fence,
+	closesFence,
+	continueContainer,
+	isBlank,
+	isThematicBreak,
+	matchBlockquote,
+	matchFence,
+	matchListMarker,
+} from './block-context.js';
+
 export type CommentVisitor = (
 	start: number,
 	innerStart: number,
 	innerEnd: number,
 ) => void;
-
-type Container =
-	| { type: 'blockquote' }
-	| {
-		type: 'listItem';
-		indent: number;
-	};
-
-type Fence = {
-	char: string;
-	length: number;
-	containers: Container[];
-	start: number;
-};
 
 type BacktickRun = {
 	start: number;
@@ -28,288 +27,6 @@ type BacktickRun = {
 
 const openDelimiter = '<!--';
 const closeDelimiter = '-->';
-
-const isBlank = (line: string) => line.trim() === '';
-
-const tabSize = 4;
-
-/**
- * A source position while matching block structure. `column` is the rendered
- * column of `line[index]`, and `pending` is the number of indentation columns
- * still available from a tab that was only partially consumed. A tab spans
- * several columns but has a single source offset, so `pending` lets one tab
- * satisfy the indentation of more than one nested container.
- */
-type Cursor = {
-	index: number;
-	column: number;
-	pending: number;
-};
-
-/**
- * Advances the cursor past `columns` indentation columns and commits it on
- * success. Tabs advance to the next four-column tab stop; a tab that overshoots
- * leaves its remaining columns in `pending`. Returns false when the line is not
- * indented enough.
- */
-const consumeIndent = (line: string, cursor: Cursor, columns: number) => {
-	let { index, column, pending } = cursor;
-	let remaining = columns;
-
-	if (pending >= remaining) {
-		cursor.pending = pending - remaining;
-		return true;
-	}
-	remaining -= pending;
-	pending = 0;
-
-	while (remaining > 0) {
-		const char = line[index];
-		if (char === ' ') {
-			index += 1;
-			column += 1;
-			remaining -= 1;
-		} else if (char === '\t') {
-			const width = tabSize - (column % tabSize);
-			index += 1;
-			column += width;
-			if (width > remaining) {
-				cursor.index = index;
-				cursor.column = column;
-				cursor.pending = width - remaining;
-				return true;
-			}
-			remaining -= width;
-		} else {
-			return false;
-		}
-	}
-
-	cursor.index = index;
-	cursor.column = column;
-	cursor.pending = pending;
-	return true;
-};
-
-/**
- * Matches a `>` blockquote marker after at most three spaces and returns the
- * index after it, or -1 when this level has no marker.
- */
-const matchBlockquote = (line: string, cursor: Cursor) => {
-	let { index, column } = cursor;
-	let indent = cursor.pending;
-
-	while (indent < 3 && line[index] === ' ') {
-		index += 1;
-		column += 1;
-		indent += 1;
-	}
-
-	if (line[index] !== '>') {
-		return false;
-	}
-
-	index += 1;
-	column += 1;
-
-	const char = line[index];
-	if (char === ' ') {
-		index += 1;
-		column += 1;
-	} else if (char === '\t') {
-		// The tab stands in for the optional delimiter space, so all but one
-		// of its columns remain as content indentation.
-		const width = tabSize - (column % tabSize);
-		index += 1;
-		column += width;
-		cursor.index = index;
-		cursor.column = column;
-		cursor.pending = width - 1;
-		return true;
-	}
-
-	cursor.index = index;
-	cursor.column = column;
-	cursor.pending = 0;
-	return true;
-};
-
-/**
- * Matches a list item marker after at most three spaces. Returns the item's
- * content indentation and content start, or undefined when there is no marker.
- */
-const matchListMarker = (line: string, cursor: Cursor) => {
-	let { index, column } = cursor;
-	let spaces = cursor.pending;
-
-	while (spaces < 4 && line[index] === ' ') {
-		index += 1;
-		column += 1;
-		spaces += 1;
-	}
-	if (spaces > 3) {
-		return undefined;
-	}
-
-	const char = line[index];
-	let markerWidth = 1;
-	if (char !== '-' && char !== '+' && char !== '*') {
-		const match = /^\d{1,9}[.)]/.exec(line.slice(index));
-		if (!match) {
-			return undefined;
-		}
-		markerWidth = match[0].length;
-	}
-
-	const afterMarker = index + markerWidth;
-	if (line[afterMarker] !== ' ' && line[afterMarker] !== '\t') {
-		return undefined;
-	}
-
-	// Measure the padding after the marker in rendered columns, because a tab
-	// spans to the next tab stop and can satisfy several indentation columns.
-	// Five or more columns collapse to a single space.
-	let paddingIndex = afterMarker;
-	let paddingColumn = column + markerWidth;
-	let padding = 0;
-	while (padding < 5) {
-		const paddingChar = line[paddingIndex];
-		if (paddingChar === ' ') {
-			paddingIndex += 1;
-			paddingColumn += 1;
-			padding += 1;
-		} else if (paddingChar === '\t') {
-			const width = tabSize - (paddingColumn % tabSize);
-			paddingIndex += 1;
-			paddingColumn += width;
-			padding += width;
-		} else {
-			break;
-		}
-	}
-
-	if (padding > 4) {
-		padding = 1;
-		paddingIndex = afterMarker + 1;
-		paddingColumn = column + markerWidth + 1;
-	}
-
-	cursor.index = paddingIndex;
-	cursor.column = paddingColumn;
-	cursor.pending = 0;
-
-	return {
-		contentIndent: spaces + markerWidth + padding,
-	};
-};
-
-/**
- * Matches a fence opener after at most three spaces. A backtick fence whose
- * info string contains a backtick is rejected so inline code cannot open a
- * fence.
- */
-const matchFence = (line: string, cursor: Cursor) => {
-	let { index } = cursor;
-	let spaces = cursor.pending;
-
-	while (spaces < 3 && line[index] === ' ') {
-		index += 1;
-		spaces += 1;
-	}
-	// A fourth indentation column makes this indented code, not a fence.
-	if (line[index] === ' ') {
-		return undefined;
-	}
-
-	const char = line[index];
-	if (char !== '`' && char !== '~') {
-		return undefined;
-	}
-
-	let length = 0;
-	while (line[index + length] === char) {
-		length += 1;
-	}
-	if (length < 3) {
-		return undefined;
-	}
-
-	const end = index + length;
-	if (char === '`' && line.slice(end).includes('`')) {
-		return undefined;
-	}
-
-	return {
-		char,
-		length,
-		end,
-	};
-};
-
-/**
- * Matches a thematic break (horizontal rule): three or more `-`, `_`, or `*`
- * characters separated only by spaces or tabs. A thematic break is not a list
- * item, so it must be recognized before a list container opens.
- */
-const isThematicBreak = (line: string, start: number) => {
-	let marker = '';
-	let count = 0;
-
-	for (let index = start; index < line.length; index += 1) {
-		const char = line[index];
-		if (char === ' ' || char === '\t') {
-			continue;
-		}
-		if (char === '\r') {
-			break;
-		}
-		if (char !== '-' && char !== '_' && char !== '*') {
-			return false;
-		}
-		if (marker === '') {
-			marker = char;
-		} else if (char !== marker) {
-			return false;
-		}
-		count += 1;
-	}
-
-	return count >= 3;
-};
-
-/**
- * Matches the current block containers and returns how much of the line they
- * consume. `matched` is the number of containers that continue on this line.
- */
-const matchContainers = (line: string, cursor: Cursor, containers: Container[]) => {
-	let matched = 0;
-
-	for (const container of containers) {
-		const continues = container.type === 'blockquote'
-			? matchBlockquote(line, cursor)
-			: consumeIndent(line, cursor, container.indent);
-		if (!continues) {
-			break;
-		}
-		matched += 1;
-	}
-
-	return matched;
-};
-
-/**
- * Reports whether any container is a blockquote. A blockquote does not continue
- * across a blank line, unlike a list item, so a blank line ends a fence whose
- * container is a blockquote.
- */
-const hasBlockquote = (containers: Container[]) => {
-	for (const container of containers) {
-		if (container.type === 'blockquote') {
-			return true;
-		}
-	}
-	return false;
-};
 
 /**
  * Collects the backtick runs in one line and links each run to the next run of
@@ -382,18 +99,28 @@ const findBacktickRuns = (line: string, start: number) => {
  * `innerStart` is the first character after `<!--` and `innerEnd` is the index
  * of the closing `-->`.
  *
- * The scan tracks block containers, fenced code blocks, inline code spans, and
- * HTML comments in one pass. A comment inside code is not visited, and code
- * syntax inside a comment is not interpreted, so the two cannot corrupt each
- * other. Fence openers and closers must share the same block containers, so a
- * top-level fence is not closed by a blockquote line and an unclosed fence ends
- * with its container.
+ * The scan reads the source line by line and tracks block containers, fenced
+ * code blocks, inline code spans, and HTML comments together. A comment inside
+ * code is not visited, and code syntax inside a comment is not interpreted, so
+ * the two cannot corrupt each other.
+ *
+ * Each line is processed in four ordered steps: continue the open containers,
+ * continue or close an active fence, open new containers and leaf blocks, then
+ * scan whatever content remains for comments and inline code.
  */
 export const scanComments = (source: string, visit: CommentVisitor) => {
 	const containers: Container[] = [];
 	let fence: Fence | undefined;
 	let commentStart = -1;
-	let offset = 0;
+	let inParagraph = false;
+
+	// One cursor reused across lines. The scan is synchronous, so the cursor
+	// never escapes a call, and reusing it keeps the hot loop allocation-free.
+	const cursor: Cursor = {
+		index: 0,
+		column: 0,
+		pending: 0,
+	};
 
 	const scanInline = (line: string, lineStart: number, start: number) => {
 		const runs = line.includes('`', start) ? findBacktickRuns(line, start) : undefined;
@@ -434,26 +161,79 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		}
 	};
 
-	const openContainersAndScan = (line: string, lineStart: number, cursor: Cursor) => {
+	const scanLine = (line: string, lineStart: number) => {
+		cursor.index = 0;
+		cursor.column = 0;
+		cursor.pending = 0;
+
+		// A comment opened on an earlier line stays open until `-->`, so code
+		// syntax inside it is never interpreted.
+		if (commentStart !== -1) {
+			const close = line.indexOf(closeDelimiter);
+			if (close === -1) {
+				return;
+			}
+			visit(commentStart, commentStart + openDelimiter.length, lineStart + close);
+			commentStart = -1;
+			scanInline(line, lineStart, close + closeDelimiter.length);
+			return;
+		}
+
+		// Continue the open containers, outermost first. Each one reads the line
+		// from where the previous stopped, so blankness is evaluated per level.
+		let matched = 0;
+		for (const container of containers) {
+			if (!continueContainer(line, cursor, container)) {
+				break;
+			}
+			matched += 1;
+		}
+
+		if (fence) {
+			// A fence's containers must all continue. When one ends, so does the
+			// unclosed fence, and this line is read again at the surviving level.
+			if (matched < fence.depth) {
+				fence = undefined;
+				containers.length = matched;
+			} else {
+				if (closesFence(line, cursor, fence)) {
+					fence = undefined;
+				}
+				return;
+			}
+		} else if (matched < containers.length) {
+			containers.length = matched;
+			// The dropped containers took their paragraph with them, so this line
+			// may start a block that could not interrupt one.
+			inParagraph = false;
+		}
+
+		if (isBlank(line, cursor.index)) {
+			// A blank line ends the paragraph but leaves list items open.
+			inParagraph = false;
+			return;
+		}
+
+		// Open new containers. A thematic break takes precedence over a list.
 		for (;;) {
 			if (matchBlockquote(line, cursor)) {
 				containers.push({ type: 'blockquote' });
 				continue;
 			}
 
-			if (isThematicBreak(line, cursor.index)) {
-				break;
+			if (isThematicBreak(line, cursor)) {
+				inParagraph = false;
+				return;
 			}
 
-			const list = matchListMarker(line, cursor);
-			if (list) {
-				containers.push({
-					type: 'listItem',
-					indent: list.contentIndent,
-				});
-				continue;
+			const list = matchListMarker(line, cursor, inParagraph);
+			if (!list) {
+				break;
 			}
-			break;
+			containers.push({
+				type: 'listItem',
+				indent: list.contentIndent,
+			});
 		}
 
 		const match = matchFence(line, cursor);
@@ -461,77 +241,29 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			fence = {
 				char: match.char,
 				length: match.length,
-				containers: containers.slice(),
-				start: lineStart,
+				depth: containers.length,
 			};
+			inParagraph = false;
 			return;
 		}
 
+		inParagraph = true;
 		scanInline(line, lineStart, cursor.index);
 	};
 
-	// One cursor reused across lines. The scan is synchronous, so the cursor
-	// never escapes a call, and reusing it keeps the hot loop allocation-free.
-	const cursor: Cursor = {
-		index: 0,
-		column: 0,
-		pending: 0,
-	};
-
-	for (const line of source.split('\n')) {
-		const lineStart = offset;
-		offset = lineStart + line.length + 1;
-		cursor.index = 0;
-		cursor.column = 0;
-		cursor.pending = 0;
-
-		if (commentStart !== -1) {
-			const close = line.indexOf(closeDelimiter);
-			if (close === -1) {
-				continue;
-			}
-			visit(commentStart, commentStart + openDelimiter.length, lineStart + close);
-			commentStart = -1;
-			scanInline(line, lineStart, close + closeDelimiter.length);
+	// Split on every line ending so a CR-only document is read as lines without
+	// normalizing the source or shifting its offsets.
+	let lineStart = 0;
+	for (let index = 0; index < source.length; index += 1) {
+		const char = source[index];
+		if (char !== '\n' && char !== '\r') {
 			continue;
 		}
-
-		if (fence) {
-			// A blank line continues a fence inside a list item, but ends a fence
-			// inside a blockquote, whose `>` marker the blank line lacks.
-			if (isBlank(line) && !hasBlockquote(fence.containers)) {
-				continue;
-			}
-
-			const matched = matchContainers(line, cursor, fence.containers);
-			if (matched < fence.containers.length) {
-				// The fence's container ended before this line, which ends the
-				// unclosed block. Reprocess the line at the surviving level.
-				const surviving = fence.containers.slice(0, matched);
-				fence = undefined;
-				containers.length = 0;
-				containers.push(...surviving);
-				openContainersAndScan(line, lineStart, cursor);
-				continue;
-			}
-
-			const match = matchFence(line, cursor);
-			if (
-				match
-				&& match.char === fence.char
-				&& match.length >= fence.length
-				&& line.slice(match.end).trim() === ''
-			) {
-				fence = undefined;
-			}
-			continue;
+		scanLine(source.slice(lineStart, index), lineStart);
+		if (char === '\r' && source[index + 1] === '\n') {
+			index += 1;
 		}
-
-		if (isBlank(line)) {
-			continue;
-		}
-
-		containers.length = matchContainers(line, cursor, containers);
-		openContainersAndScan(line, lineStart, cursor);
+		lineStart = index + 1;
 	}
+	scanLine(source.slice(lineStart), lineStart);
 };
