@@ -34,60 +34,117 @@ const isBlank = (line: string) => line.trim() === '';
 const tabSize = 4;
 
 /**
- * Consumes whitespace until `columns` indentation columns are reached and
- * returns the source index after it, or -1 when the line is not indented
- * enough. A tab advances to the next tab stop, while the returned value stays a
- * source offset.
+ * A source position while matching block structure. `column` is the rendered
+ * column of `line[index]`, and `pending` is the number of indentation columns
+ * still available from a tab that was only partially consumed. A tab spans
+ * several columns but has a single source offset, so `pending` lets one tab
+ * satisfy the indentation of more than one nested container.
  */
-const matchIndent = (line: string, start: number, columns: number) => {
-	let index = start;
-	let column = 0;
-	while (column < columns) {
-		if (line[index] === ' ') {
+type Cursor = {
+	index: number;
+	column: number;
+	pending: number;
+};
+
+/**
+ * Advances the cursor past `columns` indentation columns and commits it on
+ * success. Tabs advance to the next four-column tab stop; a tab that overshoots
+ * leaves its remaining columns in `pending`. Returns false when the line is not
+ * indented enough.
+ */
+const consumeIndent = (line: string, cursor: Cursor, columns: number) => {
+	let { index, column, pending } = cursor;
+	let remaining = columns;
+
+	if (pending >= remaining) {
+		cursor.pending = pending - remaining;
+		return true;
+	}
+	remaining -= pending;
+	pending = 0;
+
+	while (remaining > 0) {
+		const char = line[index];
+		if (char === ' ') {
 			index += 1;
 			column += 1;
-		} else if (line[index] === '\t') {
+			remaining -= 1;
+		} else if (char === '\t') {
+			const width = tabSize - (column % tabSize);
 			index += 1;
-			column += tabSize - (column % tabSize);
+			column += width;
+			if (width > remaining) {
+				cursor.index = index;
+				cursor.column = column;
+				cursor.pending = width - remaining;
+				return true;
+			}
+			remaining -= width;
 		} else {
-			return -1;
+			return false;
 		}
 	}
-	return index;
+
+	cursor.index = index;
+	cursor.column = column;
+	cursor.pending = pending;
+	return true;
 };
 
 /**
  * Matches a `>` blockquote marker after at most three spaces and returns the
  * index after it, or -1 when this level has no marker.
  */
-const matchBlockquote = (line: string, start: number) => {
-	let index = start;
-	let spaces = 0;
-	while (line[index] === ' ' && spaces < 3) {
+const matchBlockquote = (line: string, cursor: Cursor) => {
+	let { index, column, pending } = cursor;
+	let indent = pending;
+
+	while (indent < 3 && line[index] === ' ') {
 		index += 1;
-		spaces += 1;
+		column += 1;
+		indent += 1;
 	}
 
 	if (line[index] !== '>') {
-		return -1;
+		return false;
 	}
 
 	index += 1;
-	if (line[index] === ' ' || line[index] === '\t') {
+	column += 1;
+
+	const char = line[index];
+	if (char === ' ') {
 		index += 1;
+		column += 1;
+	} else if (char === '\t') {
+		// The tab stands in for the optional delimiter space, so all but one
+		// of its columns remain as content indentation.
+		const width = tabSize - (column % tabSize);
+		index += 1;
+		column += width;
+		cursor.index = index;
+		cursor.column = column;
+		cursor.pending = width - 1;
+		return true;
 	}
-	return index;
+
+	cursor.index = index;
+	cursor.column = column;
+	cursor.pending = 0;
+	return true;
 };
 
 /**
  * Matches a list item marker after at most three spaces. Returns the item's
  * content indentation and content start, or undefined when there is no marker.
  */
-const matchListMarker = (line: string, start: number) => {
-	let index = start;
-	let spaces = 0;
-	while (line[index] === ' ' && spaces < 4) {
+const matchListMarker = (line: string, cursor: Cursor) => {
+	let { index, column, pending } = cursor;
+	let spaces = pending;
+
+	while (spaces < 4 && line[index] === ' ') {
 		index += 1;
+		column += 1;
 		spaces += 1;
 	}
 	if (spaces > 3) {
@@ -117,9 +174,12 @@ const matchListMarker = (line: string, start: number) => {
 		padding = 1;
 	}
 
+	cursor.index = afterMarker + padding;
+	cursor.column = column + markerWidth + padding;
+	cursor.pending = 0;
+
 	return {
 		contentIndent: spaces + markerWidth + padding,
-		contentStart: afterMarker + padding,
 	};
 };
 
@@ -128,12 +188,17 @@ const matchListMarker = (line: string, start: number) => {
  * info string contains a backtick is rejected so inline code cannot open a
  * fence.
  */
-const matchFence = (line: string, start: number) => {
-	let index = start;
-	let spaces = 0;
-	while (line[index] === ' ' && spaces < 3) {
+const matchFence = (line: string, cursor: Cursor) => {
+	let { index } = cursor;
+	let spaces = cursor.pending;
+
+	while (spaces < 3 && line[index] === ' ') {
 		index += 1;
 		spaces += 1;
+	}
+	// A fourth indentation column makes this indented code, not a fence.
+	if (line[index] === ' ') {
+		return undefined;
 	}
 
 	const char = line[index];
@@ -196,31 +261,20 @@ const isThematicBreak = (line: string, start: number) => {
  * Matches the current block containers and returns how much of the line they
  * consume. `matched` is the number of containers that continue on this line.
  */
-const matchContainers = (line: string, containers: Container[]) => {
-	let contentOffset = 0;
+const matchContainers = (line: string, cursor: Cursor, containers: Container[]) => {
 	let matched = 0;
 
 	for (const container of containers) {
-		if (container.type === 'blockquote') {
-			const next = matchBlockquote(line, contentOffset);
-			if (next === -1) {
-				break;
-			}
-			contentOffset = next;
-		} else {
-			const next = matchIndent(line, contentOffset, container.indent);
-			if (next === -1) {
-				break;
-			}
-			contentOffset = next;
+		const continues = container.type === 'blockquote'
+			? matchBlockquote(line, cursor)
+			: consumeIndent(line, cursor, container.indent);
+		if (!continues) {
+			break;
 		}
 		matched += 1;
 	}
 
-	return {
-		contentOffset,
-		matched,
-	};
+	return matched;
 };
 
 /**
@@ -346,34 +400,29 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		}
 	};
 
-	const openContainersAndScan = (line: string, lineStart: number, start: number) => {
-		let contentOffset = start;
-
+	const openContainersAndScan = (line: string, lineStart: number, cursor: Cursor) => {
 		for (;;) {
-			const blockquote = matchBlockquote(line, contentOffset);
-			if (blockquote !== -1) {
+			if (matchBlockquote(line, cursor)) {
 				containers.push({ type: 'blockquote' });
-				contentOffset = blockquote;
 				continue;
 			}
 
-			if (isThematicBreak(line, contentOffset)) {
+			if (isThematicBreak(line, cursor.index)) {
 				break;
 			}
 
-			const list = matchListMarker(line, contentOffset);
+			const list = matchListMarker(line, cursor);
 			if (list) {
 				containers.push({
 					type: 'listItem',
 					indent: list.contentIndent,
 				});
-				contentOffset = list.contentStart;
 				continue;
 			}
 			break;
 		}
 
-		const match = matchFence(line, contentOffset);
+		const match = matchFence(line, cursor);
 		if (match) {
 			fence = {
 				char: match.char,
@@ -384,12 +433,13 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			return;
 		}
 
-		scanInline(line, lineStart, contentOffset);
+		scanInline(line, lineStart, cursor.index);
 	};
 
 	for (const line of source.split('\n')) {
 		const lineStart = offset;
 		offset = lineStart + line.length + 1;
+		const cursor: Cursor = { index: 0, column: 0, pending: 0 };
 
 		if (commentStart !== -1) {
 			const close = line.indexOf(closeDelimiter);
@@ -407,7 +457,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				continue;
 			}
 
-			const { contentOffset, matched } = matchContainers(line, fence.containers);
+			const matched = matchContainers(line, cursor, fence.containers);
 			if (matched < fence.containers.length) {
 				// The fence's container ended before this line, which ends the
 				// unclosed block. Reprocess the line at the surviving level.
@@ -415,11 +465,11 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				fence = undefined;
 				containers.length = 0;
 				containers.push(...surviving);
-				openContainersAndScan(line, lineStart, contentOffset);
+				openContainersAndScan(line, lineStart, cursor);
 				continue;
 			}
 
-			const match = matchFence(line, contentOffset);
+			const match = matchFence(line, cursor);
 			if (
 				match
 				&& match.char === fence.char
@@ -435,8 +485,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			continue;
 		}
 
-		const { contentOffset, matched } = matchContainers(line, containers);
-		containers.length = matched;
-		openContainersAndScan(line, lineStart, contentOffset);
+		containers.length = matchContainers(line, cursor, containers);
+		openContainersAndScan(line, lineStart, cursor);
 	}
 };
