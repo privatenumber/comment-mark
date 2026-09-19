@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { bold, code, table } from 'md-pen';
 import { run } from 'mitata';
 import { commentMark } from '#comment-mark';
 import './suite.js';
@@ -18,27 +19,33 @@ const formatTime = (nanoseconds: number) => {
 	const runtime = context.runtime as string;
 	const { version } = context as { version?: string };
 
-	const rows = benchmarks.flatMap(benchmark => benchmark.runs.map((result) => {
-		const { stats } = result;
-		if (result.error || !stats) {
-			return `| \`${result.name}\` | error | | |`;
+	const rows: (string | number)[][] = [['Benchmark', 'avg', 'p75', 'p99']];
+	for (const benchmark of benchmarks) {
+		for (const result of benchmark.runs) {
+			const { stats } = result;
+			if (result.error || !stats) {
+				rows.push([code(result.name), 'error', '', '']);
+				continue;
+			}
+			rows.push([
+				code(result.name),
+				formatTime(stats.avg),
+				formatTime(stats.p75),
+				formatTime(stats.p99),
+			]);
 		}
-		const { avg, p75, p99 } = stats;
-		return `| \`${result.name}\` | ${formatTime(avg)} | ${formatTime(p75)} | ${formatTime(p99)} |`;
-	}));
+	}
 
 	const date = new Date().toISOString().slice(0, 10);
-	const table = [
-		`Measured with ${runtime} ${version} on ${context.cpu.name} (${context.arch}), ${date}.`,
+	const recorded = [
+		`Measured with ${code(`${runtime} ${version}`)} on ${bold(context.cpu.name ?? 'unknown CPU')} (${code(context.arch ?? 'unknown arch')}), ${date}.`,
 		'',
-		'| Benchmark | avg | p75 | p99 |',
-		'| --- | ---: | ---: | ---: |',
-		...rows,
+		table(rows, { align: ['left', 'right', 'right', 'right'] }),
 	].join('\n');
 
 	const readmeUrl = new URL('README.md', import.meta.url);
 	const readme = await readFile(readmeUrl, 'utf8');
-	const updated = commentMark(readme, { results: table });
+	const updated = commentMark(readme, { results: recorded });
 
 	if (updated === readme) {
 		console.error('bench/README.md results are already up to date.');

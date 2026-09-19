@@ -66,6 +66,7 @@
 		"fs-fixture": "^2.16.0",
 		"lintroll": "^1.31.1",
 		"manten": "^2.0.2",
+		"md-pen": "^1.2.0",
 		"mitata": "^1.0.34",
 		"nano-spawn": "^2.1.0",
 		"pkgroll": "^2.28.1",
