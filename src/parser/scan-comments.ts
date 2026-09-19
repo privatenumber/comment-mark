@@ -436,14 +436,20 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		scanInline(line, lineStart, cursor.index);
 	};
 
+	// One cursor reused across lines. The scan is synchronous, so the cursor
+	// never escapes a call, and reusing it keeps the hot loop allocation-free.
+	const cursor: Cursor = {
+		index: 0,
+		column: 0,
+		pending: 0,
+	};
+
 	for (const line of source.split('\n')) {
 		const lineStart = offset;
 		offset = lineStart + line.length + 1;
-		const cursor: Cursor = {
-			index: 0,
-			column: 0,
-			pending: 0,
-		};
+		cursor.index = 0;
+		cursor.column = 0;
+		cursor.pending = 0;
 
 		if (commentStart !== -1) {
 			const close = line.indexOf(closeDelimiter);
