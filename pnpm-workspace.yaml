@@ -4,10 +4,8 @@ allowBuilds:
   esbuild: false
   unrs-resolver: false
 
-# type-flag and cleye are in-house packages. type-flag releases skip the
-# release-age soak so a fix can be adopted as soon as it is published; cleye
-# 2.7.0 is excluded because it carries the type-flag release that handles
-# reserved marker names.
+# type-flag and cleye are in-house packages, so their releases skip the
+# release-age soak. This lets a fix be adopted as soon as it is published.
 minimumReleaseAgeExclude:
   - type-flag
-  - cleye@2.7.0
+  - cleye
