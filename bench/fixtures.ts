@@ -4,13 +4,15 @@ export const createMarker = (id: string, content = '') => (
 
 const prose = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. ';
 
+export const longAttributeId = 'a'.repeat(50_000);
+
 export const fixtures = {
 	'prose only': prose.repeat(20_000),
 	'sparse markers': prose.repeat(20_000) + createMarker('x', 'value') + prose.repeat(5000),
 	'dense markers': `${createMarker('x', 'value')}\n`.repeat(10_000),
 	'ordinary comments': `<!-- note -->${prose.repeat(100)}\n`.repeat(1000),
 	'code fences': `# Title\n\n\`\`\`js\nconst value = 1;\n\`\`\`\n\n${createMarker('a', 'value')}\n\n`.repeat(1000),
-	'long attribute': createMarker('a'.repeat(50_000), 'value'),
+	'long attribute': createMarker(longAttributeId, 'value'),
 };
 
 /**
