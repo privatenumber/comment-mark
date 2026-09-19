@@ -28,6 +28,10 @@ type BacktickRun = {
 const openDelimiter = '<!--';
 const closeDelimiter = '-->';
 
+// Reused instead of splitting per call, and reset before the scan so a thrown
+// error cannot leave `lastIndex` mid-document for the next call.
+const lineEnding = /\r\n|\n|\r/g;
+
 /**
  * Collects the backtick runs in one line and links each run to the next run of
  * the same length. Span matching walks these links, so the line is scanned
@@ -252,18 +256,16 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	};
 
 	// Split on every line ending so a CR-only document is read as lines without
-	// normalizing the source or shifting its offsets.
+	// normalizing the source or shifting its offsets. Scanning for the endings
+	// stays inside the regular-expression engine rather than walking each
+	// character in JavaScript.
+	lineEnding.lastIndex = 0;
 	let lineStart = 0;
-	for (let index = 0; index < source.length; index += 1) {
-		const char = source[index];
-		if (char !== '\n' && char !== '\r') {
-			continue;
-		}
-		scanLine(source.slice(lineStart, index), lineStart);
-		if (char === '\r' && source[index + 1] === '\n') {
-			index += 1;
-		}
-		lineStart = index + 1;
+	let match = lineEnding.exec(source);
+	while (match !== null) {
+		scanLine(source.slice(lineStart, match.index), lineStart);
+		lineStart = match.index + match[0].length;
+		match = lineEnding.exec(source);
 	}
 	scanLine(source.slice(lineStart), lineStart);
 };
