@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { bench, summary } from 'mitata';
 import { commentMark, getCommentMarks } from '#comment-mark';
-import { createMarker, distinctBacktickRuns, fixtures, longAttributeId } from './fixtures.js';
+import {
+	createMarker, distinctBacktickRuns, fixtures, longAttributeId,
+} from './fixtures.js';
 
 type BenchState = {
 	get: (name: string) => number;
