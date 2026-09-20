@@ -41,7 +41,7 @@ Without marker flags, the CLI prints every detected marker as a JSON array:
 comment-mark README.md | jq -r '.[] | select(.id == "lastUpdated") | .content'
 ```
 
-Each entry is `{ id?, attrs, content }`. `id` is omitted for unnamed markers. Read mode prints `[]` when there are no markers, preserves section whitespace, and exits non-zero if the file cannot be read or a marker is malformed.
+Each entry is `{ id?, attributes, content }`. `id` is omitted for unnamed markers. Read mode prints `[]` when there are no markers, preserves section whitespace, and exits non-zero if the file cannot be read or a marker is malformed.
 
 ## Validation
 

@@ -24,12 +24,13 @@ This skill covers comment-mark's marker syntax, JavaScript API, and CLI. Read `r
 
 | Function | Purpose | Returns |
 | --- | --- | --- |
-| `commentMark(input, data)` | Replace each marker's content with `data[id]`, or compute it with a function value | Updated `string`; returns the input unchanged when required arguments are invalid |
+| `commentMark(input, data)` | Replace each marker's content with `data[id]`, or compute its content and attributes with a function value | Updated `string`; returns the input unchanged when required arguments are invalid |
 | `getCommentMarks(input)` | Read content keyed by `id` | `Record<string, string>`, null prototype |
 
 - `commentMark` skips `null`/`undefined` values, updates every occurrence of an `id`, and silently ignores keys with no marker.
 - A multiline static string value gets a newline added on each side.
 - A function value receives `(attributes, content)` once per matching occurrence and its return value is inserted verbatim, with no added newline. Returning `null`/`undefined` preserves the section.
+- A function value can return an object instead of a string: `{ attributes?, content? }` replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's full attribute set other than `id`, so spread the received `attributes` to keep the ones you do not change. The marker keeps its `id` unless the returned `attributes` sets one.
 - `getCommentMarks` keeps the last occurrence of a duplicate `id` and omits markers without one. Use CLI read mode when you need every occurrence, document order, or attributes.
 
 ## CLI
@@ -47,6 +48,8 @@ npx comment-mark <file> [--<id>=<value>...]
 | A file documents the marker syntax | Put examples in a fenced code block or inline code so they are ignored |
 | `id` appears more than once | `commentMark` updates all; `getCommentMarks` keeps the last |
 | Section content must be computed from its current value | Pass a function in `commentMark`; it receives `(attributes, content)` for each occurrence |
+| A marker's attributes must be updated | Return `{ attributes }` from a function value; it replaces the attributes other than `id`, so spread the received `attributes` to keep the rest |
+| An attribute value must be written back | Values are re-encoded as needed. Unchanged attributes keep their written text, including quoting |
 | Marker missing during update | The API skips it; the CLI prints `Missing` and exits `1` |
 | Value is multiline | A static string gets surrounding newlines; a function return value is inserted verbatim |
 | Need every marker, in document order, with attributes | Use CLI read mode; `getCommentMarks` collapses duplicates and omits unnamed markers |

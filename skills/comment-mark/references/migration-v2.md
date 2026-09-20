@@ -18,7 +18,7 @@ The closing comment no longer repeats the name.
 
 | v2 | v3 |
 | --- | --- |
-| `commentMark(input, data)` | Same signature, and `data` entries may also be functions that receive `(attributes, content)` and return the replacement. Unlike v2, it validates the whole document |
+| `commentMark(input, data)` | Same signature, and `data` entries may also be functions that receive `(attributes, content)` and return the replacement or an `{ attributes?, content? }` update. Unlike v2, it validates the whole document |
 | `getCommentMarks(input)` | Same signature and object shape; also validates the whole document |
 | none | New: CLI read mode prints every marker, including unnamed ones, with each marker's attributes |
 
@@ -43,6 +43,7 @@ v3 requires Node.js 22.22.2 or newer. v2 supported Node.js 20.
 | Markers in fenced code and inline code are ignored | A v2 marker shown as a documentation example no longer updates. This is the fix that stops examples from being treated as real markers |
 | Nested markers abort parsing | v3 throws `Nested marker ... is not supported`. v2 matched a start with the next same-named end, so same-named nesting silently paired an outer start with an inner end, while differently named markers were independent |
 | Unnamed markers are readable | New capability: CLI read mode lists markers with no `id`, and their attributes; `getCommentMarks` still omits them |
+| Attributes can be updated | New capability: a function value can return `{ attributes }` to rewrite a marker's attributes, not just its content |
 | Attributes must be separated by whitespace | New grammar: v2 marker names were free-form text. `id="a"file="b"` now throws `Expected whitespace between attributes` |
 | Updates validate the whole document | A malformed, nested, or unterminated marker anywhere aborts the update, even when it is unrelated to the requested keys |
 
