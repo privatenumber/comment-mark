@@ -1,38 +1,28 @@
 import assert from 'node:assert/strict';
 import { bench, summary } from 'mitata';
-import { commentMark, getCommentMarks } from '#comment-mark';
+import { commentMark, getCommentMarkAll, getCommentMarks } from '#comment-mark';
 import {
-	createMarker, distinctBacktickRuns, fixtures, longAttributeId,
+	createMarker, distinctBacktickRuns, fixtures,
 } from './fixtures.js';
 
 type BenchState = {
 	get: (name: string) => number;
 };
 
-// The id each fixture declares, so the replacement benchmarks exercise a
-// matching key instead of the unmatched-key path.
-const fixtureIds: Record<string, string> = {
+// The selector each fixture declares, so the replacement benchmarks exercise a
+// matching selector instead of the unmatched-selector path.
+const fixtureSelectors: Record<string, string> = {
 	'prose only': 'x',
 	'sparse markers': 'x',
 	'dense markers': 'x',
 	'ordinary comments': 'x',
 	'code fences': 'a',
-	'long attribute': longAttributeId,
+	'long attribute': 'item',
 };
 
-// Counts the occurrences commentMark is asked to replace. A resolver returning
-// null preserves every section, so this runs the full parse through the public
-// API without changing the fixture.
-const countMarkers = (input: string, id: string) => {
-	let count = 0;
-	commentMark(input, {
-		[id]: () => {
-			count += 1;
-			return null;
-		},
-	});
-	return count;
-};
+// Counts the markers a selector matches. A fixture that stops producing the
+// intended path fails loudly instead of skewing the numbers.
+const countMarkers = (input: string, selector: string) => getCommentMarkAll(input, selector).length;
 
 // Verify each fixture still exercises the intended path before timing, so a
 // fixture that stops producing markers fails loudly instead of skewing the
@@ -42,17 +32,17 @@ assert.strictEqual(countMarkers(fixtures['sparse markers'], 'x'), 1);
 assert.strictEqual(countMarkers(fixtures['dense markers'], 'x'), 10_000);
 assert.strictEqual(countMarkers(fixtures['ordinary comments'], 'x'), 0);
 assert.strictEqual(countMarkers(fixtures['code fences'], 'a'), 1000);
-assert.strictEqual(countMarkers(fixtures['long attribute'], longAttributeId), 1);
-assert.strictEqual(countMarkers('<!--comment-mark '.repeat(64), 'x'), 0);
+assert.strictEqual(countMarkers(fixtures['long attribute'], 'item'), 1);
+assert.strictEqual(countMarkers('<!--comment-mark '.repeat(64), 'comment-mark'), 0);
 assert.strictEqual(countMarkers(distinctBacktickRuns(64), 'x'), 1);
 assert.strictEqual(getCommentMarks(fixtures['dense markers']).x, 'value');
 
 // Each summary groups the APIs on one input, so only rows within the same
 // group share an input and are comparable.
 for (const [name, input] of Object.entries(fixtures)) {
-	const id = fixtureIds[name];
-	const staticData = { [id]: 'updated value' };
-	const resolverData = { [id]: () => 'updated value' };
+	const selector = fixtureSelectors[name];
+	const staticData = { [selector]: 'updated value' };
+	const resolverData = { [selector]: () => 'updated value' };
 
 	summary(() => {
 		bench(`getCommentMarks - ${name}`, () => getCommentMarks(input));

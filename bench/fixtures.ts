@@ -1,5 +1,5 @@
-export const createMarker = (id: string, content = '') => (
-	`<!--comment-mark id="${id}"-->${content}<!--/comment-mark-->`
+export const createMarker = (tag: string, content = '') => (
+	`<!-- ${tag} -->${content}<!-- /${tag} -->`
 );
 
 const prose = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. ';
@@ -12,7 +12,7 @@ export const fixtures = {
 	'dense markers': `${createMarker('x', 'value')}\n`.repeat(10_000),
 	'ordinary comments': `<!-- note -->${prose.repeat(100)}\n`.repeat(1000),
 	'code fences': `# Title\n\n\`\`\`js\nconst value = 1;\n\`\`\`\n\n${createMarker('a', 'value')}\n\n`.repeat(1000),
-	'long attribute': createMarker(longAttributeId, 'value'),
+	'long attribute': `<!-- item id="${longAttributeId}" -->value<!-- /item -->`,
 };
 
 /**
