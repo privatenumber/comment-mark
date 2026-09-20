@@ -49,7 +49,9 @@ const readTagName = (source: string, index: number, end: number) => {
 /**
  * Classifies a comment's inner text. A tag name must be followed by whitespace
  * or the end of the comment, so `<!-- TODO: fix -->` and `<!-- 1 + 1 -->` stay
- * ordinary comments instead of failing as malformed markers.
+ * ordinary comments instead of failing as malformed markers. A closing comment
+ * is only a tag name, so `<!-- /a extra -->` stays ordinary text rather than
+ * closing `a` and leaving `extra` unread.
  */
 const classifyComment = (source: string, innerStart: number, innerEnd: number): CommentKind => {
 	let index = skipWhitespace(source, innerStart, innerEnd);
@@ -64,29 +66,43 @@ const classifyComment = (source: string, innerStart: number, innerEnd: number): 
 	}
 
 	const tag = readTagName(source, index, innerEnd);
-	if (!tag || (tag.end < innerEnd && !isWhitespace(source[tag.end]))) {
+	if (!tag) {
 		return { type: 'other' };
 	}
 
-	return closing
-		? {
+	if (closing) {
+		if (skipWhitespace(source, tag.end, innerEnd) < innerEnd) {
+			return { type: 'other' };
+		}
+		return {
 			type: 'closer',
 			tagName: tag.name,
-		}
-		: {
-			type: 'opener',
-			tagName: tag.name,
-			attributesStart: tag.end,
 		};
+	}
+
+	if (tag.end < innerEnd && !isWhitespace(source[tag.end])) {
+		return { type: 'other' };
+	}
+
+	return {
+		type: 'opener',
+		tagName: tag.name,
+		attributesStart: tag.end,
+	};
 };
 
 type Opener = {
 	kind: Extract<CommentKind, { type: 'opener' }>;
 	openingStart: number;
 	openingEnd: number;
-	parent: Opener | undefined;
 	closerStart: number;
 	matched: boolean;
+	// The opener below this one in the open stack, and the nearest earlier
+	// opener with the same tag name. A closer finds its opener through
+	// `previousSameTag` and drops the skipped openers through `previousOpen`,
+	// so a document that opens many comments and closes none stays linear.
+	previousOpen: Opener | undefined;
+	previousSameTag: Opener | undefined;
 };
 
 /**
@@ -104,7 +120,8 @@ export const parseDocument = (source: string): MarkerNode[] => {
 	}
 
 	const openers: Opener[] = [];
-	const stack: Opener[] = [];
+	const topByTag = new Map<string, Opener | undefined>();
+	let openTop: Opener | undefined;
 
 	scanComments(source, (start, innerStart, innerEnd) => {
 		const kind = classifyComment(source, innerStart, innerEnd);
@@ -113,12 +130,21 @@ export const parseDocument = (source: string): MarkerNode[] => {
 			// Close the innermost opener with this tag name. Openers above it
 			// are comments the closer was written after, so they are dropped
 			// instead of breaking the marker they sit inside.
-			const index = stack.findLastIndex(opener => opener.kind.tagName === kind.tagName);
-			if (index !== -1) {
-				const [opener] = stack.splice(index);
-				opener.matched = true;
-				opener.closerStart = start;
+			const opener = topByTag.get(kind.tagName);
+			if (!opener) {
+				return;
 			}
+
+			let dropped = openTop;
+			while (dropped && dropped !== opener) {
+				topByTag.set(dropped.kind.tagName, dropped.previousSameTag);
+				dropped = dropped.previousOpen;
+			}
+
+			opener.matched = true;
+			opener.closerStart = start;
+			topByTag.set(opener.kind.tagName, opener.previousSameTag);
+			openTop = opener.previousOpen;
 			return;
 		}
 
@@ -127,26 +153,42 @@ export const parseDocument = (source: string): MarkerNode[] => {
 				kind,
 				openingStart: start,
 				openingEnd: innerEnd,
-				parent: stack.at(-1),
 				closerStart: -1,
 				matched: false,
+				previousOpen: openTop,
+				previousSameTag: topByTag.get(kind.tagName),
 			};
 			openers.push(opener);
-			stack.push(opener);
+			topByTag.set(kind.tagName, opener);
+			openTop = opener;
 		}
 	});
 
+	// A matched marker is nested when it opens before an earlier matched marker
+	// closes. Matched markers are in opening order, so one stack detects
+	// containment without walking a parent chain per marker.
 	const markers: MarkerNode[] = [];
+	const ancestors: Opener[] = [];
+
 	for (const opener of openers) {
 		if (!opener.matched) {
 			continue;
 		}
 
-		if (opener.parent?.matched) {
+		while (ancestors.length > 0) {
+			const ancestor = ancestors.at(-1);
+			if (!ancestor || ancestor.closerStart >= opener.openingStart) {
+				break;
+			}
+			ancestors.pop();
+		}
+
+		if (ancestors.length > 0) {
 			throw new Error(
 				`[comment-mark] Nested marker ${JSON.stringify(opener.kind.tagName)} is not supported`,
 			);
 		}
+		ancestors.push(opener);
 
 		markers.push({
 			tagName: opener.kind.tagName,

@@ -89,6 +89,22 @@ describe('edge cases', () => {
 		]);
 	});
 
+	test('ignores a closing comment with trailing text', () => {
+		// Only `<!-- /a -->` closes `a`. `<!-- /a extra -->` is ordinary text,
+		// so it cannot silently pair with the opener and leave `extra` unread.
+		const content = '<!-- a -->x<!-- /a extra -->';
+		expect(getCommentMarkAll(content)).toStrictEqual([]);
+		expect(commentMark(content, { a: 'y' })).toBe(content);
+	});
+
+	test('rejects a matched pair inside a marker behind an unmatched comment', () => {
+		// `<!-- x -->` is never closed, but `b` still opens and closes inside
+		// `a`, so replacing `a` would overwrite `b`'s comments.
+		expect(() => getCommentMarkAll(
+			'<!-- a --><!-- x --><!-- b -->inner<!-- /b --><!-- /a -->',
+		)).toThrow('[comment-mark] Nested marker "b" is not supported');
+	});
+
 	test('scans many unterminated openers without rescanning', () => {
 		// A document with a long run of `<!--` and no `-->` must not trigger a
 		// terminator search at every opener.
@@ -899,6 +915,19 @@ describe('parser scaling', () => {
 				content: 'value',
 			},
 		]);
+		expect(elapsed).toBeLessThan(1500);
+	});
+
+	test('ignores many unmatched closers within a linear-time budget', () => {
+		// Every closer targets a tag that was never opened, so a scan that
+		// searched the pending openers per closer would be quadratic.
+		const content = '<!-- a -->'.repeat(20_000) + '<!-- /b -->'.repeat(20_000);
+
+		const start = performance.now();
+		const markers = getCommentMarkAll(content);
+		const elapsed = performance.now() - start;
+
+		expect(markers).toStrictEqual([]);
 		expect(elapsed).toBeLessThan(1500);
 	});
 });
