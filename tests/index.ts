@@ -1223,11 +1223,12 @@ describe('CLI', () => {
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a', 'old'));
 	});
 
-	test('shows help when a control flag is repeated', async () => {
+	test('exits non-zero when a control flag is repeated', async () => {
 		// A repeated `--help` must not fall through to read mode.
-		const { stdout } = await commentMarkCli('--help', '--help');
-		expect(stdout).toContain('comment-mark');
-		expect(stdout).not.toContain('[]');
+		await expect(commentMarkCli('--help', '--help')).rejects.toMatchObject({
+			exitCode: 1,
+			stderr: expect.stringContaining('Flag "--help" was specified 2 times'),
+		});
 	});
 
 	test('exits non-zero when the same flag is passed multiple times', async () => {

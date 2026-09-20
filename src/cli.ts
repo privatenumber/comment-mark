@@ -114,8 +114,14 @@ for (const argument of process.argv.slice(2)) {
 	const selector = separator === -1 ? flag : flag.slice(0, separator);
 
 	// A bare control flag reserves the action (cleye convention);
-	// `--help=<value>`/`--version=<value>` stay as markers.
+	// `--help=<value>`/`--version=<value>` stay as markers. Repeating one is
+	// rejected like any other flag instead of quietly changing the action.
 	if (separator === -1 && (selector === 'help' || selector === 'h' || selector === 'version')) {
+		const count = (flagCounts.get(selector) ?? 0) + 1;
+		if (count > 1) {
+			exitWithError(`Flag "--${selector}" was specified ${count} times; each flag can only be set once`);
+		}
+		flagCounts.set(selector, count);
 		bareFlags.add(selector);
 		continue;
 	}
