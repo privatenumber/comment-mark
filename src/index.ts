@@ -1,47 +1,73 @@
-import { parseMarks } from './parser/parse-markers.js';
+import {
+	type CommentDocument,
+	type CommentMarkReplacement,
+	applyReplacements,
+	toDocument,
+} from './document.js';
 
+export type {
+	CommentDocument,
+	CommentMark,
+	CommentMarkData,
+	CommentMarkReplacement,
+	CommentMarkValue,
+} from './document.js';
+
+export { createDocument } from './document.js';
+
+/**
+ * Replaces marked sections in `input`, which may be source text or a document
+ * from `createDocument`. Passing a document updates that document and returns
+ * its rendered source; passing text parses it, applies the replacements, and
+ * returns the result.
+ */
 export const commentMark = (
-	input: string | Buffer,
-	data: Record<string, string | null | undefined>,
+	input: string | Buffer | CommentDocument,
+	replacements: Record<string, CommentMarkReplacement>,
 ) => {
 	if (
 		!input
-		|| data === null
-		|| data === undefined
-		|| typeof data !== 'object'
+		|| replacements === null
+		|| replacements === undefined
+		|| typeof replacements !== 'object'
 	) {
 		return input;
 	}
 
-	const source = Buffer.isBuffer(input) ? input.toString() : input;
-
-	let output = '';
-	let cursor = 0;
-	parseMarks(source, (mark, contentStart, contentEnd) => {
-		const value = mark.id !== undefined && Object.hasOwn(data, mark.id) ? data[mark.id] : undefined;
-
-		output += source.slice(cursor, contentStart);
-		if (value === null || value === undefined) {
-			output += mark.content;
-		} else {
-			output += value.includes('\n') ? `\n${value}\n` : value;
-		}
-		cursor = contentEnd;
-	});
-
-	return output + source.slice(cursor);
+	const document = toDocument(input);
+	applyReplacements(document, replacements);
+	return document.toString();
 };
 
-export const getCommentMarks = (input: string | Buffer): Record<string, string> => {
-	const source = Buffer.isBuffer(input) ? input.toString() : input;
-	// Null-prototype dictionary so marker ids never collide with inherited properties.
+/**
+ * Returns the first marker matching `selector`, or null.
+ */
+export const getCommentMark = (input: string | Buffer | CommentDocument, selector: string) => (
+	toDocument(input).querySelector(selector)
+);
+
+/**
+ * Returns every marker matching `selector` in document order. Without a
+ * selector, returns every recognized marker.
+ */
+export const getCommentMarkAll = (input: string | Buffer | CommentDocument, selector?: string) => (
+	toDocument(input).querySelectorAll(selector)
+);
+
+/**
+ * Returns marker content keyed by tag name. Duplicate tag names collapse to the
+ * last occurrence; use `getCommentMarkAll` for every occurrence and its
+ * attributes.
+ */
+export const getCommentMarks = (
+	input: string | Buffer | CommentDocument,
+): Record<string, string> => {
+	// Null-prototype dictionary so tag names never collide with inherited properties.
 	const commentMarks: Record<string, string> = Object.create(null);
 
-	parseMarks(source, (mark) => {
-		if (mark.id !== undefined) {
-			commentMarks[mark.id] = mark.content;
-		}
-	});
+	for (const mark of getCommentMarkAll(input)) {
+		commentMarks[mark.tagName] = mark.content;
+	}
 
 	return commentMarks;
 };

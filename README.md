@@ -8,6 +8,7 @@ Keep generated content, like contributor lists and benchmark results, alongside 
 
 - Reusable placeholders that are hidden when Markdown is rendered
 - Update sections from the CLI or JavaScript
+- Select sections by tag name and attributes, like a CSS selector
 - Read marked content as JSON or a JavaScript object, preserving whitespace
 - Supports Markdown and HTML files, including multiline content
 - Ignores markers inside fenced code blocks and inline code, so documentation examples stay literal
@@ -23,18 +24,18 @@ pnpm add comment-mark
 
 ### 1. Add placeholders
 
-In `README.md`, wrap the content you want to update with a named marker:
+In `README.md`, wrap the content you want to update with a matching pair of comments:
 
 ```md
 ## Last updated
-<!--comment-mark id="lastUpdated"--><!--/comment-mark-->
+<!-- lastUpdated --><!-- /lastUpdated -->
 ```
 
-The opening comment declares the marker's `id`. The closing comment marks where the content ends.
+The tag name names the section. The closing comment repeats that name, which is what distinguishes a marker from an ordinary comment.
 
 ### 2. Fill the section
 
-Read the file, pass values keyed by marker id, and save the result:
+Read the file, pass values keyed by selector, and save the result:
 
 ```js
 import fs from 'node:fs/promises'
@@ -52,7 +53,7 @@ await fs.writeFile('README.md', updated)
 
 ```md
 ## Last updated
-<!--comment-mark id="lastUpdated"-->2026-09-07<!--/comment-mark-->
+<!-- lastUpdated -->2026-09-07<!-- /lastUpdated -->
 ```
 
 Run the script again with a new value to replace the section. The surrounding document and marker comments stay intact. For a live timestamp, use `new Date().toISOString()` as the value.
@@ -62,20 +63,26 @@ Run the script again with a new value to replace the section. The surrounding do
 Use the CLI to read or update a file without writing a script:
 
 ```sh
-npx comment-mark <file> [--<id>=<value>...]
+npx comment-mark <file> [--<selector>=<value>...]
 ```
 
 `file` is the path to a Markdown or HTML file. The examples below use `npx`; package scripts can call `comment-mark` directly.
 
 ### Update sections
 
-Pass each value as `--<id>=<value>`, where `<id>` matches a marker's `id` attribute verbatim, including case and dashes. For the placeholder in the quick start:
+Pass each value as `--<selector>=<value>`. A tag name selects on its own, so the quick-start placeholder updates with:
 
 ```sh
 npx comment-mark README.md --lastUpdated="2026-09-07"
 ```
 
-Set multiple markers in one invocation:
+Add attribute predicates to pick one section out of several:
+
+```sh
+npx comment-mark README.md --"contributors[role='maintainer']"="Jane Doe"
+```
+
+A selector replaces the first matching section. Set several sections in one invocation:
 
 ```sh
 npx comment-mark README.md --contributors="Jane Doe" --lastUpdated="2026-09-07" --benchmarks="result"
@@ -88,20 +95,20 @@ Updated: contributors
 Unchanged: lastUpdated
 Missing: benchmarks
 
-Saved README.md. Updated 1 key; 1 unchanged; 1 missing.
+Saved README.md. Updated 1 selector; 1 unchanged; 1 missing.
 ```
 
 | Status | Meaning |
 | --- | --- |
-| `Updated` | The marker exists and applying the value changes the document |
+| `Updated` | The selector matches and applying the value changes the document |
 | `Unchanged` | Applying the value leaves the section unchanged |
-| `Missing` | No matching marker exists |
+| `Missing` | No marker matches the selector |
 
-When updates are saved alongside missing markers, the command exits `1`. If every requested marker is missing, it exits `1` without writing. If all requested markers exist and their values already match, it exits `0` without rewriting the file.
+When updates are saved alongside missing selectors, the command exits `1`. If every requested selector is missing, it exits `1` without writing. If every requested selector matches and its value already matches, it exits `0` without rewriting the file.
 
 ### Read sections
 
-Omit marker flags to print the detected markers as JSON on stdout:
+Omit selector flags to print every detected marker as JSON on stdout:
 
 ```sh
 npx comment-mark README.md
@@ -112,7 +119,7 @@ For the quick-start result:
 ```json
 [
     {
-        "id": "lastUpdated",
+        "tagName": "lastUpdated",
         "attributes": {},
         "content": "2026-09-07"
     }
@@ -122,72 +129,159 @@ For the quick-start result:
 Select a value with `jq`:
 
 ```sh
-npx comment-mark README.md | jq -r '.[] | select(.id == "lastUpdated") | .content'
+npx comment-mark README.md | jq -r '.[] | select(.tagName == "lastUpdated") | .content'
 ```
 
 Read mode preserves section whitespace and prints `[]` when no markers exist. It exits non-zero if the file cannot be read or a marker is malformed.
 
 ### Arguments and validation
 
-- Flag names map verbatim to marker `id`s, with no case or dash conversion: `--lastUpdated` and `--last-updated` are different flags, and each matches only a marker whose `id` is spelled the same way.
-- Use `--id=value`, not `--id value`. Quote values containing spaces or newlines.
-- Use `--id=` to clear a section. Multiline values get a newline before and after the supplied content.
-- `id` is written as an attribute (`id="lastUpdated"`). Additional attributes are preserved on the marker for future features.
+- Flag names are selectors, matched verbatim with no case or dash conversion: `--lastUpdated` and `--last-updated` are different selectors.
+- Use `--selector=value`, not `--selector value`. Quote values containing spaces or newlines, and quote the whole flag when the selector contains brackets.
+- The first `=` outside brackets and quotes separates the flag from its value, so `--"item[kind='fruit']"=pear` passes the selector `item[kind='fruit']`.
+- Use `--selector=` to clear a section. Multiline values get a newline before and after the supplied content.
 - Attributes must be separated by whitespace and appear at most once: `id="a"file="b"` and `id="a" id="b"` are rejected.
-- Markers cannot nest. An opening marker inside another open marker aborts the update.
-- Each marker can be set once per invocation. Repeated flags, valueless flags, and extra positional arguments are rejected before writing.
-- Update mode validates the document before writing. A marker that is malformed, nested, or missing its closing comment aborts the update.
-- Bare `--help`, `-h`, and `--version` work without a file. Markers with `id="help"` or `id="version"` remain settable with `--help=<value>` or `--version=<value>`.
+- A marker pair cannot sit inside another marker pair. Markers cannot nest.
+- Each selector can be set once per invocation. Repeated flags, valueless flags, and extra positional arguments are rejected before writing.
+- Update mode validates the document before writing. A malformed or nested marker aborts the update.
+- Bare `--help`, `-h`, and `--version` work without a file. Markers named `help` or `version` remain settable with `--help=<value>` or `--version=<value>`.
+
+## Markers
+
+A marker is a matching pair of HTML comments. The tag name names the section, and any attributes belong to it:
+
+```md
+<!-- contributors role="maintainer" -->Jane<!-- /contributors -->
+```
+
+- The closing comment repeats the tag name, so `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
+- Whitespace inside the comments is padding: `<!-- contributors -->` and `<!--contributors-->` are equivalent.
+- The content between the comments is replaced; the comments themselves are kept.
+- Tag names and attribute names are case-sensitive and matched verbatim.
+- Attributes are caller-defined. comment-mark stores and matches on them; it does not interpret them.
+
+## Selectors
+
+A selector is a tag name followed by optional attribute predicates:
+
+| Selector | Matches |
+| --- | --- |
+| `contributors` | Every marker with that tag name |
+| `contributors[role]` | Markers that have a `role` attribute |
+| `contributors[role='maintainer']` | Markers whose `role` is `maintainer` |
+| `contributors[role='maintainer'][lang='en']` | Markers that satisfy every predicate |
+
+- Attribute values compare as parsed values, so `[role='maintainer']` matches `role=maintainer` however the source quoted it.
+- Single quotes, double quotes, and unquoted values all work in a selector.
+- Matching uses the marker's current attributes, so a marker updated in an earlier call is matched as it now reads.
+- Combinators, selector lists, pseudo-classes, and operators other than `=` are rejected instead of quietly matching nothing.
 
 ## API
 
-### `commentMark(input, data)`
+### `commentMark(input, replacements)`
 
-Replace marked sections with values from `data`. This function transforms content in memory; it does not read or write files.
+Replace marked sections. This function transforms content in memory; it does not read or write files.
 
 ```js
 import { commentMark } from 'comment-mark'
 
-const updated = commentMark('Version: <!--comment-mark id="version"-->1.0.0<!--/comment-mark-->', {
+const updated = commentMark('Version: <!-- version -->1.0.0<!-- /version -->', {
     version: '2.0.0'
 })
 
 console.log(updated)
-// Version: <!--comment-mark id="version"-->2.0.0<!--/comment-mark-->
+// Version: <!-- version -->2.0.0<!-- /version -->
 ```
 
-- `input` (`string | Buffer`): Markdown or HTML content
-- `data` (`Record<string, string | null | undefined>`): Values keyed by marker `id`
+- `input` (`string | Buffer | CommentDocument`): Markdown or HTML content, or a document from `createDocument`
+- `replacements` (`Record<string, string | null | undefined | readonly (string | null | undefined)[]>`): Values keyed by selector
 
 Returns the updated content as a string. Buffer input is decoded as UTF-8.
 
-- Updates every matching occurrence of each supplied key.
-- Skips `null` and `undefined` values. An empty string clears the section.
-- Silently skips keys with no matching marker. Unlike the CLI, the API does not report missing keys.
+- A string replaces the first matching section.
+- An array replaces matches by position in document order: entry `0` updates the first match, entry `1` the second, and so on. Matches past the end of the array are left alone.
+- A `null` or `undefined` entry consumes its position without replacing anything.
+- Silently skips selectors with no matching marker. Unlike the CLI, the API does not report missing selectors.
+- Rejects an array with more values than matches, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
 - Wraps values containing `\n` in an additional newline on each side.
-- Throws when a marker has no closing comment, is nested, or has malformed attributes.
+- Throws when a marker is malformed or nested.
 
 Indented code blocks and code spans that wrap across lines are not detected as code, so a marker placed there is treated as real. Put active markers in prose, and put literal examples inside fenced code or single-line inline code.
 
+### `createDocument(input)`
+
+Parse `input` once and query it repeatedly:
+
+```js
+import { createDocument } from 'comment-mark'
+
+const document = createDocument('<!-- version -->1.0.0<!-- /version -->')
+const version = document.querySelector('version')
+
+if (version) {
+    version.content = '2.0.0'
+}
+
+console.log(document.toString())
+// <!-- version -->2.0.0<!-- /version -->
+```
+
+- `querySelector(selector)` returns the first match, or `null`.
+- `querySelectorAll(selector?)` returns matches in document order, or every marker when no selector is given.
+- `toString()` returns the source with pending changes applied, and returns the same string on every call.
+- Repeated queries return the same marker object.
+- Passing a document to `commentMark` updates that document and returns its rendered source.
+- `commentMark` resolves every selector before applying any replacement, so one replacement cannot change which markers another targets.
+- A document keeps the source it was parsed from. Call `createDocument(document.toString())` to parse new markers.
+
+Each marker exposes `tagName`, `content`, `attributes`, `getAttribute(name)`, and `hasAttribute(name)`. A content assignment is raw text: it is not re-parsed into new markers.
+
+### `getCommentMark(input, selector)`
+
+Return the first matching marker, or `null`:
+
+```js
+import { getCommentMark } from 'comment-mark'
+
+const version = getCommentMark('Version: <!-- version -->2.0.0<!-- /version -->', 'version')
+
+console.log(version?.content)
+// 2.0.0
+```
+
+### `getCommentMarkAll(input, selector?)`
+
+Return every matching marker in document order:
+
+```js
+import { getCommentMarkAll } from 'comment-mark'
+
+const markers = getCommentMarkAll('<!-- item kind="fruit" -->apple<!-- /item -->', "item[kind='fruit']")
+
+console.log(markers[0].tagName, markers[0].content)
+// item apple
+```
+
+Omitting the selector returns every recognized marker. Each entry exposes `tagName`, `content`, `attributes`, `getAttribute(name)`, and `hasAttribute(name)`, and serializes to `{ tagName, attributes, content }`.
+
 ### `getCommentMarks(input)`
 
-Read named markers into an object keyed by `id`:
+Read marker content into an object keyed by tag name:
 
 ```js
 import { getCommentMarks } from 'comment-mark'
 
-const sections = getCommentMarks('Version: <!--comment-mark id="version"-->2.0.0<!--/comment-mark-->')
+const sections = getCommentMarks('Version: <!-- version -->2.0.0<!-- /version -->')
 
 console.log(sections.version)
 // 2.0.0
 ```
 
-- `input` (`string | Buffer`): Markdown or HTML content
-- Returns `Record<string, string>` with no inherited properties. Markers without an `id` have no property.
+- Returns `Record<string, string>` with no inherited properties.
+- Uses the last occurrence when a tag name appears more than once.
 - Preserves section content exactly, including whitespace and newlines.
-- Uses the last occurrence when a marker appears more than once.
-- Throws when a marker is malformed, nested, or missing its closing comment.
+- Use `getCommentMarkAll` when you need every occurrence, its attributes, or document order.
 
 ## Example: Git contributors
 
@@ -195,7 +289,7 @@ Add a section to `README.md`:
 
 ```md
 ## Contributors
-<!--comment-mark id="contributors"--><!--/comment-mark-->
+<!-- contributors --><!-- /contributors -->
 ```
 
 Fill it with the output of `git shortlog`:
@@ -208,10 +302,10 @@ For a repository with two contributors, the result looks like:
 
 ```md
 ## Contributors
-<!--comment-mark id="contributors"-->
+<!-- contributors -->
     17  John Doe <john.doe@example.com>
      5  Jane Smith <jane.smith@example.com>
-<!--/comment-mark-->
+<!-- /contributors -->
 ```
 
 Shell command substitution removes trailing newlines. For multiline values, comment-mark adds a newline at each end so the content sits between the marker lines.
@@ -227,6 +321,10 @@ Shell command substitution removes trailing newlines. For multiline values, comm
 
 HTML comments are hidden in rendered Markdown but remain visible in the source. They mark where generated content belongs without adding visible template syntax to the document.
 
+### How does comment-mark tell a marker from an ordinary comment?
+
+A comment is a marker only when a later comment closes the same tag name, as `<!-- contributors -->` is closed by `<!-- /contributors -->`. Every other comment stays ordinary text, so `<!-- TODO -->`, `<!-- TODO: fix this -->`, and `<!-- 1 + 1 -->` are left alone.
+
 ### Why use a pair of comments?
 
 The opening and closing comments delimit the content to replace. Both stay in the output, so later updates can find the same section without a separate template file.
@@ -237,11 +335,11 @@ Fenced code blocks (backtick or tilde, including blockquote prefixes) and single
 
 ### Why are nested markers rejected?
 
-A marker's content runs until its closing comment. Allowing another opening marker inside would make that boundary ambiguous, so nested markers abort parsing instead of pairing unpredictably.
+A marker's content runs until its closing comment. Allowing another marker pair inside would make that boundary ambiguous, so nesting aborts parsing instead of pairing unpredictably.
 
-### Why does the marker use an `id` attribute?
+### Why does a marker have a tag name and attributes?
 
-The attribute form leaves room for additional, caller-defined attributes. comment-mark stores them on the marker's `attributes` and does not interpret them. A marker can also omit `id`; read mode in the CLI still lists it, while `commentMark` and `getCommentMarks` key off `id` and skip unnamed markers.
+The tag name names the section, and attributes describe it. Together they form a selector, so a document can hold several sections of the same kind and each one can be addressed by what distinguishes it.
 
 ## Related
 
