@@ -49,7 +49,7 @@ npx comment-mark <file> [--<id>=<value>...]
 | `id` appears more than once | `commentMark` updates all; `getCommentMarks` keeps the last |
 | Section content must be computed from its current value | Pass a function in `commentMark`; it receives `(attributes, content)` for each occurrence |
 | A marker's attributes must be updated | Return `{ attributes }` from a function value; it replaces the attributes other than `id`, so spread the received `attributes` to keep the rest |
-| An attribute value must be written back | Values are re-encoded as needed. Unchanged attributes keep their written text, including quoting |
+| A changed value has quotes, spaces, or `-->` | comment-mark re-encodes it, reusing the original quoting when the value fits, and throws for a value it cannot write |
 | Marker missing during update | The API skips it; the CLI prints `Missing` and exits `1` |
 | Value is multiline | A static string gets surrounding newlines; a function return value is inserted verbatim |
 | Need every marker, in document order, with attributes | Use CLI read mode; `getCommentMarks` collapses duplicates and omits unnamed markers |
