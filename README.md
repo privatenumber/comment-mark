@@ -167,7 +167,7 @@ Attributes are optional and carry metadata for the section. They are written aft
 
 - The closing comment repeats the tag name, so `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
 - Whitespace inside the comments is padding: `<!-- contributors -->` and `<!--contributors-->` are equivalent.
-- The content between the comments is replaced; the comments themselves are kept.
+- The content between the comments is replaced; the comment pair stays in the output so later updates can find the section.
 - A tag name starts with a letter or `_`, then letters, digits, `_`, or `-`.
 - Tag names and attribute names are case-sensitive and matched verbatim.
 - Attribute values are literal text: surrounding quotes are removed and HTML entities are not decoded.
@@ -243,9 +243,9 @@ Returns the updated content as a string. Buffer input is decoded as UTF-8.
 - An array replaces matches by position in document order: entry `0` updates the first match, entry `1` the second, and so on. Matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
 - Resolves every selector before applying any replacement, so one replacement cannot change which markers another targets.
-- A function value runs once per matching occurrence, in document order, and receives that occurrence's attributes and content. Its string result is inserted verbatim, with no added newline.
+- A function value runs for each match it targets, in document order, and receives that match's attributes and content. A scalar targets only the first match; an array of functions runs one per entry. Its string result is inserted verbatim, with no added newline.
 - An object result replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.
-- A changed attribute value is written back in place. The whitespace around `=`, the indentation, the line endings, and the quoting stay as written, and the value keeps its original quoting when it still fits it. A new attribute is appended as `name="value"`.
+- A changed attribute value is written back in place, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses its original quoting when it still fits, and is re-quoted otherwise. A new attribute is appended as `name="value"`.
 - Silently skips selectors with no matching marker. Unlike the CLI, the API does not report missing selectors.
 - Rejects an array with more values than matches, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
