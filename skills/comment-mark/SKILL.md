@@ -16,7 +16,7 @@ This skill covers comment-mark's marker syntax, selectors, JavaScript API, and C
 - A marker is a matching pair of comments. The opening comment names the section with a tag name and optional attributes; the closing comment repeats the tag name after a `/`.
 - The pair is what makes it a marker: `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
 - Whitespace inside the comments is padding, so `<!-- contributors -->` and `<!--contributors-->` are equivalent.
-- Updates replace only the content between the comments. The comments themselves are preserved.
+- An update replaces the content between the comments; the opening comment's attributes can also change. The tag name and the closing comment stay as written, so later updates still find the section.
 - A marker pair cannot sit inside another marker pair. Nesting aborts parsing.
 - Tag names and attribute names are case-sensitive and matched verbatim.
 
@@ -43,17 +43,15 @@ A selector is a tag name plus optional attribute predicates:
 | `createDocument(input)` | Parse once and query repeatedly | `CommentDocument` |
 | `getCommentMark(input, selector)` | Read the first matching marker | `CommentMark` or `null` |
 | `getCommentMarkAll(input, selector?)` | Read every matching marker in document order | `CommentMark[]` |
-| `getCommentMarks(input)` | Read content keyed by tag name | `Record<string, string>`, null prototype |
 
 - A string replaces the first matching section. An array replaces matches by position in document order, and matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
 - `commentMark` silently skips selectors with no matching marker, but rejects an array with more values than matches, and two selectors that target the same marker.
 - A multiline static string value gets a newline added on each side.
-- A function value receives `(attributes, content)` once per matching occurrence, in document order, and its string result is inserted verbatim, with no added newline. Returning `null`/`undefined` preserves the section.
+- A function value receives `(attributes, content)` for each match it targets, in document order, and its string result is inserted verbatim, with no added newline. A scalar targets only the first match; an array of functions runs one per entry. Returning `null`/`undefined` preserves the section.
 - A function value can return an object instead: `{ attributes?, content? }` replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.
 - `createDocument(input)` returns a document with `querySelector(selector)` and `querySelectorAll(selector?)`, and `toString()` renders pending changes. A marker exposes `tagName`, `content`, `attributes`, `getAttribute`, `hasAttribute`, `setAttribute`, and `removeAttribute`. `commentMark(document, replacements)` updates that document and returns its rendered source.
-- Setting an attribute rewrites only its value, keeping the whitespace around `=`, the indentation, the line endings, and the original quoting. Removing one drops the attribute and the whitespace written before it.
-- `getCommentMarks` keeps the last occurrence of a duplicate tag name. Use `getCommentMarkAll` when you need every occurrence, attributes, or document order.
+- Setting an attribute rewrites only its value, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses the original quoting when it fits and is re-quoted otherwise. Removing one drops the attribute and the whitespace written before it.
 
 ## CLI
 
@@ -68,14 +66,14 @@ npx comment-mark <file> [--<selector>=<value>...]
 | Situation | Do this |
 | --- | --- |
 | A file documents the marker syntax | Put examples in a fenced code block or inline code so they are ignored |
-| A tag name appears more than once | A scalar replaces the first match; pass an array to reach the others. `getCommentMarks` keeps the last |
-| Section content must be computed from its current value | Pass a function in `commentMark`; it receives `(attributes, content)` for each occurrence |
+| A tag name appears more than once | A scalar replaces the first match; pass an array to reach the others |
+| Section content must be computed from its current value | Pass a function in `commentMark`; it receives `(attributes, content)` for the match it targets |
 | A marker's attributes must be updated | Return `{ attributes }` from a function value, or call `setAttribute` on a marker. The returned map is the complete set, so spread the received `attributes` to keep the rest |
 | A changed value has quotes, spaces, or `-->` | comment-mark re-encodes it, reusing the original quoting when the value fits, and throws for a value it cannot write |
 | A selector contains `=` | Quote the whole CLI flag; the first `=` outside brackets and quotes separates the flag from its value |
 | Marker missing during update | The API skips the selector; the CLI prints `Missing` and exits `1` |
 | Value is multiline | A static string gets surrounding newlines; a function return value is inserted verbatim |
-| Need every marker, in document order, with attributes | Use `getCommentMarkAll` or CLI read mode; `getCommentMarks` collapses duplicates |
+| Need every marker, in document order, with attributes | Use `getCommentMarkAll` or CLI read mode |
 | A comment must stay ordinary | Leave it unpaired; only a matched opening and closing pair is a marker |
 | v2 `<!-- name:start -->` markers | Read `references/migration-v2.md` |
 

@@ -19,7 +19,7 @@ The closing comment repeats the name after a `/`. A comment is a marker only whe
 | v2 | v3 |
 | --- | --- |
 | `commentMark(input, data)` | Values are keyed by selector instead of name. A string replaces the first match, an array replaces matches by position, and a function value receives `(attributes, content)` and returns a string or an `{ attributes?, content? }` update. Unlike v2, it validates the whole document |
-| `getCommentMarks(input)` | Same signature and object shape, now keyed by tag name |
+| `getCommentMarks(input)` | Removed. Use `getCommentMark(input, selector)` for the first match, or `getCommentMarkAll(input, selector)` for every marker in document order |
 | none | New: `createDocument`, `getCommentMark`, and `getCommentMarkAll` read markers with their attributes, and a marker's `setAttribute` / `removeAttribute` update them |
 
 ## CLI
@@ -41,7 +41,7 @@ v3 requires Node.js 22.22.2 or newer. v2 supported Node.js 20.
 | Change | Consequence |
 | --- | --- |
 | Markers in fenced code and inline code are ignored | A v2 marker shown as a documentation example no longer updates. This is the fix that stops examples from being treated as real markers |
-| Only a matched comment pair is a marker | An unclosed `<!-- name -->` is left alone instead of throwing, and `<!-- TODO -->` is never treated as a marker. A marker pair nested inside another aborts parsing with `Nested marker ... is not supported` |
+| Only a matched comment pair is a marker | An unclosed `<!-- name -->` is left alone instead of throwing, and `<!-- TODO -->` stays ordinary text unless a matching `<!-- /TODO -->` follows. A marker pair nested inside another aborts parsing with `Nested marker ... is not supported` |
 | Markers are selected, not looked up by name | `commentMark` keys are selectors. A tag name selects on its own, and attribute predicates narrow it: `contributors[role='maintainer']` |
 | A scalar replaces the first match | v2 updated every marker with a matching name. Pass an array to update several matches by position |
 | Attribute values have a grammar | v2 marker names were free-form text. Attributes must be separated by whitespace, and `id="a"file="b"` throws `Expected whitespace between attributes` |
