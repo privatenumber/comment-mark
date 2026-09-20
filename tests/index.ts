@@ -862,6 +862,36 @@ describe('heading context', () => {
 	});
 });
 
+describe('markers in headings', () => {
+	test('finds a marker on an ATX heading line', () => {
+		const content = '# <!-- title -->Old<!-- /title -->';
+
+		expect(getCommentMarkAll(content)).toStrictEqual([
+			{
+				tagName: 'title',
+				attributes: {},
+				content: 'Old',
+			},
+		]);
+		expect(commentMark(content, { title: 'New' })).toBe('# <!-- title -->New<!-- /title -->');
+	});
+
+	test('ignores a marker example in inline code on a heading line', () => {
+		const content = `# \`${createMarker('title', 'example')}\``;
+
+		expect(getCommentMarkAll(content)).toStrictEqual([]);
+		expect(commentMark(content, { title: 'New' })).toBe(content);
+	});
+
+	test('finds a marker on a heading inside a blockquote', () => {
+		expect(getCommentMark('> # <!-- title -->Old<!-- /title -->', 'title')?.content).toBe('Old');
+	});
+
+	test('finds a marker on a heading inside a list item', () => {
+		expect(getCommentMark('- # <!-- title -->Old<!-- /title -->', 'title')?.content).toBe('Old');
+	});
+});
+
 describe('line endings', () => {
 	test('a marker after a closed fence is recognized in a CR-only document', () => {
 		const content = ['~~~', 'code', '~~~', createMarker('x', 'real')].join('\r');

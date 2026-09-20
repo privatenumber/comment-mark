@@ -4,10 +4,10 @@ import {
 	type Fence,
 	closesFence,
 	continueContainer,
-	isAtxHeading,
 	isBlank,
 	isSetextUnderline,
 	isThematicBreak,
+	matchAtxHeading,
 	matchBlockquote,
 	matchFence,
 	matchListMarker,
@@ -253,9 +253,12 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		// A heading is a leaf block, so it closes a paragraph instead of opening
 		// one. Leaving a paragraph open would make a following ordered list look
 		// like a paragraph interruption, and the list's fence would then expose
-		// an example marker as real.
-		if (isAtxHeading(line, cursor)) {
+		// an example marker as real. Its content is scanned, so a marker written
+		// in the heading is still found.
+		const headingContent = matchAtxHeading(line, cursor);
+		if (headingContent !== undefined) {
 			inParagraph = false;
+			scanInline(line, lineStart, headingContent);
 			return;
 		}
 

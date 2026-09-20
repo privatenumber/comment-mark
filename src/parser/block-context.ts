@@ -358,14 +358,16 @@ export const isThematicBreak = (line: string, cursor: Cursor) => {
 
 /**
  * Matches an ATX heading: one to six `#` followed by a space, a tab, or the end
- * of the line, indented up to three columns.
+ * of the line, indented up to three columns. Returns the index the heading's
+ * content starts at, or undefined.
  *
  * A heading is a leaf block. The scanner treats it like a paragraph while it is
  * being read, but it must not leave a paragraph open for the next line, or a
  * following ordered list would be rejected as a paragraph interruption and its
- * fenced example would be treated as a real marker.
+ * fenced example would be treated as a real marker. The content is scanned like
+ * any other line, so a marker written in a heading is still a marker.
  */
-export const isAtxHeading = (line: string, cursor: Cursor) => {
+export const matchAtxHeading = (line: string, cursor: Cursor) => {
 	let { index } = cursor;
 	let indent = cursor.pending;
 
@@ -374,7 +376,7 @@ export const isAtxHeading = (line: string, cursor: Cursor) => {
 		indent += 1;
 	}
 	if (indent > 3) {
-		return false;
+		return undefined;
 	}
 
 	let hashes = 0;
@@ -382,11 +384,21 @@ export const isAtxHeading = (line: string, cursor: Cursor) => {
 		hashes += 1;
 	}
 	if (hashes < 1 || hashes > 6) {
-		return false;
+		return undefined;
 	}
 
 	const next = line[index + hashes];
-	return next === undefined || next === ' ' || next === '\t';
+	if (next !== undefined && next !== ' ' && next !== '\t') {
+		return undefined;
+	}
+
+	// Skip the separator so the caller scans the heading's text.
+	let content = index + hashes;
+	while (line[content] === ' ' || line[content] === '\t') {
+		content += 1;
+	}
+
+	return content;
 };
 
 /**
