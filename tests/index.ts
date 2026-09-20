@@ -1180,7 +1180,10 @@ describe('attribute updates', () => {
 			item: () => ({ attributes: { a: 'x-->y' } }),
 		})).toThrow('[comment-mark] Attribute value cannot contain "-->"');
 
-		expect(document.querySelector('item')?.attributes).toStrictEqual({ a: '1', b: '2' });
+		expect(document.querySelector('item')?.attributes).toStrictEqual({
+			a: '1',
+			b: '2',
+		});
 		expect(document.toString()).toBe('<!-- item a="1" b="2" -->x<!-- /item -->');
 	});
 
@@ -1188,7 +1191,10 @@ describe('attribute updates', () => {
 		const document = createDocument('<!-- item a="1" -->x<!-- /item -->');
 
 		expect(() => commentMark(document, {
-			item: () => ({ content: 'new', attributes: { a: 'x-->y' } }),
+			item: () => ({
+				content: 'new',
+				attributes: { a: 'x-->y' },
+			}),
 		})).toThrow('[comment-mark] Attribute value cannot contain "-->"');
 
 		expect(document.querySelector('item')?.content).toBe('x');
