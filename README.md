@@ -113,7 +113,7 @@ For the quick-start result:
 [
     {
         "id": "lastUpdated",
-        "attrs": {},
+        "attributes": {},
         "content": "2026-09-07"
     }
 ]
@@ -241,7 +241,7 @@ A marker's content runs until its closing comment. Allowing another opening mark
 
 ### Why does the marker use an `id` attribute?
 
-The attribute form leaves room for additional, caller-defined attributes. comment-mark stores them on the marker's `attrs` and does not interpret them. A marker can also omit `id`; read mode in the CLI still lists it, while `commentMark` and `getCommentMarks` key off `id` and skip unnamed markers.
+The attribute form leaves room for additional, caller-defined attributes. comment-mark stores them on the marker's `attributes` and does not interpret them. A marker can also omit `id`; read mode in the CLI still lists it, while `commentMark` and `getCommentMarks` key off `id` and skip unnamed markers.
 
 ## Related
 
