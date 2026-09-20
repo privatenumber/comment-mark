@@ -263,25 +263,7 @@ console.log(markers[0].tagName, markers[0].content)
 // item apple
 ```
 
-Omitting the selector returns every recognized marker. Each entry exposes `tagName`, `content`, `attributes`, `getAttribute(name)`, and `hasAttribute(name)`, and serializes to `{ tagName, attributes, content }`.
-
-### `getCommentMarks(input)`
-
-Read marker content into an object keyed by tag name:
-
-```js
-import { getCommentMarks } from 'comment-mark'
-
-const sections = getCommentMarks('Version: <!-- version -->2.0.0<!-- /version -->')
-
-console.log(sections.version)
-// 2.0.0
-```
-
-- Returns `Record<string, string>` with no inherited properties.
-- Uses the last occurrence when a tag name appears more than once.
-- Preserves section content exactly, including whitespace and newlines.
-- Use `getCommentMarkAll` when you need every occurrence, its attributes, or document order.
+Omitting the selector returns every recognized marker. Each entry exposes `tagName`, `content`, `attributes`, `getAttribute(name)`, and `hasAttribute(name)`, and serializes to `{ tagName, attributes, content }`. Every occurrence is kept, so a tag name can appear more than once.
 
 ## Example: Git contributors
 

@@ -9,7 +9,6 @@ import {
 	createDocument,
 	getCommentMark,
 	getCommentMarkAll,
-	getCommentMarks,
 } from '#comment-mark';
 import { commentMarkCli } from './utils/comment-mark-cli.js';
 
@@ -458,62 +457,6 @@ describe('document', () => {
 	});
 });
 
-describe('getCommentMarks', () => {
-	test('returns marked contents keyed by tag name', () => {
-		const commentMarks = getCommentMarks(`
-			${createMarker('a', 'hello world')}
-			<!-- b -->
-goodbye world
-<!-- /b -->
-		`);
-
-		expect(commentMarks).toEqual({
-			a: 'hello world',
-			b: '\ngoodbye world\n',
-		});
-	});
-
-	test('returns an empty object when no markers exist', () => {
-		expect(getCommentMarks('<!-- ordinary comment -->')).toEqual({});
-	});
-
-	test('returns empty marked contents', () => {
-		expect(getCommentMarks(createMarker('a'))).toEqual({ a: '' });
-	});
-
-	test('uses the last duplicate tag name', () => {
-		expect(getCommentMarks(`${createMarker('a', 'first')}${createMarker('a', 'last')}`)).toEqual({ a: 'last' });
-	});
-
-	test('supports Buffer input', () => {
-		expect(getCommentMarks(Buffer.from(createMarker('a', 'hello world')))).toEqual({ a: 'hello world' });
-	});
-
-	test('round trips marked values', () => {
-		const data = {
-			a: 'hello world',
-			b: 'goodbye world\nhello again',
-		};
-		const output = commentMark(`${createMarker('a')}${createMarker('b')}`, data);
-
-		expect(getCommentMarks(output)).toEqual({
-			a: 'hello world',
-			b: '\ngoodbye world\nhello again\n',
-		});
-	});
-
-	test('returned object has no inherited properties', () => {
-		expect(getCommentMarks(createMarker('a', 'hello world')).toString).toBe(undefined);
-	});
-
-	test('supports tag names named like Object properties', () => {
-		const commentMarks = getCommentMarks(createMarker('__proto__', 'hello world'));
-
-		expect(Object.hasOwn(commentMarks, '__proto__')).toBe(true);
-		expect(Object.entries(commentMarks)).toEqual([['__proto__', 'hello world']]);
-	});
-});
-
 describe('getCommentMark and getCommentMarkAll', () => {
 	test('returns markers in document order', () => {
 		expect(getCommentMarkAll(`${createMarker('a', 'first')}\n${createMarker('b', 'second')}`)).toStrictEqual([
@@ -542,6 +485,49 @@ describe('getCommentMark and getCommentMarkAll', () => {
 
 	test('returns an empty array when no markers exist', () => {
 		expect(getCommentMarkAll('<!-- ordinary comment -->')).toStrictEqual([]);
+	});
+
+	test('keeps every occurrence of a duplicate tag name', () => {
+		const content = [
+			'<!-- item kind="fruit" -->apple<!-- /item -->',
+			'<!-- item kind="fruit" -->pear<!-- /item -->',
+		].join('\n');
+
+		expect(getCommentMarkAll(content).map(mark => [mark.tagName, mark.content])).toStrictEqual([
+			['item', 'apple'],
+			['item', 'pear'],
+		]);
+		expect(getCommentMark(content, 'item')?.content).toBe('apple');
+	});
+
+	test('returns empty content for an empty marker', () => {
+		expect(getCommentMarkAll(createMarker('a'))).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: '',
+			},
+		]);
+	});
+
+	test('supports Buffer input', () => {
+		expect(getCommentMarkAll(Buffer.from(createMarker('a', 'hello world')))).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: 'hello world',
+			},
+		]);
+	});
+
+	test('supports tag names named like Object properties', () => {
+		expect(getCommentMarkAll(createMarker('__proto__', 'hello world'))).toStrictEqual([
+			{
+				tagName: '__proto__',
+				attributes: {},
+				content: 'hello world',
+			},
+		]);
 	});
 });
 
@@ -926,7 +912,6 @@ describe('public API', () => {
 			'createDocument',
 			'getCommentMark',
 			'getCommentMarkAll',
-			'getCommentMarks',
 		]);
 	});
 });

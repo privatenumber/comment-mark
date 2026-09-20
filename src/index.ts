@@ -53,21 +53,3 @@ export const getCommentMark = (input: string | Buffer | CommentDocument, selecto
 export const getCommentMarkAll = (input: string | Buffer | CommentDocument, selector?: string) => (
 	toDocument(input).querySelectorAll(selector)
 );
-
-/**
- * Returns marker content keyed by tag name. Duplicate tag names collapse to the
- * last occurrence; use `getCommentMarkAll` for every occurrence and its
- * attributes.
- */
-export const getCommentMarks = (
-	input: string | Buffer | CommentDocument,
-): Record<string, string> => {
-	// Null-prototype dictionary so tag names never collide with inherited properties.
-	const commentMarks: Record<string, string> = Object.create(null);
-
-	for (const mark of getCommentMarkAll(input)) {
-		commentMarks[mark.tagName] = mark.content;
-	}
-
-	return commentMarks;
-};
