@@ -1172,6 +1172,28 @@ describe('attribute updates', () => {
 			'[comment-mark] Attribute value cannot be quoted',
 		);
 	});
+
+	test('keeps the attribute set when a replacement is rejected', () => {
+		const document = createDocument('<!-- item a="1" b="2" -->x<!-- /item -->');
+
+		expect(() => commentMark(document, {
+			item: () => ({ attributes: { a: 'x-->y' } }),
+		})).toThrow('[comment-mark] Attribute value cannot contain "-->"');
+
+		expect(document.querySelector('item')?.attributes).toStrictEqual({ a: '1', b: '2' });
+		expect(document.toString()).toBe('<!-- item a="1" b="2" -->x<!-- /item -->');
+	});
+
+	test('leaves content unchanged when a replacement is rejected', () => {
+		const document = createDocument('<!-- item a="1" -->x<!-- /item -->');
+
+		expect(() => commentMark(document, {
+			item: () => ({ content: 'new', attributes: { a: 'x-->y' } }),
+		})).toThrow('[comment-mark] Attribute value cannot contain "-->"');
+
+		expect(document.querySelector('item')?.content).toBe('x');
+		expect(document.toString()).toBe('<!-- item a="1" -->x<!-- /item -->');
+	});
 });
 
 describe('resolver reentrancy', () => {
