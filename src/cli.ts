@@ -33,37 +33,7 @@ const argv = cli({
 	help: false,
 });
 
-const { unknownFlags, showHelp } = argv;
-
-const isBareFlag = (flagName: string) => {
-	const values = unknownFlags[flagName];
-	return values?.length === 1 && values[0] === true;
-};
-
-// Handle control flags manually so only the bare form reserves the action
-// (cleye convention); `--help=<value>`/`--version=<value>` stay as markers.
-if (isBareFlag('help') || isBareFlag('h')) {
-	showHelp(helpOptions);
-	process.exit(0);
-}
-
-if (isBareFlag('version')) {
-	console.log(version);
-	process.exit(0);
-}
-
-const filePath = argv._.file;
-
-// Inline exit (rather than the exitWithError helper) so TypeScript's control
-// flow analysis narrows `filePath` to a string below.
-if (!filePath) {
-	console.error('Error: Missing required parameter "<file>"');
-	process.exit(1);
-}
-
-if (argv._.length > 1) {
-	exitWithError(`Unexpected extra arguments: ${argv._.slice(1).join(', ')}`);
-}
+const { showHelp } = argv;
 
 // Null-prototype so selectors never collide with inherited properties.
 const data: Record<string, string> = Object.create(null);
@@ -115,19 +85,43 @@ const findFlagSeparator = (flag: string) => {
 };
 
 const flagCounts = new Map<string, number>();
+const bareFlags = new Set<string>();
 
 for (const argument of process.argv.slice(2)) {
-	if (!argument.startsWith('--') || argument.length < 3) {
+	// `--` ends flag parsing, so the rest of the line is positional.
+	if (argument === '--') {
+		break;
+	}
+
+	// A positional file or extra argument; cleye reports these through `_`.
+	if (!argument.startsWith('-') || argument === '-') {
 		continue;
+	}
+
+	// `-h` is the only short flag. Other single-dash arguments would be split
+	// into short flags by cleye and the intended selector would disappear, so
+	// they are rejected instead of silently turning the run into read mode.
+	if (argument === '-h') {
+		bareFlags.add('h');
+		continue;
+	}
+	if (!argument.startsWith('--')) {
+		exitWithError(`Unknown flag ${JSON.stringify(argument)} (expected --<selector>=<value>)`);
 	}
 
 	const flag = argument.slice(2);
 	const separator = findFlagSeparator(flag);
 	const selector = separator === -1 ? flag : flag.slice(0, separator);
 
-	// Bare control flags were handled above.
+	// A bare control flag reserves the action (cleye convention);
+	// `--help=<value>`/`--version=<value>` stay as markers.
 	if (separator === -1 && (selector === 'help' || selector === 'h' || selector === 'version')) {
+		bareFlags.add(selector);
 		continue;
+	}
+
+	if (selector === '') {
+		exitWithError(`Invalid flag ${JSON.stringify(argument)} (expected --<selector>=<value>)`);
 	}
 
 	flagCounts.set(selector, (flagCounts.get(selector) ?? 0) + 1);
@@ -136,6 +130,31 @@ for (const argument of process.argv.slice(2)) {
 		exitWithError(`No value provided for flag "--${selector}" (expected --${selector}=<value>)`);
 	}
 	data[selector] = flag.slice(separator + 1);
+}
+
+// Handle control flags before requiring a file, so `--help` and `--version`
+// work on their own.
+if (bareFlags.has('help') || bareFlags.has('h')) {
+	showHelp(helpOptions);
+	process.exit(0);
+}
+
+if (bareFlags.has('version')) {
+	console.log(version);
+	process.exit(0);
+}
+
+const filePath = argv._.file;
+
+// Inline exit (rather than the exitWithError helper) so TypeScript's control
+// flow analysis narrows `filePath` to a string below.
+if (!filePath) {
+	console.error('Error: Missing required parameter "<file>"');
+	process.exit(1);
+}
+
+if (argv._.length > 1) {
+	exitWithError(`Unexpected extra arguments: ${argv._.slice(1).join(', ')}`);
 }
 
 for (const [selector, count] of flagCounts) {

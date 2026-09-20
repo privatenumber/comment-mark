@@ -1204,6 +1204,25 @@ describe('CLI', () => {
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a'));
 	});
 
+	test('rejects a single-dash flag instead of reading the file', async () => {
+		// cleye would split `-a=new` into short flags and the selector would
+		// disappear, leaving read mode to exit 0 without updating anything.
+		await using fixture = await createFixture({ 'README.md': createMarker('a', 'old') });
+
+		await expect(commentMarkCli(fixture.getPath('README.md'), '-a=new')).rejects.toMatchObject({
+			exitCode: 1,
+			stderr: expect.stringContaining('Unknown flag "-a=new"'),
+		});
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a', 'old'));
+	});
+
+	test('shows help when a control flag is repeated', async () => {
+		// A repeated `--help` must not fall through to read mode.
+		const { stdout } = await commentMarkCli('--help', '--help');
+		expect(stdout).toContain('comment-mark');
+		expect(stdout).not.toContain('[]');
+	});
+
 	test('exits non-zero when the same flag is passed multiple times', async () => {
 		await using fixture = await createFixture({ 'README.md': createMarker('a') });
 
