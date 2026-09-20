@@ -9,6 +9,7 @@ Keep generated content, like contributor lists and benchmark results, alongside 
 - Reusable placeholders that are hidden when Markdown is rendered
 - Update sections from the CLI or JavaScript
 - Select sections by tag name and attributes, like a CSS selector
+- Compute section content and attributes from the marker's current values
 - Read marked content as JSON or a JavaScript object, preserving whitespace
 - Supports Markdown and HTML files, including multiline content
 - Ignores markers inside fenced code blocks and single-line inline code, so documentation examples stay literal
@@ -206,8 +207,35 @@ console.log(updated)
 // Version: <!-- version -->2.0.0<!-- /version -->
 ```
 
+A value can also be a function that computes the replacement from the section's own attributes and content:
+
+```js
+const updated = commentMark('<!-- views -->40<!-- /views -->', {
+    views: (attributes, content) => String(Number(content) + 1)
+})
+
+console.log(updated)
+// <!-- views -->41<!-- /views -->
+```
+
+Return an object instead of a string to update the marker's attributes, its content, or both:
+
+```js
+const updated = commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
+    item: attributes => ({
+        attributes: {
+            ...attributes,
+            size: 'small'
+        }
+    })
+})
+
+console.log(updated)
+// <!-- item kind="fruit" size="small" -->apple<!-- /item -->
+```
+
 - `input` (`string | Buffer`): Markdown or HTML content
-- `replacements` (object): Values keyed by selector. Each value is a string, `null`, `undefined`, or an array of those.
+- `replacements` (object): Values keyed by selector. Each value is a string, a function, `null`, `undefined`, or an array of those.
 
 Returns the updated content as a string. Buffer input is decoded as UTF-8.
 
@@ -215,11 +243,14 @@ Returns the updated content as a string. Buffer input is decoded as UTF-8.
 - An array replaces matches by position in document order: entry `0` updates the first match, entry `1` the second, and so on. Matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
 - Resolves every selector before applying any replacement, so one replacement cannot change which markers another targets.
+- A function value runs once per matching occurrence, in document order, and receives that occurrence's attributes and content. Its string result is inserted verbatim, with no added newline.
+- An object result replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.
+- A changed attribute value is written back in place. The whitespace around `=`, the indentation, the line endings, and the quoting stay as written, and the value keeps its original quoting when it still fits it. A new attribute is appended as `name="value"`.
 - Silently skips selectors with no matching marker. Unlike the CLI, the API does not report missing selectors.
 - Rejects an array with more values than matches, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
-- Wraps values containing `\n` in an additional newline on each side.
-- Throws when a marker is malformed or nested.
+- Wraps static values containing `\n` in an additional newline on each side.
+- Throws when a marker is malformed or nested, when a resolver throws, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
 
 An array updates matches by position, so one call can set repeated sections:
 
