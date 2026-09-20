@@ -54,14 +54,13 @@ export const parseMarks = (source: string, visit: MarkVisitor) => {
 			}
 
 			if (active) {
-				const { contentStart } = active;
-				const mark: CommentMark = {
-					attributes: active.attributes,
-					content: source.slice(contentStart, start),
-				};
-				if (active.id !== undefined) {
-					mark.id = active.id;
-				}
+				const { id, attributes, contentStart } = active;
+				const content = source.slice(contentStart, start);
+
+				// The id leads the object because read mode prints its keys in order.
+				const mark: CommentMark = id === undefined
+					? { attributes, content }
+					: { id, attributes, content };
 				visit(mark, contentStart, start);
 				active = undefined;
 			}
