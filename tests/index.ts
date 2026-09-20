@@ -113,6 +113,13 @@ describe('edge cases', () => {
 });
 
 describe('replacement', () => {
+	test('returns a string for valid input', () => {
+		// The annotation is the contract: adding document input must not widen
+		// the return type for ordinary string calls.
+		const output: string = commentMark(createMarker('a', 'old'), { a: 'new' });
+		expect(output).toBe(createMarker('a', 'new'));
+	});
+
 	test('basic', () => {
 		const output = commentMark(createMarker('a'), {
 			a: 'hello world',

@@ -24,14 +24,18 @@ export { createDocument } from './document.js';
 export const commentMark = (
 	input: string | Buffer | CommentDocument,
 	replacements: Record<string, CommentMarkReplacement>,
-) => {
+): string => {
 	if (
 		!input
 		|| replacements === null
 		|| replacements === undefined
 		|| typeof replacements !== 'object'
 	) {
-		return input;
+		// Invalid arguments are a no-op for JavaScript callers, mirroring the
+		// pre-document API by returning the input unchanged. Typed callers
+		// cannot reach this branch, so the string return still describes every
+		// supported call.
+		return input as string;
 	}
 
 	const document = toDocument(input);
