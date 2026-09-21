@@ -17,8 +17,8 @@ export const fixtures = {
 
 /**
  * Builds one line of backtick runs where every run length is unique, so no run
- * finds a partner and every one stays literal text. This is the worst case for
- * inline span matching.
+ * finds a partner and every one stays literal text, which keeps inline span
+ * matching walking the whole line.
  */
 export const distinctBacktickRuns = (count: number) => {
 	const runs: string[] = [];
