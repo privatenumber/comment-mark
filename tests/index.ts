@@ -934,7 +934,7 @@ describe('line endings', () => {
 describe('parser scaling', () => {
 	test('parses adversarial backtick runs within a linear-time budget', () => {
 		// Every run length is unique, so no run finds a partner and each one is
-		// literal text. That is the worst case for span matching.
+		// literal text, which keeps span matching walking the whole line.
 		const runs: string[] = [];
 		for (let length = 1; length <= 2048; length += 1) {
 			runs.push('`'.repeat(length));
