@@ -11,3 +11,5 @@ The parser reads the source by character index. A pattern carries its own scan p
 - Keep all scan state local to a single parse invocation.
 
 `tests/index.ts` parses the syntax tree of every file under `src/` and fails on a regular expression literal, a `RegExp` construction, or `String#match` / `matchAll` / `search`. Tests may still use regular expressions for assertions.
+
+`eslint.config.mts` reports the same usages through `no-restricted-syntax`, so an editor flags them while you type. Keep the `.mts` extension: `lintroll` loads the config through tsx, and a `.ts` config fails to import the lintroll plugin graph in this CommonJS package.
