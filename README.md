@@ -76,16 +76,18 @@ Pass each value as `--<selector>=<value>`. A tag name selects on its own, so the
 npx comment-mark README.md --lastUpdated="2026-09-07"
 ```
 
-Add attribute predicates to pick one section out of several:
-
-```sh
-npx comment-mark README.md --"contributors[role='maintainer']"="Jane Doe"
-```
+Give each section you update its own tag name. A unique tag name needs no quoting, and the flag reads as the section it updates. Attributes are metadata; putting one in a flag makes the command harder to type.
 
 A selector replaces the first matching section. Set several sections in one invocation:
 
 ```sh
 npx comment-mark README.md --contributors="Jane Doe" --lastUpdated="2026-09-07" --benchmarks="result"
+```
+
+If several sections do share a tag name, a selector can still narrow by attribute. Quote the whole flag, because the selector contains brackets:
+
+```sh
+npx comment-mark README.md --"contributors[role='maintainer']"="Jane Doe"
 ```
 
 For a file with a stale `contributors` section, a `lastUpdated` section already containing `2026-09-07`, and no `benchmarks` marker, the command writes the contributor update and reports on stderr:
@@ -148,7 +150,13 @@ Read mode preserves section whitespace and prints `[]` when no markers exist. It
 
 ## Markers
 
-A marker is a matching pair of HTML comments. The tag name names the section, and any attributes belong to it:
+A marker is a matching pair of HTML comments. The tag name names the section:
+
+```md
+<!-- contributors -->Jane<!-- /contributors -->
+```
+
+Attributes are optional and carry metadata for the section. They are written after the tag name:
 
 ```md
 <!-- contributors role="maintainer" -->Jane<!-- /contributors -->
@@ -171,6 +179,8 @@ A selector is a tag name followed by optional attribute predicates:
 | `contributors[role='maintainer']` | Markers whose `role` is `maintainer` |
 | `contributors[role='maintainer'][lang='en']` | Markers that satisfy every predicate |
 
+- A tag name on its own is usually enough. Give each section you update from the CLI its own tag name so the flag needs no quoting.
+- When several sections share a tag name, a predicate narrows them. Testing that an attribute exists (`contributors[role]`) is simpler than comparing its value.
 - Attribute values compare as parsed values, so `[role='maintainer']` matches `role=maintainer` however the source quoted it.
 - Single quotes, double quotes, and unquoted values all work in a selector.
 - Matching uses the marker's current attributes, so a marker updated in an earlier call is matched as it now reads.
@@ -257,10 +267,10 @@ Return every matching marker in document order:
 ```js
 import { getCommentMarkAll } from 'comment-mark'
 
-const markers = getCommentMarkAll('<!-- item kind="fruit" -->apple<!-- /item -->', "item[kind='fruit']")
+const markers = getCommentMarkAll('<!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', 'item')
 
-console.log(markers[0].tagName, markers[0].content)
-// item apple
+console.log(markers.map(marker => marker.content))
+// [ 'apple', 'pear' ]
 ```
 
 Omitting the selector returns every recognized marker. Each entry exposes `tagName`, `content`, `attributes`, `getAttribute(name)`, and `hasAttribute(name)`, and serializes to `{ tagName, attributes, content }`. Every occurrence is kept, so a tag name can appear more than once.
@@ -321,7 +331,7 @@ A marker's content runs until its closing comment. Allowing another marker pair 
 
 ### Why does a marker have a tag name and attributes?
 
-The tag name names the section, and attributes describe it. Together they form a selector, so a document can hold several sections of the same kind and each one can be addressed by what distinguishes it.
+The tag name names the section, and attributes describe it. Together they form a selector, so a document can hold several sections of the same kind and each one can be addressed by what distinguishes it. A unique tag name per section is usually simplest, especially for CLI updates; attributes are for when sections of the same kind need to be told apart.
 
 ## Related
 
