@@ -46,16 +46,16 @@
 		"lint": "lintroll . --cache",
 		"test": "tsx tests",
 		"dev": "tsx --conditions=development tests",
-		"build": "pkgroll --target=node20.0.0",
+		"build": "pkgroll --target=node22.22.2",
 		"type-check": "tsc",
 		"prepack": "pnpm build && clean-pkg-json",
 		"prepare": "skills-npm"
 	},
 	"engines": {
-		"node": ">=20"
+		"node": ">=22.22.2"
 	},
 	"dependencies": {
-		"cleye": "^2.6.0"
+		"cleye": "^3.0.0-beta.2"
 	},
 	"devDependencies": {
 		"@types/node": "^24.13.3",

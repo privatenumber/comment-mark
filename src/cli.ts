@@ -12,7 +12,7 @@ const helpOptions = {
 	description,
 	usage: `${name} <file> [--<marker>=<value>...]`,
 	examples: [
-		`${name} README.md --last-updated="$(date -Iseconds)"`,
+		`${name} README.md --lastUpdated="$(date -Iseconds)"`,
 		`${name} README.md --contributors="$(git shortlog -se HEAD -- .)"`,
 	],
 };
@@ -63,7 +63,8 @@ if (argv._.length > 1) {
 	exitWithError(`Unexpected extra arguments: ${argv._.slice(1).join(', ')}`);
 }
 
-const data: Record<string, string> = {};
+// Null-prototype so marker names never collide with inherited properties.
+const data: Record<string, string> = Object.create(null);
 
 for (const [marker, values] of Object.entries(unknownFlags)) {
 	if (values.length > 1) {
@@ -142,6 +143,11 @@ if (missing.length === Object.keys(data).length) {
 }
 
 if (updated.length === 0) {
+	report();
+	// Missing keys still fail here; only an all-unchanged request exits 0.
+	if (missing.length > 0) {
+		process.exit(1);
+	}
 	console.error(`${filePath} is unchanged. All ${Object.keys(data).length} requested values already match.`);
 	process.exit(0);
 }

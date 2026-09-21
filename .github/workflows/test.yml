@@ -3,7 +3,6 @@ on:
   push:
     branches: [develop]
   pull_request:
-    branches: [develop, master, next, next-major, beta, alpha]
 jobs:
   test:
     name: Test
@@ -39,12 +38,5 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22.23.2
-
-      - run: node_modules/.bin/tsx tests
-
-      - name: Test Node.js v20
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.20.2
 
       - run: node_modules/.bin/tsx tests

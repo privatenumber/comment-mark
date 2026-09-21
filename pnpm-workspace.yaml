@@ -3,3 +3,9 @@
 allowBuilds:
   esbuild: false
   unrs-resolver: false
+
+# type-flag and cleye are in-house packages, so their releases skip the
+# release-age soak. This lets a fix be adopted as soon as it is published.
+minimumReleaseAgeExclude:
+  - type-flag
+  - cleye
