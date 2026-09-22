@@ -1,9 +1,6 @@
-import { readdir, readFile } from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import { createFixture } from 'fs-fixture';
 import { describe, test, expect } from 'manten';
-import ts from 'typescript';
 import {
 	commentMark,
 	getCommentMark,
@@ -898,79 +895,6 @@ describe('public API', () => {
 			'getCommentMark',
 			'getCommentMarkAll',
 		]);
-	});
-});
-
-describe('source constraints', () => {
-	// Methods that coerce their argument to a regular expression.
-	const regexMethods = new Set(['match', 'matchAll', 'search']);
-
-	const classifyRegexUsage = (node: ts.Node) => {
-		if (ts.isRegularExpressionLiteral(node)) {
-			return 'a regular expression literal';
-		}
-		if (
-			(ts.isCallExpression(node) || ts.isNewExpression(node))
-			&& ts.isIdentifier(node.expression)
-			&& node.expression.text === 'RegExp'
-		) {
-			return 'a RegExp construction';
-		}
-		if (
-			ts.isPropertyAccessExpression(node)
-			&& regexMethods.has(node.name.text)
-		) {
-			return `String#${node.name.text}`;
-		}
-		return undefined;
-	};
-
-	const findRegexUsages = (fileName: string, source: string) => {
-		const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.ESNext);
-		const usages: string[] = [];
-
-		const visit = (node: ts.Node) => {
-			const usage = classifyRegexUsage(node);
-			if (usage) {
-				const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-				usages.push(`${fileName}:${line + 1} uses ${usage}`);
-			}
-			ts.forEachChild(node, visit);
-		};
-
-		visit(sourceFile);
-		return usages;
-	};
-
-	const listSourceFiles = async (directory: string): Promise<string[]> => {
-		const entries = await readdir(directory, { withFileTypes: true });
-		const grouped = await Promise.all(entries.map(async (entry) => {
-			const fullPath = path.join(directory, entry.name);
-			if (entry.isDirectory()) {
-				return listSourceFiles(fullPath);
-			}
-			return entry.name.endsWith('.ts') ? [fullPath] : [];
-		}));
-
-		return grouped.flat();
-	};
-
-	// The scanner reads by character index. Regular expressions are banned in
-	// source because shared pattern state let a reentrant parse corrupt an outer
-	// one, and because pattern-based block rules hid the order the scanner
-	// actually reads in. This walks the syntax tree, so it reports real regular
-	// expressions rather than text that resembles one.
-	test('src contains no regular expressions', async () => {
-		const sourceDirectory = fileURLToPath(new URL('../src', import.meta.url));
-		const files = await listSourceFiles(sourceDirectory);
-
-		const perFile = await Promise.all(files.map(async (file) => {
-			const source = await readFile(file, 'utf8');
-			return findRegexUsages(path.relative(process.cwd(), file), source);
-		}));
-		const usages = perFile.flat();
-
-		expect(usages).toStrictEqual([]);
 	});
 });
 

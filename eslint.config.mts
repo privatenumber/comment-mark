@@ -10,9 +10,9 @@ import { defineConfig, pvtnbr } from 'lintroll';
 // Performance is not a reason to reintroduce patterns: if an index-based scan
 // is too slow, make that scan faster.
 //
-// `tests/index.ts` walks the syntax tree of every file under `src/` as a second
-// guard, so the ban holds even when this config does not load. Both guards
-// cover `src/` only; tests may still use regular expressions in assertions.
+// These rules cover `src/` only; tests may still use regular expressions in
+// assertions. `pnpm lint` runs in CI, so a config that fails to load fails the
+// build instead of silently dropping the ban.
 //
 // Keep this config as `.mts`: lintroll loads it through tsx, and a `.ts` config
 // fails to import the lintroll plugin graph in this CommonJS package.
