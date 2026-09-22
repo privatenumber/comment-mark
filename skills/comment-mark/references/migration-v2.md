@@ -20,7 +20,7 @@ The closing comment repeats the name after a `/`. A comment is a marker only whe
 | --- | --- |
 | `commentMark(input, data)` | Values are keyed by selector instead of name. A string replaces the first match, an array replaces matches by position, and a function value receives `(attributes, content)` and returns a string or an `{ attributes?, content? }` update. Unlike v2, it validates the whole document |
 | `getCommentMarks(input)` | Removed. Use `getCommentMark(input, selector)` for the first match, or `getCommentMarkAll(input, selector)` for every marker in document order |
-| none | New: `createDocument`, `getCommentMark`, and `getCommentMarkAll` read markers with their attributes, and a marker's `setAttribute` / `removeAttribute` update them |
+| none | New: `getCommentMark` and `getCommentMarkAll` read markers as plain `{ tagName, attributes, content }` data |
 
 ## CLI
 
@@ -45,7 +45,7 @@ v3 requires Node.js 22.22.2 or newer. v2 supported Node.js 20.
 | Markers are selected, not looked up by name | `commentMark` keys are selectors. A tag name selects on its own, and attribute predicates narrow it: `contributors[role='maintainer']` |
 | A scalar replaces the first match | v2 updated every marker with a matching name. Pass an array to update several matches by position |
 | Attribute values have a grammar | v2 marker names were free-form text. Attributes must be separated by whitespace, and `id="a"file="b"` throws `Expected whitespace between attributes` |
-| Attributes can be updated | New capability: return `{ attributes }` from a function value, or call `setAttribute` on a marker, to rewrite a marker's attributes |
+| Attributes can be updated | New capability: return `{ attributes }` from a function value to rewrite a marker's attributes |
 | Updates validate the whole document | A malformed or nested marker anywhere aborts the update, even when it is unrelated to the requested selectors |
 
 ## Rewriting a tree

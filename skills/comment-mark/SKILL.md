@@ -1,6 +1,6 @@
 ---
 name: comment-mark
-description: Editing, updating, or reading comment-mark sections in Markdown or HTML, including the `comment-mark` CLI, the `commentMark` / `createDocument` / `getCommentMark` API, selectors, or migrating v2 `<!-- name:start -->` markers.
+description: Editing, updating, or reading comment-mark sections in Markdown or HTML, including the `comment-mark` CLI, the `commentMark` / `getCommentMark` API, selectors, or migrating v2 `<!-- name:start -->` markers.
 ---
 
 # comment-mark
@@ -40,9 +40,10 @@ A selector is a tag name plus optional attribute predicates:
 | Function | Purpose | Returns |
 | --- | --- | --- |
 | `commentMark(input, replacements)` | Replace marked sections, keyed by selector | Updated `string`; returns the input unchanged when required arguments are invalid |
-| `createDocument(input)` | Parse once and query repeatedly | `CommentDocument` |
-| `getCommentMark(input, selector)` | Read the first matching marker | `CommentMark` or `null` |
-| `getCommentMarkAll(input, selector?)` | Read every matching marker in document order | `CommentMark[]` |
+| `getCommentMark(input, selector)` | Read the first matching marker | Marker data, or `null` |
+| `getCommentMarkAll(input, selector?)` | Read every matching marker in document order | Marker data in document order |
+
+Marker data is a plain object: `{ tagName, attributes, content }`.
 
 - A string replaces the first matching section. An array replaces matches by position in document order, and matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
@@ -50,7 +51,6 @@ A selector is a tag name plus optional attribute predicates:
 - A multiline static string value gets a newline added on each side.
 - A function value receives `(attributes, content)` for each match it targets, in document order, and its string result is inserted verbatim, with no added newline. A scalar targets only the first match; an array of functions runs one per entry. Returning `null`/`undefined` preserves the section.
 - A function value can return an object instead: `{ attributes?, content? }` replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.
-- `createDocument(input)` returns a document with `querySelector(selector)` and `querySelectorAll(selector?)`, and `toString()` renders pending changes. A marker exposes `tagName`, `content`, `attributes`, `getAttribute`, `hasAttribute`, `setAttribute`, and `removeAttribute`. `commentMark(document, replacements)` updates that document and returns its rendered source.
 - Setting an attribute rewrites only its value, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses the original quoting when it fits and is re-quoted otherwise. Removing one drops the attribute and the whitespace written before it.
 
 ## CLI
@@ -68,7 +68,7 @@ npx comment-mark <file> [--<selector>=<value>...]
 | A file documents the marker syntax | Put examples in a fenced code block or inline code so they are ignored |
 | A tag name appears more than once | A scalar replaces the first match; pass an array to reach the others |
 | Section content must be computed from its current value | Pass a function in `commentMark`; it receives `(attributes, content)` for the match it targets |
-| A marker's attributes must be updated | Return `{ attributes }` from a function value, or call `setAttribute` on a marker. The returned map is the complete set, so spread the received `attributes` to keep the rest |
+| A marker's attributes must be updated | Return `{ attributes }` from a function value. The returned map is the complete set, so spread the received `attributes` to keep the rest |
 | A changed value has quotes, spaces, or `-->` | comment-mark re-encodes it, reusing the original quoting when the value fits, and throws for a value it cannot write |
 | A selector contains `=` | Quote the whole CLI flag; the first `=` outside brackets and quotes separates the flag from its value |
 | Marker missing during update | The API skips the selector; the CLI prints `Missing` and exits `1` |
