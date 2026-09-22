@@ -102,7 +102,9 @@ for (const argument of process.argv.slice(2)) {
 	// into short flags by cleye and the intended selector would disappear, so
 	// they are rejected instead of silently turning the run into read mode.
 	if (argument === '-h') {
-		bareFlags.add('h');
+		// `-h` is an alias of `--help`, so it shares the flag's count.
+		flagCounts.set('help', (flagCounts.get('help') ?? 0) + 1);
+		bareFlags.add('help');
 		continue;
 	}
 	if (!argument.startsWith('--')) {
@@ -116,12 +118,8 @@ for (const argument of process.argv.slice(2)) {
 	// A bare control flag reserves the action (cleye convention);
 	// `--help=<value>`/`--version=<value>` stay as markers. Repeating one is
 	// rejected like any other flag instead of quietly changing the action.
-	if (separator === -1 && (selector === 'help' || selector === 'h' || selector === 'version')) {
-		const count = (flagCounts.get(selector) ?? 0) + 1;
-		if (count > 1) {
-			exitWithError(`Flag "--${selector}" was specified ${count} times; each flag can only be set once`);
-		}
-		flagCounts.set(selector, count);
+	if (separator === -1 && (selector === 'help' || selector === 'version')) {
+		flagCounts.set(selector, (flagCounts.get(selector) ?? 0) + 1);
 		bareFlags.add(selector);
 		continue;
 	}
@@ -138,9 +136,17 @@ for (const argument of process.argv.slice(2)) {
 	data[selector] = flag.slice(separator + 1);
 }
 
+// Reject duplicates before acting on a control flag, so the outcome does not
+// depend on argument order.
+for (const [selector, count] of flagCounts) {
+	if (count > 1) {
+		exitWithError(`Flag "--${selector}" was specified ${count} times; each flag can only be set once`);
+	}
+}
+
 // Handle control flags before requiring a file, so `--help` and `--version`
 // work on their own.
-if (bareFlags.has('help') || bareFlags.has('h')) {
+if (bareFlags.has('help')) {
 	showHelp(helpOptions);
 	process.exit(0);
 }
@@ -161,12 +167,6 @@ if (!filePath) {
 
 if (argv._.length > 1) {
 	exitWithError(`Unexpected extra arguments: ${argv._.slice(1).join(', ')}`);
-}
-
-for (const [selector, count] of flagCounts) {
-	if (count > 1) {
-		exitWithError(`Flag "--${selector}" was specified ${count} times; each marker can only be set once`);
-	}
 }
 
 // Read mode: no selector flags prints every detected marker as JSON.

@@ -1129,6 +1129,22 @@ describe('CLI', () => {
 		});
 	});
 
+	test('counts the short help alias toward the duplicate check', async () => {
+		await expect(commentMarkCli('-h', '-h')).rejects.toMatchObject({
+			exitCode: 1,
+			stderr: expect.stringContaining('Flag "--help" was specified 2 times'),
+		});
+	});
+
+	test('rejects a duplicate control flag before showing help', async () => {
+		// The bare flag and the valued flag are the same name, so the outcome
+		// must not depend on which one comes first.
+		await expect(commentMarkCli('--help', '--help=docs')).rejects.toMatchObject({
+			exitCode: 1,
+			stderr: expect.stringContaining('Flag "--help" was specified 2 times'),
+		});
+	});
+
 	test('exits non-zero when the same flag is passed multiple times', async () => {
 		await using fixture = await createFixture({ 'README.md': createMarker('a') });
 
