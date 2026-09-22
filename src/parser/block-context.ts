@@ -171,8 +171,8 @@ export const matchListMarker = (line: string, cursor: Cursor, inParagraph: boole
 	let markerWidth = 1;
 	if (char !== '-' && char !== '+' && char !== '*') {
 		// An ordered marker is one to nine digits followed by `.` or `)`. The
-		// digits are read one index at a time, so the marker grammar stays
-		// explicit and independent of pattern syntax.
+		// digits are read one index at a time so the marker grammar stays
+		// explicit.
 		let digits = 0;
 		while (digits < 9) {
 			const digit = line[index + digits];

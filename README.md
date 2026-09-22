@@ -11,7 +11,7 @@ Keep generated content, like contributor lists and benchmark results, alongside 
 - Select sections by tag name and attributes, like a CSS selector
 - Read marked content as JSON or a JavaScript object, preserving whitespace
 - Supports Markdown and HTML files, including multiline content
-- Ignores markers inside fenced code blocks and inline code, so documentation examples stay literal
+- Ignores markers inside fenced code blocks and single-line inline code, so documentation examples stay literal
 - TypeScript types, with ESM and CommonJS builds
 
 ## Install
@@ -19,6 +19,8 @@ Keep generated content, like contributor lists and benchmark results, alongside 
 ```sh
 pnpm add comment-mark
 ```
+
+Requires Node.js 22.22.2 or newer.
 
 ## Quick start
 
@@ -84,12 +86,6 @@ A selector replaces the first matching section. Set several sections in one invo
 npx comment-mark README.md --contributors="Jane Doe" --lastUpdated="2026-09-07" --benchmarks="result"
 ```
 
-If several sections do share a tag name, a selector can still narrow by attribute. Quote the whole flag, because the selector contains brackets:
-
-```sh
-npx comment-mark README.md --"contributors[role='maintainer']"="Jane Doe"
-```
-
 For a file with a stale `contributors` section, a `lastUpdated` section already containing `2026-09-07`, and no `benchmarks` marker, the command writes the contributor update and reports on stderr:
 
 ```text
@@ -107,6 +103,12 @@ Saved README.md. Updated 1 selector; 1 unchanged; 1 missing.
 | `Missing` | No marker matches the selector |
 
 When updates are saved alongside missing selectors, the command exits `1`. If every requested selector is missing, it exits `1` without writing. If every requested selector matches and its value already matches, it exits `0` without rewriting the file.
+
+If several sections do share a tag name, a selector can still narrow by attribute. Quote the selector and the value, because the selector contains brackets:
+
+```sh
+npx comment-mark README.md --"contributors[role='maintainer']"="Jane Doe"
+```
 
 ### Read sections
 
@@ -139,7 +141,7 @@ Read mode preserves section whitespace and prints `[]` when no markers exist. It
 ### Arguments and validation
 
 - Flag names are selectors, matched verbatim with no case or dash conversion: `--lastUpdated` and `--last-updated` are different selectors.
-- Use `--selector=value`, not `--selector value`. Quote values containing spaces or newlines, and quote the whole flag when the selector contains brackets.
+- Use `--selector=value`, not `--selector value`. Quote values containing spaces or newlines, and quote the selector when it contains brackets.
 - The first `=` outside brackets and quotes separates the flag from its value, so `--"item[kind='fruit']"=pear` passes the selector `item[kind='fruit']`.
 - Use `--selector=` to clear a section. Multiline values get a newline before and after the supplied content.
 - Attributes must be separated by whitespace and appear at most once: `id="a"file="b"` and `id="a" id="b"` are rejected.
@@ -165,7 +167,9 @@ Attributes are optional and carry metadata for the section. They are written aft
 - The closing comment repeats the tag name, so `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
 - Whitespace inside the comments is padding: `<!-- contributors -->` and `<!--contributors-->` are equivalent.
 - The content between the comments is replaced; the comments themselves are kept.
+- A tag name starts with a letter or `_`, then letters, digits, `_`, or `-`.
 - Tag names and attribute names are case-sensitive and matched verbatim.
+- Attribute values are literal text: surrounding quotes are removed and HTML entities are not decoded.
 - Attributes are caller-defined. comment-mark stores and matches on them; it does not interpret them.
 
 ## Selectors
@@ -181,7 +185,7 @@ A selector is a tag name followed by optional attribute predicates:
 
 - A tag name on its own is usually enough. Give each section you update from the CLI its own tag name so the flag needs no quoting.
 - When several sections share a tag name, a predicate narrows them. Testing that an attribute exists (`contributors[role]`) is simpler than comparing its value.
-- Attribute values compare as parsed values, so `[role='maintainer']` matches `role=maintainer` however the source quoted it.
+- Attribute values compare as literal text, so `[role='maintainer']` matches `role=maintainer` however the source quoted it.
 - Single quotes, double quotes, and unquoted values all work in a selector.
 - Combinators, selector lists, pseudo-classes, and operators other than `=` are rejected instead of quietly matching nothing.
 
@@ -203,7 +207,7 @@ console.log(updated)
 ```
 
 - `input` (`string | Buffer`): Markdown or HTML content
-- `replacements` (`Record<string, string | null | undefined | readonly (string | null | undefined)[]>`): Values keyed by selector
+- `replacements` (object): Values keyed by selector. Each value is a string, `null`, `undefined`, or an array of those.
 
 Returns the updated content as a string. Buffer input is decoded as UTF-8.
 
@@ -216,6 +220,15 @@ Returns the updated content as a string. Buffer input is decoded as UTF-8.
 - Ignores markers inside fenced code blocks and inline code spans.
 - Wraps values containing `\n` in an additional newline on each side.
 - Throws when a marker is malformed or nested.
+
+An array updates matches by position, so one call can set repeated sections:
+
+```js
+commentMark('<!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', {
+    item: ['orange', 'grape']
+})
+// <!-- item -->orange<!-- /item --><!-- item -->grape<!-- /item -->
+```
 
 Indented code blocks and code spans that wrap across lines are not detected as code, so a marker placed there is treated as real. Put active markers in prose, and put literal examples inside fenced code or single-line inline code.
 
@@ -295,11 +308,11 @@ The opening and closing comments delimit the content to replace. Both stay in th
 
 ### How are code examples ignored?
 
-Fenced code blocks (backtick or tilde, including blockquote prefixes) and single-line inline code spans are skipped, so a marker shown as an example is not treated as real. Indented code blocks and code spans that wrap across lines are not detected, so a marker there is treated as real. Put active markers in prose, and put literal examples inside fenced code or single-line inline code.
+Fenced code blocks (backtick or tilde, including blockquote prefixes) and single-line inline code spans are skipped, so a marker shown as an example is not treated as real. Indented code blocks and code spans that wrap across lines are not detected, so a marker there is treated as real.
 
 ### Why are nested markers rejected?
 
-A marker's content runs until its closing comment. Allowing another marker pair inside would make that boundary ambiguous, so nesting aborts parsing instead of pairing unpredictably.
+A marker's content runs until its closing comment, so replacing the outer section would delete the inner markers. Nesting aborts parsing instead of silently dropping them.
 
 ### Why does a marker have a tag name and attributes?
 

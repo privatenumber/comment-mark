@@ -904,7 +904,7 @@ describe('line endings', () => {
 });
 
 describe('parser scaling', () => {
-	test('parses adversarial backtick runs within a linear-time budget', () => {
+	test('parses adversarial backtick runs within a time budget', () => {
 		// Every run length is unique, so no run finds a partner and each one is
 		// literal text, which keeps span matching walking the whole line.
 		const runs: string[] = [];
@@ -927,7 +927,7 @@ describe('parser scaling', () => {
 		expect(elapsed).toBeLessThan(1500);
 	});
 
-	test('ignores many unmatched closers within a linear-time budget', () => {
+	test('ignores many unmatched closers within a time budget', () => {
 		// Every closer targets a tag that was never opened, so a scan that
 		// searched the pending openers per closer would be quadratic.
 		const content = '<!-- a -->'.repeat(20_000) + '<!-- /b -->'.repeat(20_000);
