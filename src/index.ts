@@ -8,11 +8,7 @@ import {
 	selectMarkers,
 } from './document.js';
 
-export type {
-	CommentMarkData,
-	CommentMarkReplacement,
-	CommentMarkValue,
-} from './document.js';
+export type { CommentMarkData } from './document.js';
 
 /**
  * Replaces marked sections in `input` and returns the updated source.
