@@ -528,6 +528,50 @@ describe('comment and code boundaries', () => {
 	});
 });
 
+describe('block comments', () => {
+	test('a standalone comment does not expose a following list fence', () => {
+		const content = ['<!-- note -->', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
+
+		expect(getCommentMarkAll(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('an indented standalone comment does not expose a following list fence', () => {
+		const content = ['  <!-- note -->', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
+
+		expect(getCommentMarkAll(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('a multiline standalone comment does not expose a following list fence', () => {
+		const content = ['<!--', 'note', '-->', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
+
+		expect(getCommentMarkAll(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('a block comment interrupts an open paragraph', () => {
+		const content = ['paragraph', '<!-- note -->', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
+
+		expect(getCommentMarkAll(content)).toStrictEqual([]);
+		expect(commentMark(content, { x: 'NEW' })).toBe(content);
+	});
+
+	test('a comment inside a paragraph does not end it', () => {
+		// The comment is paragraph text, so `2.` cannot start a list and the
+		// fence-looking line stays paragraph text.
+		const content = ['text <!-- note -->', '2. ~~~', `   ${createMarker('x', 'real')}`, '   ~~~'].join('\n');
+
+		expect(getCommentMarkAll(content)).toStrictEqual([
+			{
+				tagName: 'x',
+				attributes: {},
+				content: 'real',
+			},
+		]);
+	});
+});
+
 describe('code blocks', () => {
 	test('ignores markers inside fenced code blocks', () => {
 		const content = ['```md', createMarker('a', 'example'), '```'].join('\n');

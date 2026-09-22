@@ -30,10 +30,23 @@ type BacktickRun = {
 const openDelimiter = '<!--';
 const closeDelimiter = '-->';
 
-// This scanner parses by character index. Regular expressions are not allowed
-// in source: shared pattern state let a reentrant parse corrupt an outer one,
-// and pattern-based block rules hid the order the scanner actually reads in.
-// eslint.config.mts enforces the ban for `src/`.
+/**
+ * Reports whether the line's content starts with an HTML comment, which
+ * CommonMark treats as a block rather than paragraph text, indented up to three
+ * columns. A block comment interrupts an open paragraph and leaves none open,
+ * so a following ordered list is recognized and its fenced example stays code.
+ */
+const startsBlockComment = (line: string, cursor: Cursor) => {
+	let { index } = cursor;
+	let indent = cursor.pending;
+
+	while (indent < 3 && line[index] === ' ') {
+		index += 1;
+		indent += 1;
+	}
+
+	return line.startsWith(openDelimiter, index);
+};
 
 /**
  * Collects the backtick runs in one line and links each run to the next run of
@@ -273,7 +286,10 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			return;
 		}
 
-		inParagraph = true;
+		// A comment that starts a line is an HTML block, not paragraph text. It
+		// interrupts an open paragraph and leaves none open, so a following
+		// ordered list is recognized and its fenced example stays code.
+		inParagraph = !startsBlockComment(line, cursor);
 		scanInline(line, lineStart, cursor.index);
 	};
 
