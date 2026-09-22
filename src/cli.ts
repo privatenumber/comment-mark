@@ -204,18 +204,17 @@ const unchanged: string[] = [];
 const missing: string[] = [];
 
 for (const [selector, value] of Object.entries(data)) {
-	if (getCommentMark(original, selector) === null) {
-		missing.push(selector);
-		continue;
-	}
-
-	// Compare against a solo application so each selector is classified by its
-	// own effect, independent of the other selectors' replacements.
+	// A solo application classifies the selector by its own effect, independent
+	// of the other selectors' replacements. A value that changes nothing leaves
+	// the source untouched, so the match check is only needed to tell an
+	// unchanged marker apart from a selector that matched nothing.
 	const soloOutput = commentMark(original, { [selector]: value });
-	if (soloOutput === original) {
-		unchanged.push(selector);
-	} else {
+	if (soloOutput !== original) {
 		updated.push(selector);
+	} else if (getCommentMark(original, selector) === null) {
+		missing.push(selector);
+	} else {
+		unchanged.push(selector);
 	}
 }
 
