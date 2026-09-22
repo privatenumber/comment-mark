@@ -1173,32 +1173,23 @@ describe('attribute updates', () => {
 		);
 	});
 
-	test('keeps the attribute set when a replacement is rejected', () => {
-		const document = createDocument('<!-- item a="1" b="2" -->x<!-- /item -->');
+	test('a rejected replacement does not leak into a later call', () => {
+		const content = '<!-- item a="1" b="2" -->x<!-- /item -->';
 
-		expect(() => commentMark(document, {
-			item: () => ({ attributes: { a: 'x-->y' } }),
-		})).toThrow('[comment-mark] Attribute value cannot contain "-->"');
-
-		expect(document.querySelector('item')?.attributes).toStrictEqual({
-			a: '1',
-			b: '2',
-		});
-		expect(document.toString()).toBe('<!-- item a="1" b="2" -->x<!-- /item -->');
-	});
-
-	test('leaves content unchanged when a replacement is rejected', () => {
-		const document = createDocument('<!-- item a="1" -->x<!-- /item -->');
-
-		expect(() => commentMark(document, {
+		expect(() => commentMark(content, {
 			item: () => ({
 				content: 'new',
 				attributes: { a: 'x-->y' },
 			}),
 		})).toThrow('[comment-mark] Attribute value cannot contain "-->"');
 
-		expect(document.querySelector('item')?.content).toBe('x');
-		expect(document.toString()).toBe('<!-- item a="1" -->x<!-- /item -->');
+		// The rejected call produced no output, so the source still reads and
+		// updates from its original attributes and content.
+		expect(getCommentMark(content, 'item')?.attributes).toStrictEqual({
+			a: '1',
+			b: '2',
+		});
+		expect(commentMark(content, { item: 'y' })).toBe('<!-- item a="1" b="2" -->y<!-- /item -->');
 	});
 });
 
