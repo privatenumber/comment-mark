@@ -1,7 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { cli } from 'cleye';
 import { description, name, version } from '../package.json' with { type: 'json' };
-import { commentMark, getCommentMarks } from './index.js';
+import {
+	commentMark, getCommentMark, getCommentMarkAll,
+} from './index.js';
 
 const exitWithError = (message: string): never => {
 	console.error(`Error: ${message}`);
@@ -10,10 +12,10 @@ const exitWithError = (message: string): never => {
 
 const helpOptions = {
 	description,
-	usage: `${name} <file> [--<marker>=<value>...]`,
+	usage: `${name} <file> [--<selector>=<value>...]`,
 	examples: [
 		`${name} README.md --lastUpdated="$(date -Iseconds)"`,
-		`${name} README.md --contributors="$(git shortlog -se HEAD -- .)"`,
+		`${name} README.md --"contributors[role='maintainer']"="$(git shortlog -se HEAD -- .)"`,
 	],
 };
 
@@ -31,21 +33,125 @@ const argv = cli({
 	help: false,
 });
 
-const { unknownFlags, showHelp } = argv;
+const { showHelp } = argv;
 
-const isBareFlag = (flagName: string) => {
-	const values = unknownFlags[flagName];
-	return values?.length === 1 && values[0] === true;
+// Null-prototype so selectors never collide with inherited properties.
+const data: Record<string, string> = Object.create(null);
+
+// cleye splits `--name=value` at the first `=`, which a selector such as
+// `item[kind='fruit']` also contains, so the marker flags are read from argv
+// and split at the first `=` that is outside brackets and quotes.
+const findFlagSeparator = (flag: string) => {
+	let depth = 0;
+	let quote = '';
+
+	for (let index = 0; index < flag.length; index += 1) {
+		const character = flag[index];
+
+		if (quote !== '') {
+			if (character === quote) {
+				quote = '';
+			}
+			continue;
+		}
+
+		switch (character) {
+			case '"':
+			case "'": {
+				quote = character;
+				break;
+			}
+			case '[': {
+				depth += 1;
+				break;
+			}
+			case ']': {
+				depth -= 1;
+				break;
+			}
+			case '=': {
+				if (depth === 0) {
+					return index;
+				}
+				break;
+			}
+			default: {
+				break;
+			}
+		}
+	}
+
+	return -1;
 };
 
-// Handle control flags manually so only the bare form reserves the action
-// (cleye convention); `--help=<value>`/`--version=<value>` stay as markers.
-if (isBareFlag('help') || isBareFlag('h')) {
+const flagCounts = new Map<string, number>();
+const bareFlags = new Set<string>();
+
+for (const argument of process.argv.slice(2)) {
+	// `--` ends flag parsing, so the rest of the line is positional.
+	if (argument === '--') {
+		break;
+	}
+
+	// A positional file or extra argument; cleye reports these through `_`.
+	if (!argument.startsWith('-') || argument === '-') {
+		continue;
+	}
+
+	// `-h` is the only short flag. Other single-dash arguments would be split
+	// into short flags by cleye and the intended selector would disappear, so
+	// they are rejected instead of silently turning the run into read mode.
+	if (argument === '-h') {
+		// `-h` is an alias of `--help`, so it shares the flag's count.
+		flagCounts.set('help', (flagCounts.get('help') ?? 0) + 1);
+		bareFlags.add('help');
+		continue;
+	}
+	if (!argument.startsWith('--')) {
+		exitWithError(`Unknown flag ${JSON.stringify(argument)} (expected --<selector>=<value>)`);
+	}
+
+	const flag = argument.slice(2);
+	const separator = findFlagSeparator(flag);
+	const selector = separator === -1 ? flag : flag.slice(0, separator);
+
+	// A bare control flag reserves the action (cleye convention);
+	// `--help=<value>`/`--version=<value>` stay as markers. Repeating one is
+	// rejected like any other flag instead of quietly changing the action.
+	if (separator === -1 && (selector === 'help' || selector === 'version')) {
+		flagCounts.set(selector, (flagCounts.get(selector) ?? 0) + 1);
+		bareFlags.add(selector);
+		continue;
+	}
+
+	if (selector === '') {
+		exitWithError(`Invalid flag ${JSON.stringify(argument)} (expected --<selector>=<value>)`);
+	}
+
+	flagCounts.set(selector, (flagCounts.get(selector) ?? 0) + 1);
+
+	if (separator === -1) {
+		exitWithError(`No value provided for flag "--${selector}" (expected --${selector}=<value>)`);
+	}
+	data[selector] = flag.slice(separator + 1);
+}
+
+// Reject duplicates before acting on a control flag, so the outcome does not
+// depend on argument order.
+for (const [selector, count] of flagCounts) {
+	if (count > 1) {
+		exitWithError(`Flag "--${selector}" was specified ${count} times; each flag can only be set once`);
+	}
+}
+
+// Handle control flags before requiring a file, so `--help` and `--version`
+// work on their own.
+if (bareFlags.has('help')) {
 	showHelp(helpOptions);
 	process.exit(0);
 }
 
-if (isBareFlag('version')) {
+if (bareFlags.has('version')) {
 	console.log(version);
 	process.exit(0);
 }
@@ -63,65 +169,52 @@ if (argv._.length > 1) {
 	exitWithError(`Unexpected extra arguments: ${argv._.slice(1).join(', ')}`);
 }
 
-// Null-prototype so marker names never collide with inherited properties.
-const data: Record<string, string> = Object.create(null);
-
-for (const [marker, values] of Object.entries(unknownFlags)) {
-	if (values.length > 1) {
-		exitWithError(`Flag "--${marker}" was specified ${values.length} times; each marker can only be set once`);
-	}
-
-	const value = values[0];
-	if (typeof value === 'string') {
-		data[marker] = value;
-	} else {
-		exitWithError(`No value provided for flag "--${marker}" (expected --${marker}=<value>)`);
-	}
-}
-
-// Get mode: no marker flags prints detected values as JSON.
+// Read mode: no selector flags prints every detected marker as JSON.
 if (Object.keys(data).length === 0) {
 	const content = await readFile(filePath, 'utf8');
-	process.stdout.write(`${JSON.stringify(getCommentMarks(content), null, '\t')}\n`);
+	process.stdout.write(`${JSON.stringify(getCommentMarkAll(content), null, '\t')}\n`);
 	process.exit(0);
 }
 
-// Setter mode: validate the whole document and classify every requested key
-// before writing, so a malformed marker never leaves partial edits behind.
+// Setter mode: validate the whole document and classify every requested
+// selector before writing, so a malformed marker never leaves partial edits
+// behind.
 const original = await readFile(filePath, 'utf8');
 
-let output: string | Buffer;
-let detected: Record<string, string>;
-try {
-	output = commentMark(original, data);
-	detected = getCommentMarks(original);
-} catch (error) {
-	if (error instanceof Error) {
-		exitWithError(error.message);
+// Translate a library failure into the CLI's exit, so the error message is the
+// one comment-mark reports rather than a stack trace.
+const applyToSource = (source: string) => {
+	try {
+		return commentMark(source, data);
+	} catch (error) {
+		if (error instanceof Error) {
+			exitWithError(error.message);
+		}
+
+		throw error;
 	}
+};
 
-	throw error;
-}
+const updatedSource = applyToSource(original);
 
-// The library silently skips keys with no matching marker; detect them so
+// The library silently skips selectors with no matching marker; detect them so
 // typos surface instead of succeeding quietly.
 const updated: string[] = [];
 const unchanged: string[] = [];
 const missing: string[] = [];
 
-for (const [marker, value] of Object.entries(data)) {
-	if (!Object.hasOwn(detected, marker)) {
-		missing.push(marker);
-		continue;
-	}
-
-	// Compare against a solo application so each key is classified by its own
-	// effect, independent of the other keys' replacements.
-	const soloOutput = commentMark(original, { [marker]: value });
-	if (soloOutput === original) {
-		unchanged.push(marker);
+for (const [selector, value] of Object.entries(data)) {
+	// A solo application classifies the selector by its own effect, independent
+	// of the other selectors' replacements. A value that changes nothing leaves
+	// the source untouched, so the match check is only needed to tell an
+	// unchanged marker apart from a selector that matched nothing.
+	const soloOutput = commentMark(original, { [selector]: value });
+	if (soloOutput !== original) {
+		updated.push(selector);
+	} else if (getCommentMark(original, selector) === null) {
+		missing.push(selector);
 	} else {
-		updated.push(marker);
+		unchanged.push(selector);
 	}
 }
 
@@ -139,12 +232,12 @@ const report = () => {
 
 if (missing.length === Object.keys(data).length) {
 	report();
-	exitWithError(`No matching markers found for any of the ${missing.length} requested keys`);
+	exitWithError(`No matching markers found for any of the ${missing.length} requested selectors`);
 }
 
 if (updated.length === 0) {
 	report();
-	// Missing keys still fail here; only an all-unchanged request exits 0.
+	// Missing selectors still fail here; only an all-unchanged request exits 0.
 	if (missing.length > 0) {
 		process.exit(1);
 	}
@@ -152,7 +245,7 @@ if (updated.length === 0) {
 	process.exit(0);
 }
 
-await writeFile(filePath, output);
+await writeFile(filePath, updatedSource);
 
 report();
 
@@ -161,7 +254,7 @@ const summary = [
 	missing.length > 0 && `${missing.length} missing`,
 ].filter(Boolean).join('; ');
 
-console.error(`Saved ${filePath}. Updated ${updated.length} key${updated.length === 1 ? '' : 's'}${summary ? `; ${summary}` : ''}.`);
+console.error(`Saved ${filePath}. Updated ${updated.length} selector${updated.length === 1 ? '' : 's'}${summary ? `; ${summary}` : ''}.`);
 
 if (missing.length > 0) {
 	process.exitCode = 1;

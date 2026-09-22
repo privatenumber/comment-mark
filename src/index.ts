@@ -1,79 +1,53 @@
-const escapeKey = (key: string) => key.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+import {
+	type CommentMarkData,
+	type CommentMarkReplacement,
+	applyReplacements,
+	createDocument,
+	markerData,
+	renderDocument,
+	selectMarkers,
+} from './document.js';
 
-// Locates the end marker that closes a section whose content starts at `contentStart`,
-// or throws when the section was never closed.
-const findSectionEnd = (content: string, key: string, contentStart: number) => {
-	const endRe = new RegExp(String.raw`<!--\s*${escapeKey(key)}:end\s*-->`, 'g');
-	endRe.lastIndex = contentStart;
-	const endMatch = endRe.exec(content);
-	if (!endMatch) {
-		throw new Error(`[comment-mark] No end comment found for key "${key}"`);
-	}
+export type { CommentMarkData } from './document.js';
 
-	return endMatch.index;
-};
-
+/**
+ * Replaces marked sections in `input` and returns the updated source.
+ */
 export const commentMark = (
 	input: string | Buffer,
-	data: Record<string, string | null | undefined>,
-) => {
+	replacements: Record<string, CommentMarkReplacement>,
+): string => {
 	if (
-		!input
-		|| data === null
-		|| data === undefined
-		|| typeof data !== 'object'
+		(typeof input !== 'string' && !Buffer.isBuffer(input))
+		|| typeof replacements !== 'object'
+		|| replacements === null
 	) {
-		return input;
+		// Invalid arguments are a no-op for JavaScript callers, returning the
+		// input unchanged. An empty string is valid input, so it still reaches
+		// the parser and its validation.
+		return input as string;
 	}
 
-	let out = Buffer.isBuffer(input) ? input.toString() : input;
-
-	for (const key in data) {
-		if (!Object.hasOwn(data, key)) {
-			continue;
-		}
-		let value = data[key];
-		if (value === null || value === undefined) {
-			continue;
-		}
-		if (value.includes('\n')) {
-			value = `\n${value}\n`;
-		}
-
-		const startRe = new RegExp(String.raw`<!--\s*${escapeKey(key)}:start\s*-->`, 'g');
-
-		for (let m = startRe.exec(out); m !== null; m = startRe.exec(out)) {
-			const contentStart = m.index + m[0].length;
-			const contentEnd = findSectionEnd(out, key, contentStart);
-
-			out = out.slice(0, contentStart) + value + out.slice(contentEnd);
-
-			startRe.lastIndex = contentStart + value.length;
-		}
-	}
-
-	return out;
+	const document = createDocument(input);
+	applyReplacements(document, replacements);
+	return renderDocument(document);
 };
 
-export const getCommentMarks = (input: string | Buffer): Record<string, string> => {
-	const content = Buffer.isBuffer(input) ? input.toString() : input;
-	// Null-prototype dictionary so marker keys can never collide with inherited properties.
-	const commentMarks: Record<string, string> = Object.create(null);
-	// Marker keys are unknown upfront (unlike commentMark), so discover them by
-	// scanning one complete HTML comment at a time.
-	const commentRe = /<!--([\s\S]*?)-->/g;
-
-	for (let match = commentRe.exec(content); match !== null; match = commentRe.exec(content)) {
-		const marker = match[1].trim();
-		if (!marker.endsWith(':start')) {
-			continue;
-		}
-
-		const key = marker.slice(0, -':start'.length);
-		const contentStart = match.index + match[0].length;
-		const contentEnd = findSectionEnd(content, key, contentStart);
-		commentMarks[key] = content.slice(contentStart, contentEnd);
-	}
-
-	return commentMarks;
+/**
+ * Returns the first marker matching `selector`, or null.
+ */
+export const getCommentMark = (
+	input: string | Buffer,
+	selector: string,
+): CommentMarkData | null => {
+	const [first] = selectMarkers(createDocument(input), selector);
+	return first ? markerData(first) : null;
 };
+
+/**
+ * Returns every marker matching `selector` in document order. Without a
+ * selector, returns every recognized marker.
+ */
+export const getCommentMarkAll = (input: string | Buffer, selector?: string): CommentMarkData[] => (
+	selectMarkers(createDocument(input), selector).map(markerData)
+);
