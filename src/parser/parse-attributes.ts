@@ -12,21 +12,13 @@ const isValueChar = (char: string) => (
 export type Attribute = {
 	name: string;
 	value: string;
-	// The quote that wrapped the value, or undefined when it was unquoted.
-	quote: '"' | "'" | undefined;
-	// The whole attribute, from its name through the end of its value.
-	start: number;
+	// The index just past the value, where the next attribute starts.
 	end: number;
-	// The value token, including its quotes, so a rewrite can replace only the
-	// value and leave the whitespace around `=` and the line endings intact.
-	valueStart: number;
-	valueEnd: number;
 };
 
 /**
  * Reads one attribute starting at or after `index`, or undefined once the
- * attributes end. The grammar lives here so that reading attributes and
- * rewriting them cannot drift apart.
+ * attributes end.
  */
 const readAttribute = (source: string, index: number, end: number): Attribute | undefined => {
 	index = skipWhitespace(source, index, end);
@@ -54,7 +46,6 @@ const readAttribute = (source: string, index: number, end: number): Attribute | 
 
 	const valueStart = index;
 	let value: string;
-	let quote: '"' | "'" | undefined;
 	const openingQuote = source[index];
 	if (openingQuote === '"' || openingQuote === "'") {
 		const quoteEnd = source.indexOf(openingQuote, index + 1);
@@ -64,7 +55,6 @@ const readAttribute = (source: string, index: number, end: number): Attribute | 
 			);
 		}
 
-		quote = openingQuote;
 		value = source.slice(index + 1, quoteEnd);
 		index = quoteEnd + 1;
 
@@ -86,18 +76,13 @@ const readAttribute = (source: string, index: number, end: number): Attribute | 
 	return {
 		name,
 		value,
-		quote,
-		start,
 		end: index,
-		valueStart,
-		valueEnd: index,
 	};
 };
 
 /**
- * Reads the attributes in the order they are written, with the offsets a
- * rewrite needs. A repeated name is rejected because it would make the
- * attribute's value ambiguous.
+ * Reads the attributes in the order they are written. A repeated name is
+ * rejected because it would make the attribute's value ambiguous.
  */
 export const parseAttributeNodes = (source: string, start: number, end: number) => {
 	const attributes: Attribute[] = [];
@@ -119,66 +104,4 @@ export const parseAttributeNodes = (source: string, start: number, end: number) 
 	}
 
 	return attributes;
-};
-
-const isUnquotedValue = (value: string) => {
-	if (value === '') {
-		return false;
-	}
-
-	for (let index = 0; index < value.length; index += 1) {
-		if (!isValueChar(value[index])) {
-			return false;
-		}
-	}
-
-	return true;
-};
-
-/**
- * Whether `name` is a name the grammar accepts. Reading rejects the same names,
- * so writing an unchecked one would produce a marker that cannot be read again.
- */
-export const isAttributeName = (name: string) => {
-	if (name === '' || !isNameStart(name[0])) {
-		return false;
-	}
-
-	for (let index = 1; index < name.length; index += 1) {
-		if (!isNameChar(name[index])) {
-			return false;
-		}
-	}
-
-	return true;
-};
-
-/**
- * Encodes a value for writing, reusing the quoting it was written with when the
- * value still fits it. Throws for values the grammar cannot hold.
- */
-export const encodeAttributeValue = (value: string, quote: '"' | "'" | undefined) => {
-	// The closing `-->` ends the comment wherever it appears, so a value cannot
-	// contain one: `a="x-->y"` would be read as `a="x` followed by text.
-	if (value.includes('-->')) {
-		throw new Error(`[comment-mark] Attribute value cannot contain "-->": ${JSON.stringify(value)}`);
-	}
-
-	if (quote === '"' && !value.includes('"')) {
-		return `"${value}"`;
-	}
-	if (quote === "'" && !value.includes("'")) {
-		return `'${value}'`;
-	}
-	if (quote === undefined && isUnquotedValue(value)) {
-		return value;
-	}
-	if (!value.includes('"')) {
-		return `"${value}"`;
-	}
-	if (!value.includes("'")) {
-		return `'${value}'`;
-	}
-
-	throw new Error(`[comment-mark] Attribute value cannot be quoted: ${JSON.stringify(value)}`);
 };

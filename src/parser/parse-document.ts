@@ -10,13 +10,8 @@ import { scanComments } from './scan-comments.js';
 export type MarkerNode = {
 	tagName: string;
 	attributes: Attribute[];
-	// The opening comment, from its `<` through its closing `-->`.
-	openingStart: number;
 	contentStart: number;
 	contentEnd: number;
-	// Where the attributes begin, so a rewrite can insert new ones after the
-	// tag name and drop the whitespace a removed attribute was written with.
-	attributesStart: number;
 };
 
 type CommentKind =
@@ -193,10 +188,8 @@ export const parseDocument = (source: string): MarkerNode[] => {
 		markers.push({
 			tagName: opener.kind.tagName,
 			attributes: parseAttributeNodes(source, opener.kind.attributesStart, opener.openingEnd),
-			openingStart: opener.openingStart,
 			contentStart: opener.openingEnd + closeDelimiter.length,
 			contentEnd: opener.closerStart,
-			attributesStart: opener.kind.attributesStart,
 		});
 	}
 
