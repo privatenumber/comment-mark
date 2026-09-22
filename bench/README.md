@@ -17,42 +17,40 @@ Compare runs made on the same machine with the same Node version. Only compare r
 Refresh the table with `pnpm bench:results`, which runs the same suite and updates the block between the markers. Treat the numbers as a same-machine reference: micro-benchmark results vary between runs, so compare repeated runs in the same environment instead of a single pair.
 
 <!-- results -->
-Measured with `node 24.14.1` on __Apple M2 Max__ (`arm64-darwin`), 2026-09-20.
+Measured with `node 24.14.1` on __Apple M2 Max__ (`arm64-darwin`), 2026-09-22.
 
 | Benchmark | avg | p75 | p99 |
 | :- | -: | -: | -: |
-| `getCommentMarkAll - prose only` | 29.49 µs | 28.49 µs | 33.28 µs |
-| `commentMark - prose only` | 28.90 µs | 28.94 µs | 29.33 µs |
-| `commentMark resolver - prose only` | 28.97 µs | 28.96 µs | 29.60 µs |
-| `getCommentMarkAll - sparse markers` | 6.60 ms | 6.65 ms | 7.09 ms |
-| `commentMark - sparse markers` | 6.59 ms | 6.66 ms | 6.82 ms |
-| `commentMark resolver - sparse markers` | 6.62 ms | 6.66 ms | 8.16 ms |
-| `getCommentMarkAll - dense markers` | 29.13 ms | 31.06 ms | 40.65 ms |
-| `commentMark - dense markers` | 4.33 ms | 4.20 ms | 8.10 ms |
-| `commentMark resolver - dense markers` | 4.32 ms | 4.29 ms | 8.07 ms |
-| `getCommentMarkAll - ordinary comments` | 28.57 ms | 28.85 ms | 29.12 ms |
-| `commentMark - ordinary comments` | 28.47 ms | 28.66 ms | 29.08 ms |
-| `commentMark resolver - ordinary comments` | 28.41 ms | 28.55 ms | 28.78 ms |
-| `getCommentMarkAll - code fences` | 2.85 ms | 2.50 ms | 8.41 ms |
-| `commentMark - code fences` | 825.64 µs | 775.04 µs | 3.99 ms |
-| `commentMark resolver - code fences` | 769.77 µs | 729.46 µs | 4.08 ms |
-| `getCommentMarkAll - long attribute` | 10.47 µs | 10.96 µs | 11.16 µs |
-| `commentMark - long attribute` | 19.70 µs | 20.42 µs | 33.93 µs |
-| `commentMark resolver - long attribute` | 10.83 µs | 10.90 µs | 11.07 µs |
-| `update first match, fresh parse` | 4.42 ms | 4.44 ms | 10.92 ms |
-| `update first match, reused document` | 128.21 µs | 120.71 µs | 360.54 µs |
-| `update every match, fresh parse` | 6.42 ms | 7.54 ms | 10.62 ms |
-| `update every match, reused document` | 2.26 ms | 2.33 ms | 3.86 ms |
-| `getCommentMarkAll - markers by count 100` | 238.06 µs | 205.50 µs | 478.92 µs |
-| `getCommentMarkAll - markers by count 1000` | 2.41 ms | 2.03 ms | 8.42 ms |
-| `getCommentMarkAll - markers by count 10000` | 25.38 ms | 26.29 ms | 29.99 ms |
-| `getCommentMarkAll - unterminated comments by count 16` | 2.03 µs | 2.03 µs | 2.95 µs |
-| `getCommentMarkAll - unterminated comments by count 256` | 9.47 µs | 9.54 µs | 9.80 µs |
-| `getCommentMarkAll - unterminated comments by count 4096` | 128.24 µs | 124.46 µs | 247.71 µs |
-| `getCommentMarkAll - unterminated comments by count 65536` | 1.99 ms | 2.03 ms | 2.24 ms |
-| `getCommentMarkAll - unmatched closers by count 1000` | 192.85 µs | 159.21 µs | 1.20 ms |
-| `getCommentMarkAll - unmatched closers by count 10000` | 1.62 ms | 1.54 ms | 5.30 ms |
-| `getCommentMarkAll - distinct backtick runs 16` | 5.78 µs | 6.04 µs | 6.20 µs |
-| `getCommentMarkAll - distinct backtick runs 64` | 15.32 µs | 15.46 µs | 15.65 µs |
-| `getCommentMarkAll - distinct backtick runs 256` | 112.03 µs | 108.50 µs | 234.00 µs |
+| `getCommentMarkAll - prose only` | 26.31 µs | 26.36 µs | 26.40 µs |
+| `commentMark - prose only` | 26.40 µs | 26.70 µs | 26.92 µs |
+| `commentMark resolver - prose only` | 26.31 µs | 26.31 µs | 26.58 µs |
+| `getCommentMarkAll - sparse markers` | 6.34 ms | 6.42 ms | 6.82 ms |
+| `commentMark - sparse markers` | 6.27 ms | 6.37 ms | 6.56 ms |
+| `commentMark resolver - sparse markers` | 6.29 ms | 6.40 ms | 6.65 ms |
+| `getCommentMarkAll - dense markers` | 4.00 ms | 3.62 ms | 7.26 ms |
+| `commentMark - dense markers` | 3.83 ms | 3.47 ms | 6.95 ms |
+| `commentMark resolver - dense markers` | 6.30 ms | 6.78 ms | 27.23 ms |
+| `getCommentMarkAll - ordinary comments` | 28.70 ms | 28.42 ms | 30.07 ms |
+| `commentMark - ordinary comments` | 27.49 ms | 27.77 ms | 27.97 ms |
+| `commentMark resolver - ordinary comments` | 27.04 ms | 27.26 ms | 27.51 ms |
+| `getCommentMarkAll - code fences` | 769.07 µs | 747.83 µs | 3.30 ms |
+| `commentMark - code fences` | 766.58 µs | 747.96 µs | 3.54 ms |
+| `commentMark resolver - code fences` | 776.43 µs | 762.00 µs | 3.51 ms |
+| `getCommentMarkAll - long attribute` | 7.04 µs | 7.24 µs | 7.50 µs |
+| `commentMark - long attribute` | 8.95 µs | 9.07 µs | 9.25 µs |
+| `commentMark resolver - long attribute` | 9.21 µs | 9.26 µs | 9.38 µs |
+| `update first match` | 3.93 ms | 3.48 ms | 7.62 ms |
+| `update every match` | 6.07 ms | 7.45 ms | 8.97 ms |
+| `getCommentMarkAll - markers by count 100` | 41.37 µs | 42.16 µs | 42.41 µs |
+| `getCommentMarkAll - markers by count 1000` | 409.44 µs | 355.63 µs | 3.56 ms |
+| `getCommentMarkAll - markers by count 10000` | 4.17 ms | 3.80 ms | 7.17 ms |
+| `getCommentMarkAll - unterminated comments by count 16` | 932.29 ns | 945.01 ns | 1.07 µs |
+| `getCommentMarkAll - unterminated comments by count 256` | 7.82 µs | 7.87 µs | 7.97 µs |
+| `getCommentMarkAll - unterminated comments by count 4096` | 118.71 µs | 117.50 µs | 214.96 µs |
+| `getCommentMarkAll - unterminated comments by count 65536` | 1.91 ms | 1.96 ms | 2.15 ms |
+| `getCommentMarkAll - unmatched closers by count 1000` | 142.82 µs | 139.08 µs | 320.88 µs |
+| `getCommentMarkAll - unmatched closers by count 10000` | 1.36 ms | 1.41 ms | 1.74 ms |
+| `getCommentMarkAll - distinct backtick runs 16` | 2.54 µs | 2.66 µs | 2.81 µs |
+| `getCommentMarkAll - distinct backtick runs 64` | 11.43 µs | 11.55 µs | 11.61 µs |
+| `getCommentMarkAll - distinct backtick runs 256` | 99.48 µs | 97.17 µs | 206.21 µs |
 <!-- /results -->

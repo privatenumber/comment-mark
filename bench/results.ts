@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { bold, code, table } from 'md-pen';
 import { run } from 'mitata';
-import { commentMark, createDocument } from '#comment-mark';
+import { commentMark, getCommentMarkAll } from '#comment-mark';
 import './suite.js';
 
 const formatTime = (nanoseconds: number) => {
@@ -49,16 +49,14 @@ const formatTime = (nanoseconds: number) => {
 
 	const readmeUrl = new URL('README.md', import.meta.url);
 	const readme = await readFile(readmeUrl, 'utf8');
-	const document = createDocument(readme);
 
 	// Fail loudly when the marker is missing instead of reporting that the
 	// results are already up to date.
-	if (document.querySelector('results') === null) {
+	if (getCommentMarkAll(readme, 'results').length === 0) {
 		throw new Error('bench/README.md has no results marker');
 	}
 
-	commentMark(document, { results: recorded });
-	const updated = document.toString();
+	const updated = commentMark(readme, { results: recorded });
 
 	if (updated === readme) {
 		console.error('bench/README.md results are already up to date.');

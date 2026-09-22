@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { bench, summary } from 'mitata';
-import { commentMark, createDocument, getCommentMarkAll } from '#comment-mark';
+import { commentMark, getCommentMarkAll } from '#comment-mark';
 import {
 	createMarker, distinctBacktickRuns, fixtures,
 } from './fixtures.js';
@@ -51,22 +51,15 @@ for (const [name, input] of Object.entries(fixtures)) {
 	});
 }
 
-// Parsing versus reusing a parsed document. Each pair runs the same update on
-// the same input, so the difference is the parse the fresh call repeats.
+// Update shape on one input: a scalar replaces the first match, an array
+// replaces every match. Both parse the input, so the rows differ only in the
+// replacement work.
 const denseMarkers = fixtures['dense markers'];
 const denseValues = Array.from({ length: 10_000 }, () => 'updated value');
 
 summary(() => {
-	bench('update first match, fresh parse', () => commentMark(denseMarkers, { x: 'updated value' }));
-	bench('update first match, reused document', function* firstMatchReused() {
-		const document = createDocument(denseMarkers);
-		yield () => commentMark(document, { x: 'updated value' });
-	});
-	bench('update every match, fresh parse', () => commentMark(denseMarkers, { x: denseValues }));
-	bench('update every match, reused document', function* everyMatchReused() {
-		const document = createDocument(denseMarkers);
-		yield () => commentMark(document, { x: denseValues });
-	});
+	bench('update first match', () => commentMark(denseMarkers, { x: 'updated value' }));
+	bench('update every match', () => commentMark(denseMarkers, { x: denseValues }));
 });
 
 // Scaling with marker count.
