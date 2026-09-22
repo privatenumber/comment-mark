@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { cli } from 'cleye';
 import { description, name, version } from '../package.json' with { type: 'json' };
 import {
-	commentMark, createDocument, getCommentMark, getCommentMarkAll,
+	commentMark, getCommentMark, getCommentMarkAll,
 } from './index.js';
 
 const exitWithError = (message: string): never => {
@@ -180,17 +180,22 @@ if (Object.keys(data).length === 0) {
 // selector before writing, so a malformed marker never leaves partial edits
 // behind.
 const original = await readFile(filePath, 'utf8');
-const document = createDocument(original);
 
-try {
-	commentMark(document, data);
-} catch (error) {
-	if (error instanceof Error) {
-		exitWithError(error.message);
+// Translate a library failure into the CLI's exit, so the error message is the
+// one comment-mark reports rather than a stack trace.
+const applyToSource = (source: string) => {
+	try {
+		return commentMark(source, data);
+	} catch (error) {
+		if (error instanceof Error) {
+			exitWithError(error.message);
+		}
+
+		throw error;
 	}
+};
 
-	throw error;
-}
+const updatedSource = applyToSource(original);
 
 // The library silently skips selectors with no matching marker; detect them so
 // typos surface instead of succeeding quietly.
@@ -241,7 +246,7 @@ if (updated.length === 0) {
 	process.exit(0);
 }
 
-await writeFile(filePath, document.toString());
+await writeFile(filePath, updatedSource);
 
 report();
 

@@ -1,28 +1,24 @@
 import {
-	type CommentDocument,
+	type CommentMarkData,
 	type CommentMarkReplacement,
 	applyReplacements,
-	toDocument,
+	createDocument,
+	markerData,
+	renderDocument,
+	selectMarkers,
 } from './document.js';
 
 export type {
-	CommentDocument,
-	CommentMark,
 	CommentMarkData,
 	CommentMarkReplacement,
 	CommentMarkValue,
 } from './document.js';
 
-export { createDocument } from './document.js';
-
 /**
- * Replaces marked sections in `input`, which may be source text or a document
- * from `createDocument`. Passing a document updates that document and returns
- * its rendered source; passing text parses it, applies the replacements, and
- * returns the result.
+ * Replaces marked sections in `input` and returns the updated source.
  */
 export const commentMark = (
-	input: string | Buffer | CommentDocument,
+	input: string | Buffer,
 	replacements: Record<string, CommentMarkReplacement>,
 ): string => {
 	if (
@@ -31,29 +27,32 @@ export const commentMark = (
 		|| replacements === undefined
 		|| typeof replacements !== 'object'
 	) {
-		// Invalid arguments are a no-op for JavaScript callers, mirroring the
-		// pre-document API by returning the input unchanged. Typed callers
-		// cannot reach this branch, so the string return still describes every
-		// supported call.
+		// Invalid arguments are a no-op for JavaScript callers, returning the
+		// input unchanged. Typed callers cannot reach this branch, so the
+		// string return still describes every supported call.
 		return input as string;
 	}
 
-	const document = toDocument(input);
+	const document = createDocument(input);
 	applyReplacements(document, replacements);
-	return document.toString();
+	return renderDocument(document);
 };
 
 /**
  * Returns the first marker matching `selector`, or null.
  */
-export const getCommentMark = (input: string | Buffer | CommentDocument, selector: string) => (
-	toDocument(input).querySelector(selector)
-);
+export const getCommentMark = (
+	input: string | Buffer,
+	selector: string,
+): CommentMarkData | null => {
+	const [first] = selectMarkers(createDocument(input), selector);
+	return first ? markerData(first) : null;
+};
 
 /**
  * Returns every marker matching `selector` in document order. Without a
  * selector, returns every recognized marker.
  */
-export const getCommentMarkAll = (input: string | Buffer | CommentDocument, selector?: string) => (
-	toDocument(input).querySelectorAll(selector)
+export const getCommentMarkAll = (input: string | Buffer, selector?: string): CommentMarkData[] => (
+	selectMarkers(createDocument(input), selector).map(markerData)
 );

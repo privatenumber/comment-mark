@@ -6,7 +6,6 @@ import { describe, test, expect } from 'manten';
 import ts from 'typescript';
 import {
 	commentMark,
-	createDocument,
 	getCommentMark,
 	getCommentMarkAll,
 } from '#comment-mark';
@@ -114,8 +113,8 @@ describe('edge cases', () => {
 
 describe('replacement', () => {
 	test('returns a string for valid input', () => {
-		// The annotation is the contract: adding document input must not widen
-		// the return type for ordinary string calls.
+		// The annotation is the contract: the return type is a string for every
+		// supported call, not a document or a buffer.
 		const output: string = commentMark(createMarker('a', 'old'), { a: 'new' });
 		expect(output).toBe(createMarker('a', 'new'));
 	});
@@ -214,12 +213,9 @@ describe('replacement', () => {
 		expect(output).toBe(createMarker('a', 'hello world'));
 	});
 
-	test('updates a document in place', () => {
-		const document = createDocument(createMarker('a', 'old'));
-		const output = commentMark(document, { a: 'new' });
-
-		expect(output).toBe(createMarker('a', 'new'));
-		expect(document.toString()).toBe(createMarker('a', 'new'));
+	test('round trips source with no replacements byte for byte', () => {
+		const content = '<!-- a\n\tid = "x"  -->\r\nline\r\n<!-- /a -->\n';
+		expect(commentMark(content, {})).toBe(content);
 	});
 
 	test('Buffer', () => {
@@ -401,82 +397,6 @@ describe('attributes', () => {
 		expect(() => getCommentMarkAll('<!-- a id=a"b" -->x<!-- /a -->')).toThrow(
 			'Invalid marker attribute',
 		);
-	});
-});
-
-describe('document', () => {
-	test('querySelector returns the first match', () => {
-		const document = createDocument(`${createMarker('a', 'first')}\n${createMarker('a', 'second')}`);
-
-		expect(document.querySelector('a')?.content).toBe('first');
-		expect(document.querySelector('missing')).toBe(null);
-	});
-
-	test('querySelectorAll returns matches in document order', () => {
-		const document = createDocument(`${createMarker('a', 'first')}\n${createMarker('b', 'second')}`);
-
-		expect(document.querySelectorAll().map(mark => mark.content)).toStrictEqual(['first', 'second']);
-		expect(document.querySelectorAll('a').map(mark => mark.content)).toStrictEqual(['first']);
-	});
-
-	test('returns the same marker object for repeated queries', () => {
-		const document = createDocument(createMarker('a', 'value'));
-
-		expect(document.querySelector('a')).toBe(document.querySelector('a'));
-		expect(document.querySelectorAll('a')[0]).toBe(document.querySelector('a'));
-	});
-
-	test('reflects a content assignment in queries and output', () => {
-		const document = createDocument(createMarker('a', 'old'));
-		const mark = document.querySelector('a');
-
-		if (mark) {
-			mark.content = 'new';
-		}
-
-		expect(mark?.content).toBe('new');
-		expect(document.toString()).toBe(createMarker('a', 'new'));
-	});
-
-	test('renders the same output on every call', () => {
-		const document = createDocument(createMarker('a', 'old'));
-		const mark = document.querySelector('a');
-
-		if (mark) {
-			mark.content = 'new';
-		}
-
-		expect(document.toString()).toBe(document.toString());
-	});
-
-	test('round trips an unchanged document byte for byte', () => {
-		const content = '<!-- a\n\tid = "x"  -->\r\nline\r\n<!-- /a -->\n';
-		expect(createDocument(content).toString()).toBe(content);
-	});
-
-	test('exposes tagName, attributes, and content', () => {
-		const mark = createDocument('<!-- item kind="fruit" -->apple<!-- /item -->').querySelector('item');
-
-		expect(mark?.tagName).toBe('item');
-		expect(mark?.attributes).toStrictEqual({ kind: 'fruit' });
-		expect(mark?.getAttribute('kind')).toBe('fruit');
-		expect(mark?.getAttribute('missing')).toBe(null);
-		expect(mark?.hasAttribute('kind')).toBe(true);
-		expect(mark?.hasAttribute('missing')).toBe(false);
-		expect(mark?.content).toBe('apple');
-	});
-
-	test('serializes as tagName, attributes, and content', () => {
-		const mark = createDocument('<!-- item kind="fruit" -->apple<!-- /item -->').querySelector('item');
-
-		// The JSON shape is the contract here, so this round-trips through JSON
-		// rather than cloning the object.
-		const serialized = JSON.stringify(mark);
-		expect(JSON.parse(serialized)).toStrictEqual({
-			tagName: 'item',
-			attributes: { kind: 'fruit' },
-			content: 'apple',
-		});
 	});
 });
 
@@ -970,12 +890,11 @@ describe('parser scaling', () => {
 });
 
 describe('public API', () => {
-	test('exposes the document and reader functions', async () => {
+	test('exposes the update and reader functions', async () => {
 		const module = await import('#comment-mark');
 
 		expect(Object.keys(module).sort()).toStrictEqual([
 			'commentMark',
-			'createDocument',
 			'getCommentMark',
 			'getCommentMarkAll',
 		]);

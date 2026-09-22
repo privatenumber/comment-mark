@@ -183,7 +183,6 @@ A selector is a tag name followed by optional attribute predicates:
 - When several sections share a tag name, a predicate narrows them. Testing that an attribute exists (`contributors[role]`) is simpler than comparing its value.
 - Attribute values compare as parsed values, so `[role='maintainer']` matches `role=maintainer` however the source quoted it.
 - Single quotes, double quotes, and unquoted values all work in a selector.
-- Matching uses the marker's current attributes, so a marker updated in an earlier call is matched as it now reads.
 - Combinators, selector lists, pseudo-classes, and operators other than `=` are rejected instead of quietly matching nothing.
 
 ## API
@@ -203,7 +202,7 @@ console.log(updated)
 // Version: <!-- version -->2.0.0<!-- /version -->
 ```
 
-- `input` (`string | Buffer | CommentDocument`): Markdown or HTML content, or a document from `createDocument`
+- `input` (`string | Buffer`): Markdown or HTML content
 - `replacements` (`Record<string, string | null | undefined | readonly (string | null | undefined)[]>`): Values keyed by selector
 
 Returns the updated content as a string. Buffer input is decoded as UTF-8.
@@ -211,6 +210,7 @@ Returns the updated content as a string. Buffer input is decoded as UTF-8.
 - A string replaces the first matching section.
 - An array replaces matches by position in document order: entry `0` updates the first match, entry `1` the second, and so on. Matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
+- Resolves every selector before applying any replacement, so one replacement cannot change which markers another targets.
 - Silently skips selectors with no matching marker. Unlike the CLI, the API does not report missing selectors.
 - Rejects an array with more values than matches, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
@@ -218,34 +218,6 @@ Returns the updated content as a string. Buffer input is decoded as UTF-8.
 - Throws when a marker is malformed or nested.
 
 Indented code blocks and code spans that wrap across lines are not detected as code, so a marker placed there is treated as real. Put active markers in prose, and put literal examples inside fenced code or single-line inline code.
-
-### `createDocument(input)`
-
-Parse `input` once and query it repeatedly:
-
-```js
-import { createDocument } from 'comment-mark'
-
-const document = createDocument('<!-- version -->1.0.0<!-- /version -->')
-const version = document.querySelector('version')
-
-if (version) {
-    version.content = '2.0.0'
-}
-
-console.log(document.toString())
-// <!-- version -->2.0.0<!-- /version -->
-```
-
-- `querySelector(selector)` returns the first match, or `null`.
-- `querySelectorAll(selector?)` returns matches in document order, or every marker when no selector is given.
-- `toString()` returns the source with pending changes applied, and returns the same string on every call.
-- Repeated queries return the same marker object.
-- Passing a document to `commentMark` updates that document and returns its rendered source.
-- `commentMark` resolves every selector before applying any replacement, so one replacement cannot change which markers another targets.
-- A document keeps the source it was parsed from. Call `createDocument(document.toString())` to parse new markers.
-
-Each marker exposes `tagName`, `content`, `attributes`, `getAttribute(name)`, and `hasAttribute(name)`. A content assignment is raw text: it is not re-parsed into new markers.
 
 ### `getCommentMark(input, selector)`
 
@@ -273,7 +245,7 @@ console.log(markers.map(marker => marker.content))
 // [ 'apple', 'pear' ]
 ```
 
-Omitting the selector returns every recognized marker. Each entry exposes `tagName`, `content`, `attributes`, `getAttribute(name)`, and `hasAttribute(name)`, and serializes to `{ tagName, attributes, content }`. Every occurrence is kept, so a tag name can appear more than once.
+Omitting the selector returns every recognized marker. Each entry is a plain object with `tagName`, `attributes`, and `content`. Every occurrence is kept, so a tag name can appear more than once.
 
 ## Example: Git contributors
 

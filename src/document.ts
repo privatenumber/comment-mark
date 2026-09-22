@@ -7,21 +7,6 @@ export type CommentMarkData = {
 	content: string;
 };
 
-export type CommentMark = {
-	readonly tagName: string;
-	content: string;
-	readonly attributes: Record<string, string>;
-	getAttribute(name: string): string | null;
-	hasAttribute(name: string): boolean;
-	toJSON(): CommentMarkData;
-};
-
-export type CommentDocument = {
-	querySelector(selector: string): CommentMark | null;
-	querySelectorAll(selector?: string): CommentMark[];
-	toString(): string;
-};
-
 // A replacement is the new content. `null` and `undefined` consume their
 // position without replacing anything, which is what an array entry needs to
 // skip one match and reach the next.
@@ -29,15 +14,24 @@ export type CommentMarkValue = string | null | undefined;
 
 export type CommentMarkReplacement = CommentMarkValue | readonly CommentMarkValue[];
 
-type MarkerState = {
+export type MarkerState = {
 	index: number;
 	source: string;
 	node: MarkerNode;
+	// The replacement content, or `undefined` while the marker is untouched.
 	content: string | undefined;
-	mark: CommentMark | undefined;
 };
 
-const documentStates = new WeakMap<object, MarkerState[]>();
+/**
+ * The result of parsing `input`: the source text plus one state per marker, in
+ * document order. Applying replacements records them on the states, and
+ * rendering reads the source back around the recorded spans, so a document is
+ * parsed once and never re-read.
+ */
+export type CommentDocument = {
+	source: string;
+	markers: MarkerState[];
+};
 
 const currentContent = (state: MarkerState) => (
 	state.content ?? state.source.slice(state.node.contentStart, state.node.contentEnd)
@@ -47,48 +41,11 @@ const currentAttributes = (state: MarkerState) => Object.fromEntries(
 	state.node.attributes.map(attribute => [attribute.name, attribute.value]),
 );
 
-// Methods stay out of enumeration so a marker's own shape is its data.
-const markMethods = ['getAttribute', 'hasAttribute', 'toJSON'] as const;
-
-const toMark = (state: MarkerState): CommentMark => {
-	if (state.mark) {
-		return state.mark;
-	}
-
-	// A marker closes over its own state, so it stays valid without the document
-	// having to resolve it again.
-	const mark = {
-		tagName: state.node.tagName,
-		get content() {
-			return currentContent(state);
-		},
-		set content(value: string) {
-			state.content = value;
-		},
-		get attributes() {
-			return currentAttributes(state);
-		},
-		getAttribute: (name: string) => {
-			const attribute = state.node.attributes.find(candidate => candidate.name === name);
-			return attribute ? attribute.value : null;
-		},
-		hasAttribute: (name: string) => (
-			state.node.attributes.some(attribute => attribute.name === name)
-		),
-		toJSON: () => ({
-			tagName: state.node.tagName,
-			attributes: currentAttributes(state),
-			content: currentContent(state),
-		}),
-	};
-
-	for (const key of markMethods) {
-		Object.defineProperty(mark, key, { enumerable: false });
-	}
-
-	state.mark = mark;
-	return mark;
-};
+export const markerData = (state: MarkerState): CommentMarkData => ({
+	tagName: state.node.tagName,
+	attributes: currentAttributes(state),
+	content: currentContent(state),
+});
 
 const matchesSelector = (state: MarkerState, selector: Selector) => {
 	if (state.node.tagName !== selector.tagName) {
@@ -104,20 +61,21 @@ const matchesSelector = (state: MarkerState, selector: Selector) => {
 	});
 };
 
-const selectStates = (states: MarkerState[], selectorText: string | undefined) => {
+export const selectMarkers = (document: CommentDocument, selectorText: string | undefined) => {
 	if (selectorText === undefined) {
-		return states.slice();
+		return document.markers.slice();
 	}
 
 	const selector = parseSelector(selectorText);
-	return states.filter(state => matchesSelector(state, selector));
+	return document.markers.filter(state => matchesSelector(state, selector));
 };
 
-const renderDocument = (source: string, states: MarkerState[]) => {
+export const renderDocument = (document: CommentDocument) => {
+	const { source } = document;
 	let output = '';
 	let cursor = 0;
 
-	for (const state of states) {
+	for (const state of document.markers) {
 		if (state.content === undefined) {
 			continue;
 		}
@@ -130,47 +88,18 @@ const renderDocument = (source: string, states: MarkerState[]) => {
 	return output + source.slice(cursor);
 };
 
-/**
- * Parses `input` once and returns a document whose markers can be queried by
- * selector. Reusing the document keeps the parsed offsets valid, so a query
- * never re-reads the source.
- */
 export const createDocument = (input: string | Buffer): CommentDocument => {
 	const source = Buffer.isBuffer(input) ? input.toString() : input;
-	const states = parseDocument(source).map((node, index): MarkerState => ({
-		index,
+	return {
 		source,
-		node,
-		content: undefined,
-		mark: undefined,
-	}));
-
-	const document: CommentDocument = {
-		querySelector: (selector) => {
-			const [first] = selectStates(states, selector);
-			return first ? toMark(first) : null;
-		},
-		querySelectorAll: selector => (
-			selectStates(states, selector).map(toMark)
-		),
-		toString: () => renderDocument(source, states),
+		markers: parseDocument(source).map((node, index): MarkerState => ({
+			index,
+			source,
+			node,
+			content: undefined,
+		})),
 	};
-
-	documentStates.set(document, states);
-	return document;
 };
-
-export const isCommentDocument = (value: unknown): value is CommentDocument => (
-	typeof value === 'object' && value !== null && documentStates.has(value)
-);
-
-/**
- * Returns `input` as a document, parsing it when it is source text. A document
- * that is already parsed is reused so its offsets stay valid.
- */
-export const toDocument = (input: string | Buffer | CommentDocument): CommentDocument => (
-	isCommentDocument(input) ? input : createDocument(input)
-);
 
 /**
  * Applies `replacements` to a document. Every selector is resolved before any
@@ -183,17 +112,12 @@ export const applyReplacements = (
 	document: CommentDocument,
 	replacements: Record<string, CommentMarkReplacement>,
 ) => {
-	const states = documentStates.get(document);
-	if (!states) {
-		throw new Error('[comment-mark] Marker does not belong to a document');
-	}
-
 	const claims: Array<{ state: MarkerState;
 		value: string; }> = [];
 	const claimed = new Map<MarkerState, string>();
 
 	for (const [selectorText, replacement] of Object.entries(replacements)) {
-		const matches = selectStates(states, selectorText);
+		const matches = selectMarkers(document, selectorText);
 		const positional = Array.isArray(replacement);
 
 		if (positional && replacement.length > matches.length) {
