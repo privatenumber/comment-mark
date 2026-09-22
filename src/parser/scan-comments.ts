@@ -33,7 +33,7 @@ const closeDelimiter = '-->';
 // This scanner parses by character index. Regular expressions are not allowed
 // in source: shared pattern state let a reentrant parse corrupt an outer one,
 // and pattern-based block rules hid the order the scanner actually reads in.
-// tests/index.ts asserts that src/ stays free of them.
+// eslint.config.mts enforces the ban for `src/`.
 
 /**
  * Collects the backtick runs in one line and links each run to the next run of
