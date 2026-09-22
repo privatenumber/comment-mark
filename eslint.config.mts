@@ -1,10 +1,23 @@
 import { defineConfig, pvtnbr } from 'lintroll';
 
-// `src/` is scanned by character index. A regular expression carries its own
-// scan position, so sharing one across parses let an inner parse rewind an
-// outer one, and pattern-based block rules hid the order the scanner reads in.
-// `tests/index.ts` walks the syntax tree as a second guard that does not depend
-// on this config loading.
+// `src/` parses by character index instead of with regular expressions.
+//
+// Overlapping patterns and the scan position a global or sticky regex carries
+// made the parser hard to reason about: a nested parse could rewind an outer
+// one, and pattern-based block rules hid the order the scanner reads in. An
+// explicit scan keeps that order and its state visible, which the Markdown
+// context, paired tags, and formatting-preserving edits all depend on.
+// Performance is not a reason to reintroduce patterns: if an index-based scan
+// is too slow, make that scan faster.
+//
+// `tests/index.ts` walks the syntax tree of every file under `src/` as a second
+// guard, so the ban holds even when this config does not load. Both guards
+// cover `src/` only; tests may still use regular expressions in assertions.
+//
+// Keep this config as `.mts`: lintroll loads it through tsx, and a `.ts` config
+// fails to import the lintroll plugin graph in this CommonJS package.
+const scanByIndex = 'Scan by character index with parse-local state.';
+
 export default defineConfig([
 	...pvtnbr(),
 	{
@@ -14,23 +27,23 @@ export default defineConfig([
 				'error',
 				{
 					selector: 'Literal[regex]',
-					message: 'Regular expressions are banned in src/.',
+					message: `A regular expression literal is not allowed in src/. ${scanByIndex}`,
 				},
 				{
 					selector: 'CallExpression[callee.name="RegExp"], NewExpression[callee.name="RegExp"]',
-					message: 'RegExp is banned in src/.',
+					message: `Constructing a RegExp is not allowed in src/. ${scanByIndex}`,
 				},
 				{
 					selector: 'MemberExpression[property.name="match"]',
-					message: 'String#match is banned in src/.',
+					message: `String#match coerces its argument to a regular expression. ${scanByIndex}`,
 				},
 				{
 					selector: 'MemberExpression[property.name="matchAll"]',
-					message: 'String#matchAll is banned in src/.',
+					message: `String#matchAll coerces its argument to a regular expression. ${scanByIndex}`,
 				},
 				{
 					selector: 'MemberExpression[property.name="search"]',
-					message: 'String#search is banned in src/.',
+					message: `String#search coerces its argument to a regular expression. ${scanByIndex}`,
 				},
 			],
 		},
