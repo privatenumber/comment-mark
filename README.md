@@ -9,6 +9,7 @@ Keep generated content, like contributor lists and benchmark results, alongside 
 - Reusable placeholders that are hidden when Markdown is rendered
 - Update sections from the CLI or JavaScript
 - Select sections by tag name and attributes, like a CSS selector
+- Compute section content and attributes from the marker's current values
 - Read marked content as JSON or a JavaScript object, preserving whitespace
 - Supports Markdown and HTML files, including multiline content
 - Ignores markers inside fenced code blocks and single-line inline code, so documentation examples stay literal
@@ -166,7 +167,7 @@ Attributes are optional and carry metadata for the section. They are written aft
 
 - The closing comment repeats the tag name, so `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
 - Whitespace inside the comments is padding: `<!-- contributors -->` and `<!--contributors-->` are equivalent.
-- The content between the comments is replaced; the comments themselves are kept.
+- The content between the comments is replaced; the comment pair stays in the output so later updates can find the section.
 - A tag name starts with a letter or `_`, then letters, digits, `_`, or `-`.
 - Tag names and attribute names are case-sensitive and matched verbatim.
 - Attribute values are literal text: surrounding quotes are removed and HTML entities are not decoded.
@@ -206,8 +207,35 @@ console.log(updated)
 // Version: <!-- version -->2.0.0<!-- /version -->
 ```
 
+A value can also be a function that computes the replacement from the section's own attributes and content:
+
+```js
+const updated = commentMark('<!-- views -->40<!-- /views -->', {
+    views: (attributes, content) => String(Number(content) + 1)
+})
+
+console.log(updated)
+// <!-- views -->41<!-- /views -->
+```
+
+Return an object instead of a string to update the marker's attributes, its content, or both:
+
+```js
+const updated = commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
+    item: attributes => ({
+        attributes: {
+            ...attributes,
+            size: 'small'
+        }
+    })
+})
+
+console.log(updated)
+// <!-- item kind="fruit" size="small" -->apple<!-- /item -->
+```
+
 - `input` (`string | Buffer`): Markdown or HTML content
-- `replacements` (object): Values keyed by selector. Each value is a string, `null`, `undefined`, or an array of those.
+- `replacements` (object): Values keyed by selector. Each value is a string, a function, `null`, `undefined`, or an array of those.
 
 Returns the updated content as a string. Buffer input is decoded as UTF-8.
 
@@ -215,11 +243,14 @@ Returns the updated content as a string. Buffer input is decoded as UTF-8.
 - An array replaces matches by position in document order: entry `0` updates the first match, entry `1` the second, and so on. Matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
 - Resolves every selector before applying any replacement, so one replacement cannot change which markers another targets.
+- A function value runs for each match it targets, in document order, and receives that match's attributes and content. A scalar targets only the first match; an array of functions runs one per entry. Its string result is inserted verbatim, with no added newline.
+- An object result replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.
+- A changed attribute value is written back in place, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses its original quoting when it still fits, and is re-quoted otherwise. A new attribute is appended as `name="value"`.
 - Silently skips selectors with no matching marker. Unlike the CLI, the API does not report missing selectors.
 - Rejects an array with more values than matches, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
-- Wraps values containing `\n` in an additional newline on each side.
-- Throws when a marker is malformed or nested.
+- Wraps static values containing `\n` in an additional newline on each side.
+- Throws when a marker is malformed or nested, when a resolver throws, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
 
 An array updates matches by position, so one call can set repeated sections:
 

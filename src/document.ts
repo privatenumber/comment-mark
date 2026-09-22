@@ -1,3 +1,7 @@
+import {
+	encodeAttributeValue,
+	isAttributeName,
+} from './parser/parse-attributes.js';
 import { type MarkerNode, parseDocument } from './parser/parse-document.js';
 import { type Selector, parseSelector } from './parser/parse-selector.js';
 
@@ -7,10 +11,20 @@ export type CommentMarkData = {
 	content: string;
 };
 
-// A replacement is the new content. `null` and `undefined` consume their
-// position without replacing anything, which is what an array entry needs to
-// skip one match and reach the next.
-export type CommentMarkValue = string | null | undefined;
+export type CommentMarkUpdate = {
+	attributes?: Record<string, string>;
+	content?: string;
+};
+
+export type CommentMarkResolver = (
+	attributes: Record<string, string>,
+	content: string,
+) => string | CommentMarkUpdate | null | undefined;
+
+// A replacement is the new content, or a resolver that computes it. `null` and
+// `undefined` consume their position without replacing anything, which is what
+// an array entry needs to skip one match and reach the next.
+export type CommentMarkValue = string | CommentMarkResolver | null | undefined;
 
 export type CommentMarkReplacement = CommentMarkValue | readonly CommentMarkValue[];
 
@@ -18,8 +32,11 @@ export type MarkerState = {
 	index: number;
 	source: string;
 	node: MarkerNode;
+	// Current attribute values in document order. `null` marks a removal.
+	values: Map<string, string | null>;
 	// The replacement content, or `undefined` while the marker is untouched.
 	content: string | undefined;
+	changed: boolean;
 };
 
 /**
@@ -37,9 +54,117 @@ const currentContent = (state: MarkerState) => (
 	state.content ?? state.source.slice(state.node.contentStart, state.node.contentEnd)
 );
 
-const currentAttributes = (state: MarkerState) => Object.fromEntries(
-	state.node.attributes.map(attribute => [attribute.name, attribute.value]),
+const currentAttributes = (state: MarkerState) => {
+	const attributes: Array<[string, string]> = [];
+	for (const [name, value] of state.values) {
+		if (value !== null) {
+			attributes.push([name, value]);
+		}
+	}
+	return Object.fromEntries(attributes);
+};
+
+const setContent = (state: MarkerState, content: string) => {
+	state.content = content;
+	state.changed = true;
+};
+
+const originalAttribute = (state: MarkerState, name: string) => (
+	state.node.attributes.find(attribute => attribute.name === name)
 );
+
+// Reading rejects the same names and values, so writing an unchecked one would
+// produce a marker that cannot be read again.
+const assertAttribute = (state: MarkerState, name: string, value: string) => {
+	if (!isAttributeName(name)) {
+		throw new Error(`[comment-mark] Invalid attribute name: ${JSON.stringify(name)}`);
+	}
+	encodeAttributeValue(value, originalAttribute(state, name)?.quote);
+};
+
+/**
+ * Replaces the marker's attribute set. The map is the complete set, so an
+ * attribute left out is removed; spread the attributes a resolver received to
+ * keep them.
+ */
+const replaceAttributes = (state: MarkerState, attributes: Record<string, string>) => {
+	const entries = Object.entries(attributes);
+
+	// Validate every name and value before changing any, so a rejected
+	// replacement leaves the marker's attributes as they were.
+	for (const [name, value] of entries) {
+		assertAttribute(state, name, value);
+	}
+
+	for (const name of state.values.keys()) {
+		state.values.set(name, null);
+	}
+
+	for (const [name, value] of entries) {
+		state.values.set(name, value);
+	}
+
+	state.changed = true;
+};
+
+const renderOpeningTag = (state: MarkerState) => {
+	const { source, node } = state;
+	const written = new Set(node.attributes.map(attribute => attribute.name));
+	// The tag name and its padding are always kept; new attributes are inserted
+	// after them.
+	const parts: string[] = [source.slice(node.openingStart, node.attributesStart)];
+	let cursor = node.attributesStart;
+
+	for (const attribute of node.attributes) {
+		const value = state.values.get(attribute.name);
+		if (value === null || value === undefined) {
+			// Drop the attribute, and the whitespace written before it, with it.
+			cursor = attribute.end;
+			continue;
+		}
+
+		// Copy everything up to the value, so the tag name, the whitespace
+		// around `=`, the indentation, and the line endings are kept as written.
+		parts.push(
+			source.slice(cursor, attribute.valueStart),
+			value === attribute.value
+				? source.slice(attribute.valueStart, attribute.valueEnd)
+				: encodeAttributeValue(value, attribute.quote),
+		);
+		cursor = attribute.valueEnd;
+	}
+
+	for (const [name, value] of state.values) {
+		if (written.has(name) || value === null) {
+			continue;
+		}
+		// An attribute the marker did not have has no written quoting to keep.
+		parts.push(` ${name}=${encodeAttributeValue(value, '"')}`);
+	}
+
+	parts.push(source.slice(cursor, node.contentStart));
+
+	return parts.join('');
+};
+
+export const renderDocument = (document: CommentDocument) => {
+	const { source } = document;
+	let output = '';
+	let cursor = 0;
+
+	for (const state of document.markers) {
+		if (!state.changed) {
+			continue;
+		}
+
+		output += source.slice(cursor, state.node.openingStart);
+		output += renderOpeningTag(state);
+		output += currentContent(state);
+		cursor = state.node.contentEnd;
+	}
+
+	return output + source.slice(cursor);
+};
 
 export const markerData = (state: MarkerState): CommentMarkData => ({
 	tagName: state.node.tagName,
@@ -53,11 +178,11 @@ const matchesSelector = (state: MarkerState, selector: Selector) => {
 	}
 
 	return selector.attributes.every(({ name, value }) => {
-		const attribute = state.node.attributes.find(candidate => candidate.name === name);
-		if (!attribute) {
+		const current = state.values.get(name);
+		if (current === null || current === undefined) {
 			return false;
 		}
-		return value === undefined || attribute.value === value;
+		return value === undefined || current === value;
 	});
 };
 
@@ -70,24 +195,6 @@ export const selectMarkers = (document: CommentDocument, selectorText: string | 
 	return document.markers.filter(state => matchesSelector(state, selector));
 };
 
-export const renderDocument = (document: CommentDocument) => {
-	const { source } = document;
-	let output = '';
-	let cursor = 0;
-
-	for (const state of document.markers) {
-		if (state.content === undefined) {
-			continue;
-		}
-
-		output += source.slice(cursor, state.node.contentStart);
-		output += state.content;
-		cursor = state.node.contentEnd;
-	}
-
-	return output + source.slice(cursor);
-};
-
 export const createDocument = (input: string | Buffer): CommentDocument => {
 	const source = Buffer.isBuffer(input) ? input.toString() : input;
 	return {
@@ -96,7 +203,11 @@ export const createDocument = (input: string | Buffer): CommentDocument => {
 			index,
 			source,
 			node,
+			values: new Map(node.attributes.map((attribute): [string, string | null] => (
+				[attribute.name, attribute.value]
+			))),
 			content: undefined,
+			changed: false,
 		})),
 	};
 };
@@ -113,7 +224,7 @@ export const applyReplacements = (
 	replacements: Record<string, CommentMarkReplacement>,
 ) => {
 	const claims: Array<{ state: MarkerState;
-		value: string; }> = [];
+		value: CommentMarkValue; }> = [];
 	const claimed = new Map<MarkerState, string>();
 
 	for (const [selectorText, replacement] of Object.entries(replacements)) {
@@ -159,7 +270,31 @@ export const applyReplacements = (
 	claims.sort((a, b) => a.state.index - b.state.index);
 
 	for (const { state, value } of claims) {
-		// A multiline static value keeps its surrounding newlines.
-		state.content = value.includes('\n') ? `\n${value}\n` : value;
+		const resolver = typeof value === 'function';
+		// A resolver computes its own replacement from the marker's current
+		// attributes and content; each occurrence gets its own call.
+		const updated = resolver ? value(currentAttributes(state), currentContent(state)) : value;
+
+		if (updated === null || updated === undefined) {
+			continue;
+		}
+
+		if (typeof updated === 'string') {
+			// A resolver returns exact replacement content, so no newline padding
+			// is added. A static multiline value keeps its surrounding newlines.
+			setContent(state, resolver || !updated.includes('\n') ? updated : `\n${updated}\n`);
+			continue;
+		}
+
+		// Apply attributes before content: attributes are validated and can
+		// throw, while a content assignment cannot, so a rejected update leaves
+		// the marker untouched.
+		if (updated.attributes !== undefined) {
+			replaceAttributes(state, updated.attributes);
+		}
+
+		if (updated.content !== undefined) {
+			setContent(state, updated.content);
+		}
 	}
 };
