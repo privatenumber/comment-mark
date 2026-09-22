@@ -18,14 +18,13 @@ export const commentMark = (
 	replacements: Record<string, CommentMarkReplacement>,
 ): string => {
 	if (
-		!input
-		|| replacements === null
-		|| replacements === undefined
+		(typeof input !== 'string' && !Buffer.isBuffer(input))
 		|| typeof replacements !== 'object'
+		|| replacements === null
 	) {
 		// Invalid arguments are a no-op for JavaScript callers, returning the
-		// input unchanged. Typed callers cannot reach this branch, so the
-		// string return still describes every supported call.
+		// input unchanged. An empty string is valid input, so it still reaches
+		// the parser and its validation.
 		return input as string;
 	}
 

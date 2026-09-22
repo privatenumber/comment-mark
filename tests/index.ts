@@ -28,6 +28,17 @@ describe('edge cases', () => {
 		expect(output).toBe('');
 	});
 
+	test('validates an empty string like any other input', () => {
+		// An empty string is valid input, so it parses and validates instead of
+		// short-circuiting as a JavaScript-invalid argument.
+		expect(() => commentMark('', { 'a b': 'new' })).toThrow(
+			'[comment-mark] Invalid selector: "a b"',
+		);
+		expect(() => commentMark('', { x: ['new'] })).toThrow(
+			'[comment-mark] Selector "x" matched 0 markers but received 1 values',
+		);
+	});
+
 	test('ignores an unmatched opening comment', () => {
 		const content = '<!-- a -->never closed\n';
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
