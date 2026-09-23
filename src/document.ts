@@ -23,10 +23,12 @@ export type CommentMarkResolver = (
 	content: string,
 ) => CommentMarkResolverResult | Promise<CommentMarkResolverResult>;
 
-// A replacement is the new content, or a resolver that computes it. `null` and
-// `undefined` consume their position without replacing anything, which is what
-// an array entry needs to skip one match and reach the next.
-export type CommentMarkValue = string | CommentMarkResolver | null | undefined;
+// A replacement is the new content, an update object that replaces the
+// attributes and content it names, or a resolver that computes either from the
+// marker's current values. `null` and `undefined` consume their position
+// without replacing anything, which is what an array entry needs to skip one
+// match and reach the next.
+export type CommentMarkValue = string | CommentMarkUpdate | CommentMarkResolver | null | undefined;
 
 export type CommentMarkReplacement = CommentMarkValue | readonly CommentMarkValue[];
 
