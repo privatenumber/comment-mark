@@ -3,7 +3,7 @@ import {
 	isNameStart,
 	isWhitespace,
 	skipWhitespace,
-} from './characters.js';
+} from './characters.ts';
 
 const isValueChar = (char: string) => (
 	!isWhitespace(char) && char !== '"' && char !== "'"

@@ -45,10 +45,10 @@
 	},
 	"packageManager": "pnpm@12.3.4",
 	"scripts": {
-		"bench": "pnpm build && tsx --expose-gc bench/index.ts",
+		"bench": "pnpm build && node --expose-gc bench/index.ts",
 		"lint": "lintroll . --cache",
-		"test": "tsx tests",
-		"dev": "tsx --conditions=development tests",
+		"test": "node tests/index.ts",
+		"dev": "node --conditions=development tests/index.ts",
 		"build": "pkgroll --target=node22.22.2",
 		"type-check": "tsc",
 		"prepack": "pnpm build && clean-pkg-json",

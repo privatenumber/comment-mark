@@ -1,9 +1,9 @@
 import {
 	encodeAttributeValue,
 	isAttributeName,
-} from './parser/parse-attributes.js';
-import { type MarkerNode, parseDocument } from './parser/parse-document.js';
-import { type Selector, parseSelector } from './parser/parse-selector.js';
+} from './parser/parse-attributes.ts';
+import { type MarkerNode, parseDocument } from './parser/parse-document.ts';
+import { type Selector, parseSelector } from './parser/parse-selector.ts';
 
 export type CommentMarkData = {
 	tagName: string;

@@ -6,9 +6,9 @@ import {
 	markerData,
 	renderDocument,
 	selectMarkers,
-} from './document.js';
+} from './document.ts';
 
-export type { CommentMarkData } from './document.js';
+export type { CommentMarkData } from './document.ts';
 
 /**
  * Replaces marked sections in `input` and returns the updated source.

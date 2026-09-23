@@ -1,6 +1,6 @@
 import {
 	isNameChar, isNameStart, isWhitespace, skipWhitespace,
-} from './characters.js';
+} from './characters.ts';
 
 export type SelectorAttribute = {
 	name: string;

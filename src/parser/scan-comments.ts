@@ -11,7 +11,7 @@ import {
 	matchBlockquote,
 	matchFence,
 	matchListMarker,
-} from './block-context.js';
+} from './block-context.ts';
 
 export type CommentVisitor = (
 	start: number,
