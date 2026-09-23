@@ -56,10 +56,10 @@ Marker data is a plain object: `{ tagName, attributes, content }`.
 ## CLI
 
 ```sh
-npx comment-mark <file> [--<selector>=<value>...]
+npx comment-mark <file> [--<selector>=<value>...] [--<selector>.<attribute>=<value>...]
 ```
 
-`--<selector>=<value>` sets the first matching marker. Quote the whole flag when the selector contains brackets: `--"item[kind='fruit']"=pear`. Without flags, the CLI prints every marker as JSON. See `references/cli.md` for statuses, exit codes, and exact matching.
+`--<selector>=<value>` sets the first matching marker's content. `--<selector>.<attribute>=<value>` sets one attribute and keeps the others and the content, so `--item.kind="fruit"` updates an attribute without a script. Quote the whole flag when the selector contains brackets: `--"item[kind='fruit']"=pear`. Without flags, the CLI prints every marker as JSON. See `references/cli.md` for statuses, exit codes, and exact matching.
 
 ## Rules and gotchas
 
@@ -68,9 +68,10 @@ npx comment-mark <file> [--<selector>=<value>...]
 | A file documents the marker syntax | Put examples in a fenced code block or inline code so they are ignored |
 | A tag name appears more than once | A scalar replaces the first match; pass an array to reach the others |
 | Section content must be computed from its current value | Pass a function in `commentMark`; it receives `(attributes, content)` for the match it targets |
-| A marker's attributes must be updated | Return `{ attributes }` from a function value. The returned map is the complete set, so spread the received `attributes` to keep the rest |
+| A marker's attributes must be updated | From the CLI, pass `--<selector>.<attribute>=<value>`. From the API, return `{ attributes }` from a function value; the returned map is the complete set, so spread the received `attributes` to keep the rest |
 | A changed value has quotes, spaces, or `-->` | comment-mark re-encodes it, reusing the original quoting when the value fits, and throws for a value it cannot write |
 | A selector contains `=` | Quote the whole CLI flag; the first `=` outside brackets and quotes separates the flag from its value |
+| An attribute predicate value contains `.` | The first `.` outside brackets and quotes separates the attribute; a dot inside the predicate stays with the selector |
 | Marker missing during update | The API throws `Selector "<selector>" matched no markers`; the CLI prints `Missing` and exits `1` |
 | Value is multiline | A static string gets surrounding newlines; a function return value is inserted verbatim |
 | Need every marker, in document order, with attributes | Use `getCommentMarkAll` or CLI read mode |

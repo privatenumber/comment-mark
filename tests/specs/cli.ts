@@ -128,7 +128,7 @@ describe('CLI', () => {
 
 		const { stderr } = await commentMarkCli(fixture.getPath('README.md'), '--a=same');
 
-		expect(stderr).toContain('is unchanged. All 1 requested values already match.');
+		expect(stderr).toContain('is unchanged. All 1 requested selectors already match.');
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a', 'same'));
 	});
 
@@ -259,5 +259,335 @@ describe('CLI', () => {
 			stderr: expect.stringContaining('Flag "--__proto__" was specified 2 times'),
 		});
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('__proto__'));
+	});
+
+	describe('attribute updates', () => {
+		test('updates an attribute and preserves the other attributes and content', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" size="small" -->apple<!-- /item -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), '--item.kind=vegetable');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="vegetable" size="small" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('adds an attribute the marker did not have', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), '--item.updated=2026-09-23');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="fruit" updated="2026-09-23" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('sets an empty attribute value', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), '--item.kind=');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('updates content and attributes together, independent of flag order', async () => {
+			const content = '<!-- item kind="fruit" -->apple<!-- /item -->\n';
+			const expected = '<!-- item kind="vegetable" -->pear<!-- /item -->\n';
+
+			await using first = await createFixture({ 'README.md': content });
+			await commentMarkCli(first.getPath('README.md'), '--item=pear', '--item.kind=vegetable');
+			expect(await first.readFile('README.md', 'utf8')).toBe(expected);
+
+			await using second = await createFixture({ 'README.md': content });
+			await commentMarkCli(second.getPath('README.md'), '--item.kind=vegetable', '--item=pear');
+			expect(await second.readFile('README.md', 'utf8')).toBe(expected);
+		});
+
+		test('narrows by an attribute predicate and updates another attribute', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), "--item[kind='fruit'].size=large");
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="fruit" size="large" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('treats a dot inside a predicate value as part of the selector', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item file="package.json" -->apple<!-- /item -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), "--item[file='package.json'].kind=metadata");
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item file="package.json" kind="metadata" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('updates only the first match', async () => {
+			await using fixture = await createFixture({
+				'README.md': `${createMarker('item', 'one')}\n${createMarker('item', 'two')}\n`,
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), '--item.role=first');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				`<!-- item role="first" -->one<!-- /item -->\n${createMarker('item', 'two')}\n`,
+			);
+		});
+
+		test('preserves the written attribute formatting', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item\n  kind\n    =\n    "fruit"\n-->apple<!-- /item -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), '--item.kind=vegetable');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item\n  kind\n    =\n    "vegetable"\n-->apple<!-- /item -->\n',
+			);
+		});
+
+		test('adds the CLI newline padding to multiline content with an attribute', async () => {
+			await using fixture = await createFixture({ 'README.md': createMarker('item') });
+
+			await commentMarkCli(fixture.getPath('README.md'), '--item=first\nline', '--item.role=note');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item role="note" -->\nfirst\nline\n<!-- /item -->',
+			);
+		});
+
+		test('keeps markers named like control flags attribute-settable', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- help kind="old" -->docs<!-- /help -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), '--help.kind=new');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- help kind="new" -->docs<!-- /help -->\n',
+			);
+		});
+
+		test('counts several fields under one selector as one result', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			});
+
+			const { stderr } = await commentMarkCli(
+				fixture.getPath('README.md'),
+				'--item.kind=vegetable',
+				'--item.size=small',
+			);
+
+			expect(stderr).toMatch(/Updated: item/);
+			expect(stderr).toContain('Updated 1 selector.');
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="vegetable" size="small" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('reports an already-matching attribute as unchanged', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			});
+
+			const { stderr } = await commentMarkCli(fixture.getPath('README.md'), '--item.kind=fruit');
+
+			expect(stderr).toContain('is unchanged. All 1 requested selectors already match.');
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('saves matched attribute updates while reporting a missing selector', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			});
+
+			await expect(commentMarkCli(
+				fixture.getPath('README.md'),
+				'--item.kind=vegetable',
+				'--nope.kind=x',
+			)).rejects.toMatchObject({
+				exitCode: 1,
+				stderr: expect.stringMatching(/Updated: item[\s\S]*Missing: nope/),
+			});
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="vegetable" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('rejects an invalid attribute name before writing', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			});
+
+			await expect(commentMarkCli(fixture.getPath('README.md'), '--item.=x')).rejects.toMatchObject({
+				exitCode: 1,
+				stderr: expect.stringContaining('Invalid attribute name'),
+			});
+			await expect(commentMarkCli(fixture.getPath('README.md'), '--item.kind.extra=x')).rejects.toMatchObject({
+				exitCode: 1,
+				stderr: expect.stringContaining('Invalid attribute name'),
+			});
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('rejects a repeated assignment to the same attribute', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			});
+
+			await expect(commentMarkCli(
+				fixture.getPath('README.md'),
+				'--item.kind=a',
+				'--item.kind=b',
+			)).rejects.toMatchObject({
+				exitCode: 1,
+				stderr: expect.stringContaining('Flag "--item.kind" was specified 2 times'),
+			});
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('leaves the file unchanged when an attribute value cannot be written', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			});
+
+			await expect(commentMarkCli(fixture.getPath('README.md'), '--item.kind=x-->y')).rejects.toMatchObject({
+				exitCode: 1,
+				stderr: expect.stringContaining('cannot contain'),
+			});
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('rejects an invalid attribute value even when its selector is missing', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item -->old<!-- /item -->\n',
+			});
+
+			await expect(commentMarkCli(
+				fixture.getPath('README.md'),
+				'--item=new',
+				'--missing.kind=x-->y',
+			)).rejects.toMatchObject({
+				exitCode: 1,
+				stderr: expect.stringContaining('cannot contain'),
+			});
+
+			// The valid update must not be written when another requested value
+			// cannot be written, even though its selector matches nothing.
+			expect(await fixture.readFile('README.md', 'utf8')).toBe('<!-- item -->old<!-- /item -->\n');
+		});
+
+		test('accepts an unquoted predicate value containing a bracket', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item file="a[b" -->apple<!-- /item -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), '--item[file=a[b].kind=new');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item file="a[b" kind="new" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('resolves every selector against the original document', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="a" -->one<!-- /item -->\n<!-- item kind="b" -->two<!-- /item -->\n',
+			});
+
+			await commentMarkCli(
+				fixture.getPath('README.md'),
+				'--item[kind=a].kind=b',
+				'--item[kind=b]=new',
+			);
+
+			// The first flag changes marker one to `kind="b"`, which would make it
+			// match the second flag. Because selection uses the document as read,
+			// the second flag still targets marker two.
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="b" -->one<!-- /item -->\n<!-- item kind="b" -->new<!-- /item -->\n',
+			);
+		});
+
+		test('sets an attribute named like an Object prototype property', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item -->old<!-- /item -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), '--item.__proto__=value');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item __proto__="value" -->old<!-- /item -->\n',
+			);
+		});
+
+		test('rejects different selectors that target the same marker', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item id="x" -->old<!-- /item -->\n',
+			});
+
+			await expect(commentMarkCli(
+				fixture.getPath('README.md'),
+				'--item.kind=fruit',
+				'--item[id=x].size=small',
+			)).rejects.toMatchObject({
+				exitCode: 1,
+				stderr: expect.stringContaining('both target the marker'),
+			});
+			expect(await fixture.readFile('README.md', 'utf8')).toBe('<!-- item id="x" -->old<!-- /item -->\n');
+		});
+
+		test('clears content while setting an attribute', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" -->apple<!-- /item -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), '--item=', '--item.kind=vegetable');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="vegetable" --><!-- /item -->\n',
+			);
+		});
+
+		test('counts a grouped unchanged selector and a grouped missing selector once', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="fruit" size="small" -->apple<!-- /item -->\n',
+			});
+
+			await expect(commentMarkCli(
+				fixture.getPath('README.md'),
+				'--item.kind=fruit',
+				'--item.size=small',
+				'--nope.a=1',
+				'--nope.b=2',
+			)).rejects.toMatchObject({
+				exitCode: 1,
+				stderr: expect.stringMatching(/Unchanged: item[\s\S]*Missing: nope/),
+			});
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="fruit" size="small" -->apple<!-- /item -->\n',
+			);
+		});
 	});
 });
