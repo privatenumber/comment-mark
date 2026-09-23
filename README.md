@@ -231,11 +231,11 @@ console.log(updated)
 // Version: <!-- version -->2.0.0<!-- /version -->
 ```
 
-A value can also be a function that computes the replacement from the section's own attributes and content:
+A value can also be a function that computes the replacement from the marker it targets:
 
 ```js
 const updated = await commentMark('<!-- views -->40<!-- /views -->', {
-    views: (attributes, content) => String(Number(content) + 1)
+    views: ({ content }) => String(Number(content) + 1)
 })
 
 console.log(updated)
@@ -263,7 +263,7 @@ console.log(updated)
 
 ```js
 const updated = await commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
-    item: attributes => ({
+    item: ({ attributes }) => ({
         attributes: {
             ...attributes,
             size: 'small'
@@ -284,12 +284,12 @@ Returns a promise that resolves to the updated content as a string. Buffer input
 - An array replaces matches by position in document order: entry `0` updates the first match, entry `1` the second, and so on. Matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
 - Resolves every selector before applying any replacement, so one replacement cannot change which markers another targets.
-- A function value runs for each match it targets, in document order, and receives that match's attributes and content. A scalar targets only the first match; an array of functions runs one per entry. Its string result is inserted verbatim, with no added newline. The function may return a promise, which is awaited before the next resolver runs.
+- A function value runs for every match, in document order. It receives the marker (`{ tagName, attributes, content }`) and its zero-based position among the selector's matches. Its string result is inserted verbatim, with no added newline. The function may return a promise, which is awaited before the next resolver runs.
 - An object value (`{ attributes?, content? }`) replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so an attribute left out is removed. Its `content` is inserted verbatim, with no added newline.
 - In an object value, an omitted or `undefined` field preserves that part, `content: ''` clears the content, and `attributes: {}` removes every attribute. An attribute value must be a string, so `attributes: { hash: undefined }` is invalid.
-- A function may return an object with the same rules. It receives the marker's current attributes and content, so spread the received `attributes` to keep the ones you do not change.
+- A function may return an object with the same rules. It receives the marker, so spread `marker.attributes` to keep the ones you do not change.
 - A changed attribute value is written back in place, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses its original quoting when it still fits, and is re-quoted otherwise. A new attribute is appended as `name="value"`.
-- A selector that matches no marker rejects, so a typo or a stale selector is not mistaken for a successful no-op. Pass an empty array to request no change explicitly.
+- A static value whose selector matches no marker rejects, so a typo or a stale selector is not mistaken for a successful no-op. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
 - Rejects an array with more values than matches, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
 - Wraps bare string replacements containing `\n` in an additional newline on each side.
@@ -302,6 +302,15 @@ await commentMark('<!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -
     item: ['orange', 'grape']
 })
 // <!-- item -->orange<!-- /item --><!-- item -->grape<!-- /item -->
+```
+
+A function runs for every match, so one call can compute each section from its own data:
+
+```js
+await commentMark('<!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', {
+    item: ({ content }, index) => `${index + 1}. ${content}`
+})
+// <!-- item -->1. apple<!-- /item --><!-- item -->2. pear<!-- /item -->
 ```
 
 Indented code blocks and code spans that wrap across lines are not detected as code, so a marker placed there is treated as real. Put active markers in prose, and put literal examples inside fenced code or single-line inline code.

@@ -53,7 +53,10 @@ for (const [name, input] of Object.entries(fixtures)) {
 		}
 
 		const staticData = { [selector]: 'updated value' };
-		const resolverData = { [selector]: () => 'updated value' };
+		// An array of one resolver targets the first match, like the static
+		// value, so the rows differ only in the replacement mechanism. A scalar
+		// resolver would run for every match instead.
+		const resolverData = { [selector]: [() => 'updated value'] };
 		bench(`commentMark - ${name}`, () => commentMark(input, staticData));
 		bench(`commentMark resolver - ${name}`, () => commentMark(input, resolverData));
 	});

@@ -18,16 +18,20 @@ export type CommentMarkUpdate = {
 
 export type CommentMarkResolverResult = string | CommentMarkUpdate | null | undefined;
 
+// A resolver computes a replacement from the marker it targets. It runs once
+// per match, receiving the marker's data and its zero-based position among the
+// selector's matches, in document order.
 export type CommentMarkResolver = (
-	attributes: Record<string, string>,
-	content: string,
+	marker: CommentMarkData,
+	index: number,
 ) => CommentMarkResolverResult | Promise<CommentMarkResolverResult>;
 
 // A replacement is the new content, an update object that replaces the
 // attributes and content it names, or a resolver that computes either from the
-// marker's current values. `null` and `undefined` consume their position
-// without replacing anything, which is what an array entry needs to skip one
-// match and reach the next.
+// marker it targets. A resolver runs for every match; a static value replaces
+// only the first. `null` and `undefined` consume their position without
+// replacing anything, which is what an array entry needs to skip one match and
+// reach the next.
 export type CommentMarkValue = string | CommentMarkUpdate | CommentMarkResolver | null | undefined;
 
 export type CommentMarkReplacement = CommentMarkValue | readonly CommentMarkValue[];
@@ -216,25 +220,19 @@ export const createDocument = (input: string | Buffer): CommentDocument => {
 	};
 };
 
-/**
- * Applies `replacements` to a document. Every selector is resolved before any
- * replacement is applied, so one replacement cannot change which markers the
- * others target and a rejected selector fails before any resolver runs. A
- * scalar replaces the first match and an array replaces matches by position;
- * an empty array is an explicit no-op. Giving more values than matches,
- * targeting one marker from two selectors, or naming a selector that matches
- * nothing is an error rather than a silent partial update.
- *
- * A resolver may return its result or a promise of it. Each call is awaited in
- * document order before the next starts, so a resolver with side effects runs
- * in the same order as the markers it targets.
- */
-export const applyReplacements = async (
+// Pairs each selector's replacement with the markers it targets: a resolver
+// runs for every match, an array runs by position, and a static value targets
+// the first match. The whole request is validated before anything is applied,
+// so a static replacement that matches nothing, more values than matches, or
+// two selectors targeting one marker throws first. Returns the claims in
+// selector order; `applyReplacements` sorts them into document order.
+const collectClaims = (
 	document: CommentDocument,
 	replacements: Record<string, CommentMarkReplacement>,
-): Promise<void> => {
+) => {
 	const claims: Array<{ state: MarkerState;
-		value: CommentMarkValue; }> = [];
+		value: CommentMarkValue;
+		index: number; }> = [];
 	const claimed = new Map<MarkerState, string>();
 
 	for (const [selectorText, replacement] of Object.entries(replacements)) {
@@ -253,18 +251,30 @@ export const applyReplacements = async (
 			continue;
 		}
 
-		// A selector with no matching marker is an error, so a typo or a stale
-		// selector fails loudly instead of being mistaken for a successful
-		// no-op.
+		const resolver = !positional && typeof replacement === 'function';
+
+		// A selector with no matching marker is an error for a static
+		// replacement, so a typo or a stale selector fails loudly instead of
+		// being mistaken for a successful no-op. A resolver runs for every
+		// match, so it has nothing to do when nothing matches.
 		if (matches.length === 0) {
+			if (resolver) {
+				continue;
+			}
+
 			throw new Error(`[comment-mark] Selector ${JSON.stringify(selectorText)} matched no markers`);
 		}
 
-		const values = positional ? replacement : [replacement];
+		// A resolver replaces every match, an array replaces matches by
+		// position using only as many matches as it has entries, and a static
+		// value replaces the first match.
+		const count = positional ? replacement.length : (resolver ? matches.length : 1);
 
-		values.forEach((value, index) => {
+		for (let index = 0; index < count; index += 1) {
+			const value = positional ? replacement[index] : replacement;
+
 			if (value === null || value === undefined) {
-				return;
+				continue;
 			}
 
 			const state = matches[index];
@@ -279,20 +289,38 @@ export const applyReplacements = async (
 			claims.push({
 				state,
 				value,
+				index,
 			});
-		});
+		}
 	}
 
+	return claims;
+};
+
+/**
+ * Applies `replacements` to a document. Every selector is resolved before any
+ * replacement is applied, so one replacement cannot change which markers the
+ * others target and a rejected selector fails before any resolver runs.
+ *
+ * A resolver may return its result or a promise of it. Claims are applied in
+ * document order, and each call is awaited before the next starts, so a
+ * resolver with side effects runs in the same order as the markers it targets.
+ */
+export const applyReplacements = async (
+	document: CommentDocument,
+	replacements: Record<string, CommentMarkReplacement>,
+): Promise<void> => {
 	// Apply in document order so the result does not depend on key order.
+	const claims = collectClaims(document, replacements);
 	claims.sort((a, b) => a.state.index - b.state.index);
 
-	for (const { state, value } of claims) {
+	for (const { state, value, index } of claims) {
 		const resolver = typeof value === 'function';
-		// A resolver computes its own replacement from the marker's current
-		// attributes and content; each occurrence gets its own call. Awaiting
-		// each call before the next keeps resolvers in document order.
+		// A resolver computes its own replacement from the marker it targets;
+		// each occurrence gets its own call with its position. Awaiting each
+		// call before the next keeps resolvers in document order.
 		const updated = resolver
-			? await value(currentAttributes(state), currentContent(state))
+			? await value(markerData(state), index)
 			: value;
 
 		if (updated === null || updated === undefined) {
