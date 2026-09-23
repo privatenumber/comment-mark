@@ -133,6 +133,8 @@ npx comment-mark README.md --item="pear" --item.kind="fruit"
 
 An empty value (`--item.kind=`) sets the attribute to an empty string. Each field can be set once; repeating a flag, or naming an attribute the marker grammar rejects, aborts the run before writing.
 
+A selector is reported once even when a content flag and attribute flags address it together. Selectors resolve against the file as read, so flag order does not change which marker each one updates.
+
 ### Read sections
 
 Omit selector flags to print every detected marker as JSON on stdout:

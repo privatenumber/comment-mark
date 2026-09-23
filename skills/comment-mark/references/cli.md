@@ -38,23 +38,25 @@ npx comment-mark README.md --item="pear" --item.kind="fruit"
 
 - A selector replaces the first matching marker. The CLI has no array form.
 - Selectors are matched verbatim, with no case or dash conversion: `--lastUpdated` and `--last-updated` are different selectors.
+- Selectors resolve against the document as read, so the outcome does not depend on flag order or on which marker an earlier flag changed.
 - Use `--selector=value`, not `--selector value`. Quote values with spaces or newlines, and quote the whole flag when the selector contains brackets.
 - The first `=` outside brackets and quotes separates the flag from its value, so `--"item[kind='fruit']"=pear` passes the selector `item[kind='fruit']`.
 - `--selector=` clears a section. Multiline values get a newline before and after.
 - `--<selector>.<attribute>=<value>` sets one attribute and keeps the others and the content. `--selector.attribute=` sets an empty value.
 - The first `.` outside brackets and quotes separates the attribute from the selector, so a predicate value can contain one: `--"item[file='package.json'].kind"=metadata`.
-- Each field can be set once per invocation. Repeated flags, valueless flags, invalid attribute names, and extra positional arguments are rejected before writing.
+- Flags with the identical target are one update: `--item=pear` and `--item.kind="fruit"` are reported together as `item`. Two different selectors that resolve to the same marker conflict and abort before writing.
+- Each field can be set once per invocation. Repeated flags, valueless flags, invalid attribute names or values, and extra positional arguments are rejected before writing.
 - Bare `--help`, `-h`, and `--version` work without a file. Markers named `help` or `version` remain settable with `--help=<value>` or `--version=<value>`, or attribute-settable with `--help.<attribute>=<value>`.
 
 Status per selector is printed to stderr:
 
 | Status | Meaning |
 | --- | --- |
-| `Updated` | The selector matches and the value changes the document |
-| `Unchanged` | The value already matches |
+| `Updated` | The selector matches and the update changes the document |
+| `Unchanged` | The update leaves the marker unchanged |
 | `Missing` | No marker matches the selector |
 
-When some requested selectors are missing, the valid updates are still written and the command exits `1`. When every requested selector is missing, nothing is written and it exits `1`. When all requested values already match, the file is not rewritten and it exits `0`.
+When some requested selectors are missing, the valid updates are still written and the command exits `1`. When every requested selector is missing, nothing is written and it exits `1`. When nothing changes, the file is not rewritten and it exits `0`.
 
 ## Read mode
 
