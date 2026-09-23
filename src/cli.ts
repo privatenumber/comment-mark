@@ -176,16 +176,16 @@ if (Object.keys(data).length === 0) {
 	process.exit(0);
 }
 
-// Setter mode: validate the whole document and classify every requested
-// selector before writing, so a malformed marker never leaves partial edits
-// behind.
+// Setter mode: classify every requested selector before writing, so the report
+// and the exit code reflect each one and a malformed marker never leaves
+// partial edits behind.
 const original = await readFile(filePath, 'utf8');
 
 // Translate a library failure into the CLI's exit, so the error message is the
 // one comment-mark reports rather than a stack trace.
-const applyToSource = (source: string) => {
+const fromLibrary = <T>(call: () => T): T => {
 	try {
-		return commentMark(source, data);
+		return call();
 	} catch (error) {
 		if (error instanceof Error) {
 			exitWithError(error.message);
@@ -195,28 +195,33 @@ const applyToSource = (source: string) => {
 	}
 };
 
-const updatedSource = applyToSource(original);
-
-// The library silently skips selectors with no matching marker; detect them so
-// typos surface instead of succeeding quietly.
 const updated: string[] = [];
 const unchanged: string[] = [];
 const missing: string[] = [];
 
+// The library rejects a selector that matches nothing, so only matched
+// selectors are passed to the combined update; a missing selector is reported
+// while the others are still saved.
+const matched: Record<string, string> = Object.create(null);
+
 for (const [selector, value] of Object.entries(data)) {
-	// A solo application classifies the selector by its own effect, independent
-	// of the other selectors' replacements. A value that changes nothing leaves
-	// the source untouched, so the match check is only needed to tell an
-	// unchanged marker apart from a selector that matched nothing.
-	const soloOutput = commentMark(original, { [selector]: value });
-	if (soloOutput !== original) {
-		updated.push(selector);
-	} else if (getCommentMark(original, selector) === null) {
+	if (fromLibrary(() => getCommentMark(original, selector)) === null) {
 		missing.push(selector);
-	} else {
+		continue;
+	}
+
+	matched[selector] = value;
+
+	// A solo application classifies the selector by its own effect, independent
+	// of the other selectors' replacements.
+	if (fromLibrary(() => commentMark(original, { [selector]: value })) === original) {
 		unchanged.push(selector);
+	} else {
+		updated.push(selector);
 	}
 }
+
+const updatedSource = fromLibrary(() => commentMark(original, matched));
 
 const report = () => {
 	if (updated.length > 0) {
