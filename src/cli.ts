@@ -4,6 +4,18 @@ import { description, name, version } from '../package.json' with { type: 'json'
 import {
 	commentMark, getCommentMark, getCommentMarkAll,
 } from './index.ts';
+import { isAttributeName } from './parser/parse-attributes.ts';
+
+// The replacement map the library accepts. A content update uses a plain
+// string; an attribute update needs a resolver instead.
+type Replacements = Parameters<typeof commentMark>[1];
+
+// One selector's requested changes. `content` stays undefined when no content
+// flag was given, so `--item=` still sets an empty section.
+type SelectorUpdate = {
+	content: string | undefined;
+	attributes: Map<string, string>;
+};
 
 const exitWithError = (message: string): never => {
 	console.error(`Error: ${message}`);
@@ -12,9 +24,10 @@ const exitWithError = (message: string): never => {
 
 const helpOptions = {
 	description,
-	usage: `${name} <file> [--<selector>=<value>...]`,
+	usage: `${name} <file> [--<selector>=<value>...] [--<selector>.<attribute>=<value>...]`,
 	examples: [
 		`${name} README.md --lastUpdated="$(date -Iseconds)"`,
+		`${name} README.md --item.status="archived"`,
 		`${name} README.md --"contributors[role='maintainer']"="$(git shortlog -se HEAD -- .)"`,
 	],
 };
@@ -35,18 +48,20 @@ const argv = cli({
 
 const { showHelp } = argv;
 
-// Null-prototype so selectors never collide with inherited properties.
-const data: Record<string, string> = Object.create(null);
+// Grouped by selector so several flags can address the same marker: one
+// content flag and any number of distinct attribute flags.
+const updates = new Map<string, SelectorUpdate>();
 
 // cleye splits `--name=value` at the first `=`, which a selector such as
-// `item[kind='fruit']` also contains, so the marker flags are read from argv
-// and split at the first `=` that is outside brackets and quotes.
-const findFlagSeparator = (flag: string) => {
+// `item[kind='fruit']` also contains, so flags are read from argv and split at
+// the first `=` that is outside brackets and quotes. The same scan finds the
+// `.` that separates an attribute name from its selector.
+const findSeparator = (text: string, delimiter: string) => {
 	let depth = 0;
 	let quote = '';
 
-	for (let index = 0; index < flag.length; index += 1) {
-		const character = flag[index];
+	for (let index = 0; index < text.length; index += 1) {
+		const character = text[index];
 
 		if (quote !== '') {
 			if (character === quote) {
@@ -69,13 +84,10 @@ const findFlagSeparator = (flag: string) => {
 				depth -= 1;
 				break;
 			}
-			case '=': {
-				if (depth === 0) {
+			default: {
+				if (character === delimiter && depth === 0) {
 					return index;
 				}
-				break;
-			}
-			default: {
 				break;
 			}
 		}
@@ -112,28 +124,55 @@ for (const argument of process.argv.slice(2)) {
 	}
 
 	const flag = argument.slice(2);
-	const separator = findFlagSeparator(flag);
-	const selector = separator === -1 ? flag : flag.slice(0, separator);
+	const separator = findSeparator(flag, '=');
+	const target = separator === -1 ? flag : flag.slice(0, separator);
 
 	// A bare control flag reserves the action (cleye convention);
 	// `--help=<value>`/`--version=<value>` stay as markers. Repeating one is
 	// rejected like any other flag instead of quietly changing the action.
-	if (separator === -1 && (selector === 'help' || selector === 'version')) {
-		flagCounts.set(selector, (flagCounts.get(selector) ?? 0) + 1);
-		bareFlags.add(selector);
+	if (separator === -1 && (target === 'help' || target === 'version')) {
+		flagCounts.set(target, (flagCounts.get(target) ?? 0) + 1);
+		bareFlags.add(target);
 		continue;
 	}
 
+	// A target is `<selector>` or `<selector>.<attribute>`. The suffix is CLI
+	// update syntax, so a dot inside a selector's brackets or quotes (an
+	// attribute predicate value such as `file='package.json'`) stays with the
+	// selector.
+	const attributeSeparator = findSeparator(target, '.');
+	const selector = attributeSeparator === -1 ? target : target.slice(0, attributeSeparator);
+	const attribute = attributeSeparator === -1 ? undefined : target.slice(attributeSeparator + 1);
+
 	if (selector === '') {
-		exitWithError(`Invalid flag ${JSON.stringify(argument)} (expected --<selector>=<value>)`);
+		exitWithError(`Invalid flag ${JSON.stringify(argument)} (expected --<selector>=<value> or --<selector>.<attribute>=<value>)`);
+	}
+	if (attribute !== undefined && !isAttributeName(attribute)) {
+		exitWithError(`Invalid attribute name in flag ${JSON.stringify(argument)} (expected --<selector>.<attribute>=<value>)`);
 	}
 
-	flagCounts.set(selector, (flagCounts.get(selector) ?? 0) + 1);
+	flagCounts.set(target, (flagCounts.get(target) ?? 0) + 1);
 
 	if (separator === -1) {
-		exitWithError(`No value provided for flag "--${selector}" (expected --${selector}=<value>)`);
+		exitWithError(`No value provided for flag "--${target}" (expected --${target}=<value>)`);
 	}
-	data[selector] = flag.slice(separator + 1);
+
+	const value = flag.slice(separator + 1);
+
+	let update = updates.get(selector);
+	if (!update) {
+		update = {
+			content: undefined,
+			attributes: new Map(),
+		};
+		updates.set(selector, update);
+	}
+
+	if (attribute === undefined) {
+		update.content = value;
+	} else {
+		update.attributes.set(attribute, value);
+	}
 }
 
 // Reject duplicates before acting on a control flag, so the outcome does not
@@ -170,7 +209,7 @@ if (argv._.length > 1) {
 }
 
 // Read mode: no selector flags prints every detected marker as JSON.
-if (Object.keys(data).length === 0) {
+if (updates.size === 0) {
 	const content = await readFile(filePath, 'utf8');
 	process.stdout.write(`${JSON.stringify(getCommentMarkAll(content), null, '\t')}\n`);
 	process.exit(0);
@@ -195,6 +234,34 @@ const fromLibrary = <T>(call: () => T): T => {
 	}
 };
 
+// A content-only update stays a plain string so the library keeps the CLI's
+// multiline padding. An attribute update needs a resolver that returns the
+// complete attribute set: the requested changes over the attributes the marker
+// already had, so the others are preserved.
+const buildReplacement = ({ content, attributes }: SelectorUpdate) => {
+	if (attributes.size === 0) {
+		return content;
+	}
+
+	return (current: Record<string, string>) => {
+		// `Object.fromEntries` avoids the `__proto__` setter, so an attribute
+		// with that name survives as data.
+		const merged = Object.fromEntries([
+			...Object.entries(current),
+			...attributes,
+		]);
+
+		return content === undefined
+			? { attributes: merged }
+			: {
+				attributes: merged,
+				// A resolver return value is inserted verbatim, so the CLI's
+				// static multiline padding is applied here instead.
+				content: content.includes('\n') ? `\n${content}\n` : content,
+			};
+	};
+};
+
 const updated: string[] = [];
 const unchanged: string[] = [];
 const missing: string[] = [];
@@ -202,19 +269,20 @@ const missing: string[] = [];
 // The library rejects a selector that matches nothing, so only matched
 // selectors are passed to the combined update; a missing selector is reported
 // while the others are still saved.
-const matched: Record<string, string> = Object.create(null);
+const matched: Replacements = Object.create(null);
 
-for (const [selector, value] of Object.entries(data)) {
+for (const [selector, update] of updates) {
 	if (fromLibrary(() => getCommentMark(original, selector)) === null) {
 		missing.push(selector);
 		continue;
 	}
 
-	matched[selector] = value;
+	const replacement = buildReplacement(update);
+	matched[selector] = replacement;
 
 	// A solo application classifies the selector by its own effect, independent
 	// of the other selectors' replacements.
-	if (fromLibrary(() => commentMark(original, { [selector]: value })) === original) {
+	if (fromLibrary(() => commentMark(original, { [selector]: replacement })) === original) {
 		unchanged.push(selector);
 	} else {
 		updated.push(selector);
@@ -235,7 +303,7 @@ const report = () => {
 	}
 };
 
-if (missing.length === Object.keys(data).length) {
+if (missing.length === updates.size) {
 	report();
 	exitWithError(`No matching markers found for any of the ${missing.length} requested selectors`);
 }
@@ -246,7 +314,7 @@ if (updated.length === 0) {
 	if (missing.length > 0) {
 		process.exit(1);
 	}
-	console.error(`${filePath} is unchanged. All ${Object.keys(data).length} requested values already match.`);
+	console.error(`${filePath} is unchanged. All ${updates.size} requested selectors already match.`);
 	process.exit(0);
 }
 
