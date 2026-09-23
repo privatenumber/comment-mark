@@ -82,17 +82,15 @@ const setContent = (state: MarkerState, content: string) => {
 	state.changed = true;
 };
 
-const originalAttribute = (state: MarkerState, name: string) => (
-	state.node.attributes.find(attribute => attribute.name === name)
-);
-
 // Reading rejects the same names and values, so writing an unchecked one would
-// produce a marker that cannot be read again.
-const assertAttribute = (state: MarkerState, name: string, value: string) => {
+// produce a marker that cannot be read again. The written quote is not passed
+// here: whether a value is writable does not depend on it, and the renderer
+// reuses the original quote when the value still fits it.
+const assertAttribute = (name: string, value: string) => {
 	if (!isAttributeName(name)) {
 		throw new Error(`[comment-mark] Invalid attribute name: ${JSON.stringify(name)}`);
 	}
-	encodeAttributeValue(value, originalAttribute(state, name)?.quote);
+	encodeAttributeValue(value, undefined);
 };
 
 /**
@@ -106,7 +104,7 @@ const replaceAttributes = (state: MarkerState, attributes: Record<string, string
 	// Validate every name and value before changing any, so a rejected
 	// replacement leaves the marker's attributes as they were.
 	for (const [name, value] of entries) {
-		assertAttribute(state, name, value);
+		assertAttribute(name, value);
 	}
 
 	for (const name of state.values.keys()) {
