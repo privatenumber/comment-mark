@@ -47,7 +47,7 @@ Marker data is a plain object: `{ tagName, attributes, content }`.
 
 - A string replaces the first matching section. An array replaces matches by position in document order, and matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
-- `commentMark` silently skips selectors with no matching marker, but rejects an array with more values than matches, and two selectors that target the same marker.
+- `commentMark` rejects a selector with no matching marker, an array with more values than matches, and two selectors that target the same marker. Pass an empty array to request no change explicitly.
 - A multiline static string value gets a newline added on each side.
 - A function value receives `(attributes, content)` for each match it targets, in document order, and its string result is inserted verbatim, with no added newline. A scalar targets only the first match; an array of functions runs one per entry. Returning `null`/`undefined` preserves the section.
 - A function value can return an object instead: `{ attributes?, content? }` replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.
@@ -71,7 +71,7 @@ npx comment-mark <file> [--<selector>=<value>...]
 | A marker's attributes must be updated | Return `{ attributes }` from a function value. The returned map is the complete set, so spread the received `attributes` to keep the rest |
 | A changed value has quotes, spaces, or `-->` | comment-mark re-encodes it, reusing the original quoting when the value fits, and throws for a value it cannot write |
 | A selector contains `=` | Quote the whole CLI flag; the first `=` outside brackets and quotes separates the flag from its value |
-| Marker missing during update | The API skips the selector; the CLI prints `Missing` and exits `1` |
+| Marker missing during update | The API throws `Selector "<selector>" matched no markers`; the CLI prints `Missing` and exits `1` |
 | Value is multiline | A static string gets surrounding newlines; a function return value is inserted verbatim |
 | Need every marker, in document order, with attributes | Use `getCommentMarkAll` or CLI read mode |
 | A comment must stay ordinary | Leave it unpaired; only a matched opening and closing pair is a marker |
