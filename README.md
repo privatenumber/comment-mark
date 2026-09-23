@@ -192,7 +192,7 @@ Attributes are optional and carry metadata for the section. They are written aft
 - The closing comment repeats the tag name, so `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
 - Whitespace inside the comments is padding: `<!-- contributors -->` and `<!--contributors-->` are equivalent.
 - The content between the comments is replaced; the comment pair stays in the output so later updates can find the section.
-- Only the outermost pair is a marker. A pair nested inside another pair stays part of the outer marker's content.
+- Only the outermost pair is a marker. A balanced pair nested inside another pair stays part of the outer marker's content.
 - A tag name starts with a letter or `_`, then letters, digits, `_`, or `-`.
 - Tag names and attribute names are case-sensitive and matched verbatim.
 - Attribute values are literal text: surrounding quotes are removed and HTML entities are not decoded.
@@ -397,7 +397,9 @@ Fenced code blocks (backtick or tilde, including blockquote prefixes) and single
 
 ### What happens to a marker inside another marker?
 
-Only the outermost pair is a marker. A pair nested inside another pair stays part of the outer marker's content, so `getCommentMark` and `getCommentMarkAll` do not return it and no selector matches it. Replacing the outer section replaces that content, which is what lets a replacement insert markers of its own without changing the document's marker set.
+Only the outermost pair is a marker. A balanced pair nested inside another pair stays part of the outer marker's content, so `getCommentMark` and `getCommentMarkAll` do not return it and no selector matches it. Replacing the outer section replaces that content, so a replacement can insert its own marker pairs without adding markers to the document.
+
+Pairing still reads the whole text, so an unbalanced comment inside a section takes part in pairing. An opening comment there that is never closed can consume the section's closing comment, which moves the section boundary on the next run.
 
 ### Why does a marker have a tag name and attributes?
 

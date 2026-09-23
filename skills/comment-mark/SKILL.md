@@ -17,7 +17,7 @@ This skill covers comment-mark's marker syntax, selectors, JavaScript API, and C
 - The pair is what makes it a marker: `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
 - Whitespace inside the comments is padding, so `<!-- contributors -->` and `<!--contributors-->` are equivalent.
 - An update replaces the content between the comments; the opening comment's attributes can also change. The tag name and the closing comment stay as written, so later updates still find the section.
-- Only the outermost pair is a marker. A pair nested inside another pair stays part of the outer marker's content.
+- Only the outermost pair is a marker. A balanced pair nested inside another pair stays part of the outer marker's content.
 - Tag names and attribute names are case-sensitive and matched verbatim.
 
 ## Selectors

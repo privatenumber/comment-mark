@@ -88,6 +88,47 @@ describe('marker pairing', () => {
 		expect(await commentMark(output, { a: 'new' })).toBe(createMarker('a', 'new'));
 	});
 
+	test('reads only the outermost pair through several levels', () => {
+		expect(getCommentMarkAll(
+			'<!-- a --><!-- b --><!-- c -->x<!-- /c --><!-- /b --><!-- /a -->',
+		)).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: '<!-- b --><!-- c -->x<!-- /c --><!-- /b -->',
+			},
+		]);
+	});
+
+	test('ignores malformed attributes in a nested pair', () => {
+		// A nested pair is never parsed as a marker, so its attributes are never
+		// read.
+		expect(getCommentMarkAll(
+			'<!-- a --><!-- b id -->x<!-- /b --><!-- /a -->',
+		)).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: '<!-- b id -->x<!-- /b -->',
+			},
+		]);
+	});
+
+	test('keeps a marker after nested content selectable', async () => {
+		const content = '<!-- a --><!-- b -->x<!-- /b --><!-- /a -->\n<!-- c -->old<!-- /c -->';
+
+		expect(getCommentMarkAll(content, 'c')).toStrictEqual([
+			{
+				tagName: 'c',
+				attributes: {},
+				content: 'old',
+			},
+		]);
+		expect(await commentMark(content, { c: 'new' })).toBe(
+			'<!-- a --><!-- b -->x<!-- /b --><!-- /a -->\n<!-- c -->new<!-- /c -->',
+		);
+	});
+
 	test('allows an unmatched opening comment inside a marker', () => {
 		// `<!-- TODO -->` has no closing comment, so it is not a marker and the
 		// outer marker is not nested.

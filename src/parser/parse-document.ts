@@ -114,8 +114,8 @@ type Opener = {
  *
  * A matched pair nested inside another matched pair is skipped. The outer
  * marker's content already spans it, so it is not part of the marker set that
- * readers and replacements see. Content inserted into a section can therefore
- * contain markers of its own without changing which markers the document has.
+ * readers and replacements see. A section can hold balanced marker pairs of its
+ * own without adding markers to the document.
  */
 export const parseDocument = (source: string): MarkerNode[] => {
 	if (!source.includes(openDelimiter)) {
@@ -167,33 +167,24 @@ export const parseDocument = (source: string): MarkerNode[] => {
 		}
 	});
 
-	// A matched marker is nested when it opens before an earlier matched marker
-	// closes. Matched markers are in opening order, so one stack detects
-	// containment without walking a parent chain per marker. Only the outermost
-	// markers reach the stack, so a marker under an open one is skipped instead
-	// of being reported.
+	// A matched marker is nested when it opens before an earlier emitted marker
+	// closes. Matched markers are in opening order and the emitted ones do not
+	// overlap, so the last one is enough to detect containment without a stack.
 	const markers: MarkerNode[] = [];
-	const ancestors: Opener[] = [];
+	let enclosingMarker: Opener | undefined;
 
 	for (const opener of openers) {
 		if (!opener.matched) {
 			continue;
 		}
 
-		while (ancestors.length > 0) {
-			const ancestor = ancestors.at(-1);
-			if (!ancestor || ancestor.closerStart >= opener.openingStart) {
-				break;
-			}
-			ancestors.pop();
-		}
-
 		// A nested marker stays inside the outer marker's content, so it is not
 		// a marker this document exposes.
-		if (ancestors.length > 0) {
+		if (enclosingMarker && enclosingMarker.closerStart >= opener.openingStart) {
 			continue;
 		}
-		ancestors.push(opener);
+
+		enclosingMarker = opener;
 
 		markers.push({
 			tagName: opener.kind.tagName,
