@@ -16,10 +16,12 @@ export type CommentMarkUpdate = {
 	content?: string;
 };
 
+export type CommentMarkResolverResult = string | CommentMarkUpdate | null | undefined;
+
 export type CommentMarkResolver = (
 	attributes: Record<string, string>,
 	content: string,
-) => string | CommentMarkUpdate | null | undefined;
+) => CommentMarkResolverResult | Promise<CommentMarkResolverResult>;
 
 // A replacement is the new content, or a resolver that computes it. `null` and
 // `undefined` consume their position without replacing anything, which is what
@@ -220,11 +222,15 @@ export const createDocument = (input: string | Buffer): CommentDocument => {
  * an empty array is an explicit no-op. Giving more values than matches,
  * targeting one marker from two selectors, or naming a selector that matches
  * nothing is an error rather than a silent partial update.
+ *
+ * A resolver may return its result or a promise of it. Each call is awaited in
+ * document order before the next starts, so a resolver with side effects runs
+ * in the same order as the markers it targets.
  */
-export const applyReplacements = (
+export const applyReplacements = async (
 	document: CommentDocument,
 	replacements: Record<string, CommentMarkReplacement>,
-) => {
+): Promise<void> => {
 	const claims: Array<{ state: MarkerState;
 		value: CommentMarkValue; }> = [];
 	const claimed = new Map<MarkerState, string>();
@@ -281,8 +287,11 @@ export const applyReplacements = (
 	for (const { state, value } of claims) {
 		const resolver = typeof value === 'function';
 		// A resolver computes its own replacement from the marker's current
-		// attributes and content; each occurrence gets its own call.
-		const updated = resolver ? value(currentAttributes(state), currentContent(state)) : value;
+		// attributes and content; each occurrence gets its own call. Awaiting
+		// each call before the next keeps resolvers in document order.
+		const updated = resolver
+			? await value(currentAttributes(state), currentContent(state))
+			: value;
 
 		if (updated === null || updated === undefined) {
 			continue;

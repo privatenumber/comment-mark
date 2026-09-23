@@ -24,9 +24,9 @@ const exitWithError = (message: string): never => {
 
 // Translate a library failure into the CLI's exit, so the error message is the
 // one comment-mark reports rather than a stack trace.
-const fromLibrary = <T>(call: () => T): T => {
+const fromLibrary = async <T>(call: () => T | Promise<T>): Promise<T> => {
 	try {
-		return call();
+		return await call();
 	} catch (error) {
 		if (error instanceof Error) {
 			exitWithError(error.message);
@@ -179,7 +179,7 @@ for (const argument of process.argv.slice(2)) {
 		// The writer validates values while rewriting a marker, but only when the
 		// selector matches. Validate here too, so an unwritable value always
 		// aborts instead of being skipped along with a missing selector.
-		fromLibrary(() => encodeAttributeValue(value, undefined));
+		await fromLibrary(() => encodeAttributeValue(value, undefined));
 	}
 
 	let update = updates.get(selector);
@@ -280,7 +280,8 @@ const missing: string[] = [];
 const matched: Replacements = Object.create(null);
 
 for (const [selector, update] of updates) {
-	if (fromLibrary(() => getCommentMark(original, selector)) === null) {
+	const marker = await fromLibrary(() => getCommentMark(original, selector));
+	if (marker === null) {
 		missing.push(selector);
 		continue;
 	}
@@ -290,14 +291,15 @@ for (const [selector, update] of updates) {
 
 	// A solo application classifies the selector by its own effect, independent
 	// of the other selectors' replacements.
-	if (fromLibrary(() => commentMark(original, { [selector]: replacement })) === original) {
+	const applied = await fromLibrary(() => commentMark(original, { [selector]: replacement }));
+	if (applied === original) {
 		unchanged.push(selector);
 	} else {
 		updated.push(selector);
 	}
 }
 
-const updatedSource = fromLibrary(() => commentMark(original, matched));
+const updatedSource = await fromLibrary(() => commentMark(original, matched));
 
 const report = () => {
 	if (updated.length > 0) {

@@ -45,7 +45,7 @@ export const writeResults = async ({ context, benchmarks }: BenchmarkRun) => {
 	const readmeUrl = new URL('README.md', import.meta.url);
 	const readme = await readFile(readmeUrl, 'utf8');
 
-	const updated = commentMark(readme, { results: recorded });
+	const updated = await commentMark(readme, { results: recorded });
 
 	if (updated === readme) {
 		console.error('bench/README.md results are already up to date.');

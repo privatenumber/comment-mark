@@ -7,7 +7,7 @@ import {
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('comment and code boundaries', () => {
-	test('a fenced example containing <!-- does not hide the next marker', () => {
+	test('a fenced example containing <!-- does not hide the next marker', async () => {
 		const content = ['```html', '<!--', '```', createMarker('x', 'old')].join('\n');
 
 		expect(getCommentMarkAll(content)).toStrictEqual([
@@ -17,12 +17,12 @@ describe('comment and code boundaries', () => {
 				content: 'old',
 			},
 		]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(
+		expect(await commentMark(content, { x: 'NEW' })).toBe(
 			['```html', '<!--', '```', createMarker('x', 'NEW')].join('\n'),
 		);
 	});
 
-	test('an inline example containing <!-- does not hide the next marker', () => {
+	test('an inline example containing <!-- does not hide the next marker', async () => {
 		const content = `\`<!--\` ${createMarker('x', 'old')}`;
 
 		expect(getCommentMarkAll(content)).toStrictEqual([
@@ -32,7 +32,7 @@ describe('comment and code boundaries', () => {
 				content: 'old',
 			},
 		]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(`\`<!--\` ${createMarker('x', 'NEW')}`);
+		expect(await commentMark(content, { x: 'NEW' })).toBe(`\`<!--\` ${createMarker('x', 'NEW')}`);
 	});
 
 	test('a backtick in an attribute value does not hide the closing comment', () => {
@@ -47,7 +47,7 @@ describe('comment and code boundaries', () => {
 		]);
 	});
 
-	test('a fence-looking line inside an HTML comment does not hide later markers', () => {
+	test('a fence-looking line inside an HTML comment does not hide later markers', async () => {
 		const content = ['<!--', '```', '-->', createMarker('x', 'old')].join('\n');
 
 		expect(getCommentMarkAll(content)).toStrictEqual([
@@ -57,7 +57,7 @@ describe('comment and code boundaries', () => {
 				content: 'old',
 			},
 		]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(
+		expect(await commentMark(content, { x: 'NEW' })).toBe(
 			['<!--', '```', '-->', createMarker('x', 'NEW')].join('\n'),
 		);
 	});
@@ -119,7 +119,7 @@ describe('fenced code blocks', () => {
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
 	});
 
-	test('a closing marker inside a fence does not close a marker', () => {
+	test('a closing marker inside a fence does not close a marker', async () => {
 		const content = '<!-- a -->\n```md\n<!-- /a -->\n```\nKEEP\n<!-- /a -->';
 
 		expect(getCommentMarkAll(content)).toStrictEqual([
@@ -129,7 +129,7 @@ describe('fenced code blocks', () => {
 				content: '\n```md\n<!-- /a -->\n```\nKEEP\n',
 			},
 		]);
-		expect(commentMark(content, { a: 'NEW' })).toBe('<!-- a -->NEW<!-- /a -->');
+		expect(await commentMark(content, { a: 'NEW' })).toBe('<!-- a -->NEW<!-- /a -->');
 	});
 
 	test('a closing fence with trailing text does not close the fence', () => {
@@ -292,7 +292,7 @@ describe('inline code', () => {
 });
 
 describe('paragraph interruption', () => {
-	test('an ordered marker other than one does not interrupt a paragraph', () => {
+	test('an ordered marker other than one does not interrupt a paragraph', async () => {
 		const content = ['paragraph', '2. ~~~', `   ${createMarker('x', 'real')}`, '   ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([
 			{
@@ -301,7 +301,7 @@ describe('paragraph interruption', () => {
 				content: 'real',
 			},
 		]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(
+		expect(await commentMark(content, { x: 'NEW' })).toBe(
 			['paragraph', '2. ~~~', `   ${createMarker('x', 'NEW')}`, '   ~~~'].join('\n'),
 		);
 	});
@@ -345,7 +345,7 @@ describe('heading context', () => {
 });
 
 describe('markers in headings', () => {
-	test('finds a marker on an ATX heading line', () => {
+	test('finds a marker on an ATX heading line', async () => {
 		const content = '# <!-- title -->Old<!-- /title -->';
 
 		expect(getCommentMarkAll(content)).toStrictEqual([
@@ -355,7 +355,7 @@ describe('markers in headings', () => {
 				content: 'Old',
 			},
 		]);
-		expect(commentMark(content, { title: 'New' })).toBe('# <!-- title -->New<!-- /title -->');
+		expect(await commentMark(content, { title: 'New' })).toBe('# <!-- title -->New<!-- /title -->');
 	});
 
 	test('ignores a marker example in inline code on a heading line', () => {
@@ -374,7 +374,7 @@ describe('markers in headings', () => {
 });
 
 describe('line endings', () => {
-	test('a marker after a closed fence is recognized in a CR-only document', () => {
+	test('a marker after a closed fence is recognized in a CR-only document', async () => {
 		const content = ['~~~', 'code', '~~~', createMarker('x', 'real')].join('\r');
 		expect(getCommentMarkAll(content)).toStrictEqual([
 			{
@@ -383,7 +383,7 @@ describe('line endings', () => {
 				content: 'real',
 			},
 		]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(
+		expect(await commentMark(content, { x: 'NEW' })).toBe(
 			['~~~', 'code', '~~~', createMarker('x', 'NEW')].join('\r'),
 		);
 	});
@@ -399,9 +399,9 @@ describe('line endings', () => {
 		]);
 	});
 
-	test('preserves the line endings around a replaced section', () => {
+	test('preserves the line endings around a replaced section', async () => {
 		const content = ['before', '<!-- a -->old<!-- /a -->', 'after'].join('\r\n');
-		expect(commentMark(content, { a: 'new' })).toBe(
+		expect(await commentMark(content, { a: 'new' })).toBe(
 			['before', '<!-- a -->new<!-- /a -->', 'after'].join('\r\n'),
 		);
 	});
