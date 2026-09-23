@@ -97,8 +97,8 @@ describe('attributes', () => {
 		]);
 	});
 
-	test('tolerates whitespace inside the tags', () => {
-		const output = commentMark('<!-- comment-mark id = "a" -->x<!-- / comment-mark -->', {
+	test('tolerates whitespace inside the tags', async () => {
+		const output = await commentMark('<!-- comment-mark id = "a" -->x<!-- / comment-mark -->', {
 			"comment-mark[id='a']": 'y',
 		});
 		expect(output).toBe('<!-- comment-mark id = "a" -->y<!-- / comment-mark -->');

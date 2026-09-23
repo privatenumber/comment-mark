@@ -12,11 +12,15 @@ export type { CommentMarkData } from './document.ts';
 
 /**
  * Replaces marked sections in `input` and returns the updated source.
+ *
+ * Returns a promise, so a resolver can read a file or do other async work. All
+ * selectors are validated before any resolver runs, and resolvers run in
+ * document order.
  */
-export const commentMark = (
+export const commentMark = async (
 	input: string | Buffer,
 	replacements: Record<string, CommentMarkReplacement>,
-): string => {
+): Promise<string> => {
 	if (
 		(typeof input !== 'string' && !Buffer.isBuffer(input))
 		|| typeof replacements !== 'object'
@@ -29,7 +33,7 @@ export const commentMark = (
 	}
 
 	const document = createDocument(input);
-	applyReplacements(document, replacements);
+	await applyReplacements(document, replacements);
 	return renderDocument(document);
 };
 

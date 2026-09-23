@@ -45,7 +45,7 @@ import fs from 'node:fs/promises'
 import { commentMark } from 'comment-mark'
 
 const markdown = await fs.readFile('README.md', 'utf8')
-const updated = commentMark(markdown, {
+const updated = await commentMark(markdown, {
     lastUpdated: '2026-09-07'
 })
 
@@ -218,12 +218,12 @@ A selector is a tag name followed by optional attribute predicates:
 
 ### `commentMark(input, replacements)`
 
-Replace marked sections. This function transforms content in memory; it does not read or write files.
+Replace marked sections. This function transforms content in memory; it does not read or write files. It returns a promise, so a value can be a function that reads a file or does other async work.
 
 ```js
 import { commentMark } from 'comment-mark'
 
-const updated = commentMark('Version: <!-- version -->1.0.0<!-- /version -->', {
+const updated = await commentMark('Version: <!-- version -->1.0.0<!-- /version -->', {
     version: '2.0.0'
 })
 
@@ -234,7 +234,7 @@ console.log(updated)
 A value can also be a function that computes the replacement from the section's own attributes and content:
 
 ```js
-const updated = commentMark('<!-- views -->40<!-- /views -->', {
+const updated = await commentMark('<!-- views -->40<!-- /views -->', {
     views: (attributes, content) => String(Number(content) + 1)
 })
 
@@ -245,7 +245,7 @@ console.log(updated)
 Return an object instead of a string to update the marker's attributes, its content, or both:
 
 ```js
-const updated = commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
+const updated = await commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
     item: attributes => ({
         attributes: {
             ...attributes,
@@ -261,25 +261,25 @@ console.log(updated)
 - `input` (`string | Buffer`): Markdown or HTML content
 - `replacements` (object): Values keyed by selector. Each value is a string, a function, `null`, `undefined`, or an array of those.
 
-Returns the updated content as a string. Buffer input is decoded as UTF-8.
+Returns a promise that resolves to the updated content as a string. Buffer input is decoded as UTF-8.
 
 - A string replaces the first matching section.
 - An array replaces matches by position in document order: entry `0` updates the first match, entry `1` the second, and so on. Matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
 - Resolves every selector before applying any replacement, so one replacement cannot change which markers another targets.
-- A function value runs for each match it targets, in document order, and receives that match's attributes and content. A scalar targets only the first match; an array of functions runs one per entry. Its string result is inserted verbatim, with no added newline.
+- A function value runs for each match it targets, in document order, and receives that match's attributes and content. A scalar targets only the first match; an array of functions runs one per entry. Its string result is inserted verbatim, with no added newline. The function may return a promise, which is awaited before the next resolver runs.
 - An object result replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.
 - A changed attribute value is written back in place, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses its original quoting when it still fits, and is re-quoted otherwise. A new attribute is appended as `name="value"`.
-- A selector that matches no marker throws, so a typo or a stale selector is not mistaken for a successful no-op. Pass an empty array to request no change explicitly.
+- A selector that matches no marker rejects, so a typo or a stale selector is not mistaken for a successful no-op. Pass an empty array to request no change explicitly.
 - Rejects an array with more values than matches, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
 - Wraps static values containing `\n` in an additional newline on each side.
-- Throws when a marker is malformed or nested, when a resolver throws, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
+- Rejects when a marker is malformed or nested, when a resolver throws or rejects, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
 
 An array updates matches by position, so one call can set repeated sections:
 
 ```js
-commentMark('<!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', {
+await commentMark('<!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', {
     item: ['orange', 'grape']
 })
 // <!-- item -->orange<!-- /item --><!-- item -->grape<!-- /item -->
