@@ -13,7 +13,7 @@ Keep generated content, like contributor lists and benchmark results, alongside 
 - Read marked content as JSON or a JavaScript object, preserving whitespace
 - Supports Markdown and HTML files, including multiline content
 - Ignores markers inside fenced code blocks and single-line inline code, so documentation examples stay literal
-- TypeScript types, with one ES module build that works with both `import` and `require`
+- TypeScript types, with ESM and CommonJS builds
 
 ## Install
 
@@ -22,8 +22,6 @@ pnpm add comment-mark
 ```
 
 Requires Node.js 22.22.2 or newer.
-
-comment-mark ships as an ES module. `import` loads it directly, and on Node.js 22.12 or newer `require('comment-mark')` loads it too.
 
 ## Quick start
 
