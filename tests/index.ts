@@ -9,5 +9,6 @@ describe('comment-mark', () => {
 	import('./specs/attribute-updates.ts');
 	import('./specs/markdown.ts');
 	import('./specs/scaling.ts');
+	import('./specs/package-entry.ts');
 	import('./specs/cli.ts');
 });
