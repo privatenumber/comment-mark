@@ -242,7 +242,24 @@ console.log(updated)
 // <!-- views -->41<!-- /views -->
 ```
 
-Return an object instead of a string to update the marker's attributes, its content, or both:
+To update the marker's attributes, its content, or both, pass an object. This works when the replacement is already known:
+
+```js
+const updated = await commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
+    item: {
+        attributes: {
+            kind: 'vegetable',
+            size: 'small'
+        },
+        content: 'carrot'
+    }
+})
+
+console.log(updated)
+// <!-- item kind="vegetable" size="small" -->carrot<!-- /item -->
+```
+
+`attributes` is the marker's complete attribute set, so that object drops anything the marker had besides `kind` and `size`. When the new value depends on the marker's current attributes, use a function instead and spread what it receives:
 
 ```js
 const updated = await commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
@@ -259,7 +276,7 @@ console.log(updated)
 ```
 
 - `input` (`string | Buffer`): Markdown or HTML content
-- `replacements` (object): Values keyed by selector. Each value is a string, a function, `null`, `undefined`, or an array of those.
+- `replacements` (object): Values keyed by selector. Each value is a string, an object, a function, `null`, `undefined`, or an array of those.
 
 Returns a promise that resolves to the updated content as a string. Buffer input is decoded as UTF-8.
 
@@ -268,7 +285,8 @@ Returns a promise that resolves to the updated content as a string. Buffer input
 - A `null` or `undefined` entry consumes its position without replacing anything.
 - Resolves every selector before applying any replacement, so one replacement cannot change which markers another targets.
 - A function value runs for each match it targets, in document order, and receives that match's attributes and content. A scalar targets only the first match; an array of functions runs one per entry. Its string result is inserted verbatim, with no added newline. The function may return a promise, which is awaited before the next resolver runs.
-- An object result replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.
+- An object value (`{ attributes?, content? }`) replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so an attribute left out is removed. Its `content` is inserted verbatim, with no added newline.
+- A function may return an object with the same rules. It receives the marker's current attributes and content, so spread the received `attributes` to keep the ones you do not change.
 - A changed attribute value is written back in place, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses its original quoting when it still fits, and is re-quoted otherwise. A new attribute is appended as `name="value"`.
 - A selector that matches no marker rejects, so a typo or a stale selector is not mistaken for a successful no-op. Pass an empty array to request no change explicitly.
 - Rejects an array with more values than matches, and two selectors that target the same marker, rather than dropping values or picking a winner.
