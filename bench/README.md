@@ -1,6 +1,6 @@
 # Benchmarks
 
-Micro-benchmarks for the parser, run with [mitata](https://github.com/evanwashere/mitata).
+Micro-benchmarks for the parser.
 
 ```sh
 pnpm bench
@@ -8,7 +8,7 @@ pnpm bench
 
 The script imports the built package, and `pnpm bench` builds first so timings reflect the published output. It times `getCommentMarkAll` against every fixture and `commentMark` against the fixtures that contain markers, grouping the rows per fixture. `commentMark` runs with a static value and with a function value, so the resolver path is measured separately. A separate group compares a first-match update with a positional-array update on the same input, so the rows differ only in the replacement work. It also sweeps marker count, unterminated comments, unmatched closers, and distinct backtick runs to show scaling.
 
-Before timing, the harness counts each fixture's markers with `getCommentMarkAll`, so a fixture that stops exercising the intended path fails instead of producing misleading numbers. Fixtures are built outside the timed loops, and the script runs Node with `--expose-gc` so mitata can collect garbage between iterations.
+Before timing, the harness counts each fixture's markers with `getCommentMarkAll`, so a fixture that stops exercising the intended path fails instead of producing misleading numbers. Fixtures are built outside the timed loops, and the script runs Node with `--expose-gc` so garbage is collected between iterations.
 
 Compare runs made on the same machine with the same Node version. Only compare rows within the same summary group, which share one input.
 
