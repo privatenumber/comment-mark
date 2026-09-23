@@ -347,6 +347,25 @@ describe('CLI', () => {
 			);
 		});
 
+		test('updates distinct markers through selectors that share a tag name', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item id="one" -->one<!-- /item -->\n<!-- item id="two" -->two<!-- /item -->\n',
+			});
+
+			// The attribute flag targets the first `item`; the content flag targets
+			// the second through its `id`. They address different markers, so both
+			// must apply even though they share a tag name.
+			await commentMarkCli(
+				fixture.getPath('README.md'),
+				'--item.role=first',
+				'--item[id=two]=new',
+			);
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item id="one" role="first" -->one<!-- /item -->\n<!-- item id="two" -->new<!-- /item -->\n',
+			);
+		});
+
 		test('preserves the written attribute formatting', async () => {
 			await using fixture = await createFixture({
 				'README.md': '<!-- item\n  kind\n    =\n    "fruit"\n-->apple<!-- /item -->\n',

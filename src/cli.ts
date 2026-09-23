@@ -2,7 +2,6 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { cli } from 'cleye';
 import { description, name, version } from '../package.json' with { type: 'json' };
 import {
-	type CommentMarkData,
 	commentMark, getCommentMark, getCommentMarkAll,
 } from './index.ts';
 import { encodeAttributeValue, isAttributeName } from './parser/parse-attributes.ts';
@@ -245,38 +244,31 @@ if (updates.size === 0) {
 const original = await readFile(filePath, 'utf8');
 
 // A content-only update stays a plain string so the library keeps the CLI's
-// multiline padding. An attribute update needs a resolver that returns the
-// complete attribute set: the requested changes over the attributes the marker
-// already had, so the others are preserved.
-const buildReplacement = ({ content, attributes }: SelectorUpdate) => {
+// multiline padding. An attribute update becomes an update object: the
+// requested changes over the attributes the marker already had, so the others
+// are preserved. A static value targets only the first match, which is the
+// section the CLI updates.
+const buildReplacement = (
+	{ content, attributes }: SelectorUpdate,
+	current: Record<string, string>,
+) => {
 	if (attributes.size === 0) {
 		return content;
 	}
 
-	// A resolver's return value is inserted verbatim, so the CLI applies its
+	// An update object's content is inserted verbatim, so the CLI applies its
 	// static multiline padding here instead. `undefined` leaves the content
 	// unchanged.
 	const requestedContent = content !== undefined && content.includes('\n') ? `\n${content}\n` : content;
 
 	// Spread preserves an own `__proto__` data property, so an attribute with
 	// that name survives as data instead of hitting the prototype setter.
-	const requestedAttributes = Object.fromEntries(attributes);
-
-	// A resolver is invoked for every match, so it returns `undefined` after the
-	// first one; the CLI updates only the first matching section. The resolver
-	// still claims every match, so two overlapping attribute selectors conflict.
-	return ({ attributes: current }: CommentMarkData, index: number) => {
-		if (index > 0) {
-			return undefined;
-		}
-
-		return {
-			attributes: {
-				...current,
-				...requestedAttributes,
-			},
-			content: requestedContent,
-		};
+	return {
+		attributes: {
+			...current,
+			...Object.fromEntries(attributes),
+		},
+		content: requestedContent,
 	};
 };
 
@@ -296,7 +288,7 @@ for (const [selector, update] of updates) {
 		continue;
 	}
 
-	const replacement = buildReplacement(update);
+	const replacement = buildReplacement(update, marker.attributes);
 	matched[selector] = replacement;
 
 	// A solo application classifies the selector by its own effect, independent

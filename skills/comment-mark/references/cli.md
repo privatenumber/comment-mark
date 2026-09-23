@@ -44,7 +44,7 @@ npx comment-mark README.md --item="pear" --item.kind="fruit"
 - `--selector=` clears a section. Multiline values get a newline before and after.
 - `--<selector>.<attribute>=<value>` sets one attribute and keeps the others and the content. `--selector.attribute=` sets an empty value.
 - The first `.` outside brackets and quotes separates the attribute from the selector, so a predicate value can contain one: `--"item[file='package.json'].kind"=metadata`.
-- Flags with identical selector text form one update: `--item=pear` and `--item.kind="fruit"` are reported together as `item`. Two different selectors that target the same marker conflict and abort before writing. An attribute update claims every marker its selector matches, so it also conflicts with a selector that matches one of the others.
+- Flags with identical selector text form one update: `--item=pear` and `--item.kind="fruit"` are reported together as `item`. Two different selectors that target the same marker conflict and abort before writing.
 - Each field can be set once per invocation. Repeated flags, valueless flags, invalid attribute names or values, and extra positional arguments are rejected before writing.
 - Bare `--help`, `-h`, and `--version` work without a file. Markers named `help` or `version` remain settable with `--help=<value>` or `--version=<value>`, or attribute-settable with `--help.<attribute>=<value>`.
 
