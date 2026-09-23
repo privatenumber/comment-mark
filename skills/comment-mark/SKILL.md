@@ -47,9 +47,9 @@ Marker data is a plain object: `{ tagName, attributes, content }`.
 
 `commentMark` is async: it returns a promise, so `await` it. All selectors are validated before any function value runs.
 
-- A string replaces the first matching section. An array replaces matches by position in document order, and matches past the end of the array are left alone.
+- A string replaces the first matching section. An array replaces matches by position in document order, and matches past the end of the array are left alone. An array holds static values only; a function is the selector's value.
 - A `null` or `undefined` entry consumes its position without replacing anything.
-- `commentMark` rejects a static value whose selector matches no marker, an array with more values than matches, and two selectors that target the same marker. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
+- `commentMark` rejects a static value whose selector matches no marker, an array with more values than matches, a function as an array entry, and two selectors that target the same marker. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
 - A multiline static string value gets a newline added on each side.
 - A function value runs for every match, in document order. It receives the marker (`{ tagName, attributes, content }`) and its zero-based position among the selector's matches, and its string result is inserted verbatim, with no added newline. The function may be async; its promise is awaited before the next resolver runs. Returning `null`/`undefined` preserves the section.
 - A function value can return an object instead: `{ attributes?, content? }` replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.

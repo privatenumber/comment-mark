@@ -50,21 +50,6 @@ describe('resolvers', () => {
 		}]);
 	});
 
-	test('runs each resolver for its own occurrence in document order', async () => {
-		const calls: string[] = [];
-		const resolver = ({ content }: CommentMarkData) => {
-			calls.push(content);
-			return content.toUpperCase();
-		};
-
-		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
-			a: [resolver, resolver],
-		});
-
-		expect(calls).toStrictEqual(['one', 'two']);
-		expect(output).toBe(`${createMarker('a', 'ONE')}\n${createMarker('a', 'TWO')}`);
-	});
-
 	test('runs resolvers in document order regardless of key order', async () => {
 		const calls: string[] = [];
 		const resolver = (label: string) => () => {
@@ -173,23 +158,6 @@ describe('resolver targeting', () => {
 	test('is a no-op when the selector matches nothing', async () => {
 		const content = createMarker('a', 'old');
 		expect(await commentMark(content, { b: () => 'new' })).toBe(content);
-	});
-
-	test('passes the position of a skipped array entry', async () => {
-		const positions: Array<[string, number]> = [];
-
-		await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
-			a: [
-				null,
-				({ content }, index) => {
-					positions.push([content, index]);
-					return content;
-				},
-			],
-		});
-
-		// The `null` entry skips the first match, so the second is position 1.
-		expect(positions).toStrictEqual([['two', 1]]);
 	});
 });
 

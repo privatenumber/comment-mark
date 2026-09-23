@@ -262,15 +262,22 @@ const buildReplacement = ({ content, attributes }: SelectorUpdate) => {
 	// that name survives as data instead of hitting the prototype setter.
 	const requestedAttributes = Object.fromEntries(attributes);
 
-	// A resolver runs for every match, but the CLI updates only the first
-	// matching section. An array of one entry keeps that behavior.
-	return [({ attributes: current }: CommentMarkData) => ({
-		attributes: {
-			...current,
-			...requestedAttributes,
-		},
-		content: requestedContent,
-	})];
+	// A resolver is invoked for every match, so it returns `undefined` after the
+	// first one; the CLI updates only the first matching section. The resolver
+	// still claims every match, so two overlapping attribute selectors conflict.
+	return ({ attributes: current }: CommentMarkData, index: number) => {
+		if (index > 0) {
+			return undefined;
+		}
+
+		return {
+			attributes: {
+				...current,
+				...requestedAttributes,
+			},
+			content: requestedContent,
+		};
+	};
 };
 
 const updated: string[] = [];
