@@ -12,8 +12,8 @@ export type CommentMarkData = {
 };
 
 export type CommentMarkUpdate = {
-	attributes?: Record<string, string>;
-	content?: string;
+	attributes?: Record<string, string> | undefined;
+	content?: string | undefined;
 };
 
 export type CommentMarkResolverResult = string | CommentMarkUpdate | null | undefined;

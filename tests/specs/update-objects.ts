@@ -58,14 +58,15 @@ describe('update objects', () => {
 	});
 
 	test('undefined fields and an empty object leave the marker unchanged', async () => {
-		const content = createMarker('a', 'old');
+		// The fixture has attributes, so an accidental attribute removal shows up.
+		const content = '<!-- item kind="fruit" size="small" -->apple<!-- /item -->';
 		const noFields = {
 			attributes: undefined,
 			content: undefined,
 		};
 
-		expect(await commentMark(content, { a: noFields })).toBe(content);
-		expect(await commentMark(content, { a: {} })).toBe(content);
+		expect(await commentMark(content, { item: noFields })).toBe(content);
+		expect(await commentMark(content, { item: {} })).toBe(content);
 	});
 
 	test('inserts object content verbatim while a bare string keeps its padding', async () => {
@@ -99,6 +100,22 @@ describe('update objects', () => {
 		});
 
 		expect(output).toBe(`${createMarker('a', 'one')}\n${createMarker('a', 'second')}`);
+	});
+
+	test('mixes object, string, and async resolver entries by position', async () => {
+		const content = `${createMarker('a', 'one')}\n${createMarker('a', 'two')}\n${createMarker('a', 'three')}`;
+
+		const output = await commentMark(content, {
+			a: [
+				{ content: 'first' },
+				'second',
+				async () => ({ content: 'third' }),
+			],
+		});
+
+		expect(output).toBe(
+			`${createMarker('a', 'first')}\n${createMarker('a', 'second')}\n${createMarker('a', 'third')}`,
+		);
 	});
 
 	test('rejects a selector that matches no markers', async () => {
