@@ -3,9 +3,9 @@ import {
 	isNameStart,
 	isWhitespace,
 	skipWhitespace,
-} from './characters.js';
-import { type Attribute, parseAttributeNodes } from './parse-attributes.js';
-import { scanComments } from './scan-comments.js';
+} from './characters.ts';
+import { type Attribute, parseAttributeNodes } from './parse-attributes.ts';
+import { scanComments } from './scan-comments.ts';
 
 export type MarkerNode = {
 	tagName: string;

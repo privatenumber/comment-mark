@@ -6,7 +6,7 @@ import {
 	getCommentMark,
 	getCommentMarkAll,
 } from '#comment-mark';
-import { commentMarkCli } from './utils/comment-mark-cli.js';
+import { commentMarkCli } from './utils/comment-mark-cli.ts';
 
 const createMarker = (tag: string, content = '') => `<!-- ${tag} -->${content}<!-- /${tag} -->`;
 

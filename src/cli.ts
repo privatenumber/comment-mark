@@ -3,7 +3,7 @@ import { cli } from 'cleye';
 import { description, name, version } from '../package.json' with { type: 'json' };
 import {
 	commentMark, getCommentMark, getCommentMarkAll,
-} from './index.js';
+} from './index.ts';
 
 const exitWithError = (message: string): never => {
 	console.error(`Error: ${message}`);

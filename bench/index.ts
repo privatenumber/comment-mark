@@ -3,8 +3,8 @@ import { bench, run, summary } from 'mitata';
 import { commentMark, getCommentMarkAll } from '#comment-mark';
 import {
 	createMarker, distinctBacktickRuns, fixtures,
-} from './fixtures.js';
-import { writeResults } from './results.js';
+} from './fixtures.ts';
+import { writeResults } from './results.ts';
 
 type BenchState = {
 	get: (name: string) => number;
