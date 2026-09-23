@@ -49,9 +49,9 @@ Marker data is a plain object: `{ tagName, attributes, content }`.
 
 - A string replaces the first matching section. An array replaces matches by position in document order, and matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
-- `commentMark` rejects a selector with no matching marker, an array with more values than matches, and two selectors that target the same marker. Pass an empty array to request no change explicitly.
+- `commentMark` rejects a static value whose selector matches no marker, an array with more values than matches, and two selectors that target the same marker. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
 - A multiline static string value gets a newline added on each side.
-- A function value receives `(attributes, content)` for each match it targets, in document order, and its string result is inserted verbatim, with no added newline. The function may be async; its promise is awaited before the next resolver runs. A scalar targets only the first match; an array of functions runs one per entry. Returning `null`/`undefined` preserves the section.
+- A function value runs for every match, in document order. It receives the marker (`{ tagName, attributes, content }`) and its zero-based position among the selector's matches, and its string result is inserted verbatim, with no added newline. The function may be async; its promise is awaited before the next resolver runs. Returning `null`/`undefined` preserves the section.
 - A function value can return an object instead: `{ attributes?, content? }` replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.
 - Setting an attribute rewrites only its value, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses the original quoting when it fits and is re-quoted otherwise. Removing one drops the attribute and the whitespace written before it.
 
@@ -68,8 +68,8 @@ npx comment-mark <file> [--<selector>=<value>...] [--<selector>.<attribute>=<val
 | Situation | Do this |
 | --- | --- |
 | A file documents the marker syntax | Put examples in a fenced code block or inline code so they are ignored |
-| A tag name appears more than once | A scalar replaces the first match; pass an array to reach the others |
-| Section content must be computed from its current value | Pass a function in `commentMark`; it receives `(attributes, content)` for the match it targets and may be async |
+| A tag name appears more than once | A static value replaces the first match; a function runs for every match, and an array reaches matches by position |
+| Section content must be computed from its current value | Pass a function in `commentMark`; it receives the marker and its index, runs for every match, and may be async |
 | A marker's attributes must be updated | From the CLI, pass `--<selector>.<attribute>=<value>`. From the API, return `{ attributes }` from a function value; the returned map is the complete set, so spread the received `attributes` to keep the rest |
 | A changed value has quotes, spaces, or `-->` | comment-mark re-encodes it, reusing the original quoting when the value fits, and throws for a value it cannot write |
 | A selector contains `=` | Quote the whole CLI flag; the first `=` outside brackets and quotes separates the flag from its value |
