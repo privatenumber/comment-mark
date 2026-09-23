@@ -286,12 +286,13 @@ Returns a promise that resolves to the updated content as a string. Buffer input
 - Resolves every selector before applying any replacement, so one replacement cannot change which markers another targets.
 - A function value runs for each match it targets, in document order, and receives that match's attributes and content. A scalar targets only the first match; an array of functions runs one per entry. Its string result is inserted verbatim, with no added newline. The function may return a promise, which is awaited before the next resolver runs.
 - An object value (`{ attributes?, content? }`) replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so an attribute left out is removed. Its `content` is inserted verbatim, with no added newline.
+- In an object value, an omitted or `undefined` field preserves that part, `content: ''` clears the content, and `attributes: {}` removes every attribute. An attribute value must be a string, so `attributes: { hash: undefined }` is invalid.
 - A function may return an object with the same rules. It receives the marker's current attributes and content, so spread the received `attributes` to keep the ones you do not change.
 - A changed attribute value is written back in place, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses its original quoting when it still fits, and is re-quoted otherwise. A new attribute is appended as `name="value"`.
 - A selector that matches no marker rejects, so a typo or a stale selector is not mistaken for a successful no-op. Pass an empty array to request no change explicitly.
 - Rejects an array with more values than matches, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
-- Wraps static values containing `\n` in an additional newline on each side.
+- Wraps bare string replacements containing `\n` in an additional newline on each side.
 - Rejects when a marker is malformed or nested, when a resolver throws or rejects, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
 
 An array updates matches by position, so one call can set repeated sections:

@@ -50,9 +50,10 @@ Marker data is a plain object: `{ tagName, attributes, content }`.
 - A string replaces the first matching section. An array replaces matches by position in document order, and matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
 - `commentMark` rejects a selector with no matching marker, an array with more values than matches, and two selectors that target the same marker. Pass an empty array to request no change explicitly.
-- A multiline static string value gets a newline added on each side.
+- A bare multiline string value gets a newline added on each side.
 - A function value receives `(attributes, content)` for each match it targets, in document order, and its string result is inserted verbatim, with no added newline. The function may be async; its promise is awaited before the next resolver runs. A scalar targets only the first match; an array of functions runs one per entry. Returning `null`/`undefined` preserves the section.
 - An object value (`{ attributes?, content? }`) replaces the parts it sets and preserves the parts it omits, whether passed directly or returned from a function. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed. An object's `content` is inserted verbatim.
+- In an object value, an omitted or `undefined` field preserves that part, `content: ''` clears the content, and `attributes: {}` removes every attribute. Attribute values must be strings.
 - Setting an attribute rewrites only its value, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses the original quoting when it fits and is re-quoted otherwise. Removing one drops the attribute and the whitespace written before it.
 
 ## CLI
