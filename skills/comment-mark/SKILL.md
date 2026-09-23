@@ -75,7 +75,7 @@ npx comment-mark <file> [--<selector>=<value>...] [--<selector>.<attribute>=<val
 | A changed value has quotes, spaces, or `-->` | comment-mark re-encodes it, reusing the original quoting when the value fits, and throws for a value it cannot write |
 | A selector contains `=` | Quote the whole CLI flag; the first `=` outside brackets and quotes separates the flag from its value |
 | An attribute predicate value contains `.` | The first `.` outside brackets and quotes separates the attribute; a dot inside the predicate stays with the selector |
-| Marker missing during update | The API rejects with `Selector "<selector>" matched no markers`; the CLI prints `Missing` and exits `1` |
+| Marker missing during update | A static API value rejects with `Selector "<selector>" matched no markers`; a function is a no-op. The CLI prints `Missing` and exits `1` |
 | Value is multiline | A static string gets surrounding newlines; object content and function return values are inserted verbatim |
 | Need every marker, in document order, with attributes | Use `getCommentMarkAll` or CLI read mode |
 | A comment must stay ordinary | Leave it unpaired; only a matched opening and closing pair is a marker |
