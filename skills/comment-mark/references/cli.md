@@ -44,7 +44,7 @@ npx comment-mark README.md --item="pear" --item.kind="fruit"
 - `--selector=` clears a section. Multiline values get a newline before and after.
 - `--<selector>.<attribute>=<value>` sets one attribute and keeps the others and the content. `--selector.attribute=` sets an empty value.
 - The first `.` outside brackets and quotes separates the attribute from the selector, so a predicate value can contain one: `--"item[file='package.json'].kind"=metadata`.
-- Flags with the identical target are one update: `--item=pear` and `--item.kind="fruit"` are reported together as `item`. Two different selectors that resolve to the same marker conflict and abort before writing.
+- Flags with identical selector text form one update: `--item=pear` and `--item.kind="fruit"` are reported together as `item`. Two different selectors that target the same marker conflict and abort before writing.
 - Each field can be set once per invocation. Repeated flags, valueless flags, invalid attribute names or values, and extra positional arguments are rejected before writing.
 - Bare `--help`, `-h`, and `--version` work without a file. Markers named `help` or `version` remain settable with `--help=<value>` or `--version=<value>`, or attribute-settable with `--help.<attribute>=<value>`.
 
@@ -56,7 +56,7 @@ Status per selector is printed to stderr:
 | `Unchanged` | The update leaves the marker unchanged |
 | `Missing` | No marker matches the selector |
 
-When some requested selectors are missing, the valid updates are still written and the command exits `1`. When every requested selector is missing, nothing is written and it exits `1`. When nothing changes, the file is not rewritten and it exits `0`.
+When some requested selectors are missing, the valid updates are still written and the command exits `1`. When every requested selector is missing, nothing is written and it exits `1`. When every requested selector matches and nothing changes, the file is not rewritten and it exits `0`.
 
 ## Read mode
 
