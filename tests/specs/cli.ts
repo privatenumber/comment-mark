@@ -479,5 +479,67 @@ describe('CLI', () => {
 				'<!-- item kind="fruit" -->apple<!-- /item -->\n',
 			);
 		});
+
+		test('rejects an invalid attribute value even when its selector is missing', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item -->old<!-- /item -->\n',
+			});
+
+			await expect(commentMarkCli(
+				fixture.getPath('README.md'),
+				'--item=new',
+				'--missing.kind=x-->y',
+			)).rejects.toMatchObject({
+				exitCode: 1,
+				stderr: expect.stringContaining('cannot contain'),
+			});
+
+			// The valid update must not be written when another requested value
+			// cannot be written, even though its selector matches nothing.
+			expect(await fixture.readFile('README.md', 'utf8')).toBe('<!-- item -->old<!-- /item -->\n');
+		});
+
+		test('accepts an unquoted predicate value containing a bracket', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item file="a[b" -->apple<!-- /item -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), '--item[file=a[b].kind=new');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item file="a[b" kind="new" -->apple<!-- /item -->\n',
+			);
+		});
+
+		test('resolves every selector against the original document', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item kind="a" -->one<!-- /item -->\n<!-- item kind="b" -->two<!-- /item -->\n',
+			});
+
+			await commentMarkCli(
+				fixture.getPath('README.md'),
+				'--item[kind=a].kind=b',
+				'--item[kind=b]=new',
+			);
+
+			// The first flag changes marker one to `kind="b"`, which would make it
+			// match the second flag. Because selection uses the document as read,
+			// the second flag still targets marker two.
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item kind="b" -->one<!-- /item -->\n<!-- item kind="b" -->new<!-- /item -->\n',
+			);
+		});
+
+		test('sets an attribute named like an Object prototype property', async () => {
+			await using fixture = await createFixture({
+				'README.md': '<!-- item -->old<!-- /item -->\n',
+			});
+
+			await commentMarkCli(fixture.getPath('README.md'), '--item.__proto__=value');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe(
+				'<!-- item __proto__="value" -->old<!-- /item -->\n',
+			);
+		});
 	});
 });

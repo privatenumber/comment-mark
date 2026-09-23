@@ -4,7 +4,7 @@ import { description, name, version } from '../package.json' with { type: 'json'
 import {
 	commentMark, getCommentMark, getCommentMarkAll,
 } from './index.ts';
-import { isAttributeName } from './parser/parse-attributes.ts';
+import { encodeAttributeValue, isAttributeName } from './parser/parse-attributes.ts';
 
 // The replacement map the library accepts. A content update uses a plain
 // string; an attribute update needs a resolver instead.
@@ -20,6 +20,20 @@ type SelectorUpdate = {
 const exitWithError = (message: string): never => {
 	console.error(`Error: ${message}`);
 	process.exit(1);
+};
+
+// Translate a library failure into the CLI's exit, so the error message is the
+// one comment-mark reports rather than a stack trace.
+const fromLibrary = <T>(call: () => T): T => {
+	try {
+		return call();
+	} catch (error) {
+		if (error instanceof Error) {
+			exitWithError(error.message);
+		}
+
+		throw error;
+	}
 };
 
 const helpOptions = {
@@ -57,7 +71,7 @@ const updates = new Map<string, SelectorUpdate>();
 // the first `=` that is outside brackets and quotes. The same scan finds the
 // `.` that separates an attribute name from its selector.
 const findSeparator = (text: string, delimiter: string) => {
-	let depth = 0;
+	let inPredicate = false;
 	let quote = '';
 
 	for (let index = 0; index < text.length; index += 1) {
@@ -77,15 +91,17 @@ const findSeparator = (text: string, delimiter: string) => {
 				break;
 			}
 			case '[': {
-				depth += 1;
+				// Predicates do not nest, so a `[` inside one is a literal part
+				// of its value rather than another level.
+				inPredicate = true;
 				break;
 			}
 			case ']': {
-				depth -= 1;
+				inPredicate = false;
 				break;
 			}
 			default: {
-				if (character === delimiter && depth === 0) {
+				if (character === delimiter && !inPredicate) {
 					return index;
 				}
 				break;
@@ -159,6 +175,13 @@ for (const argument of process.argv.slice(2)) {
 
 	const value = flag.slice(separator + 1);
 
+	if (attribute !== undefined) {
+		// The writer validates values while rewriting a marker, but only when the
+		// selector matches. Validate here too, so an unwritable value always
+		// aborts instead of being skipped along with a missing selector.
+		fromLibrary(() => encodeAttributeValue(value, undefined));
+	}
+
 	let update = updates.get(selector);
 	if (!update) {
 		update = {
@@ -220,20 +243,6 @@ if (updates.size === 0) {
 // partial edits behind.
 const original = await readFile(filePath, 'utf8');
 
-// Translate a library failure into the CLI's exit, so the error message is the
-// one comment-mark reports rather than a stack trace.
-const fromLibrary = <T>(call: () => T): T => {
-	try {
-		return call();
-	} catch (error) {
-		if (error instanceof Error) {
-			exitWithError(error.message);
-		}
-
-		throw error;
-	}
-};
-
 // A content-only update stays a plain string so the library keeps the CLI's
 // multiline padding. An attribute update needs a resolver that returns the
 // complete attribute set: the requested changes over the attributes the marker
@@ -243,23 +252,22 @@ const buildReplacement = ({ content, attributes }: SelectorUpdate) => {
 		return content;
 	}
 
-	return (current: Record<string, string>) => {
-		// `Object.fromEntries` avoids the `__proto__` setter, so an attribute
-		// with that name survives as data.
-		const merged = Object.fromEntries([
-			...Object.entries(current),
-			...attributes,
-		]);
+	// A resolver's return value is inserted verbatim, so the CLI applies its
+	// static multiline padding here instead. `undefined` leaves the content
+	// unchanged.
+	const requestedContent = content !== undefined && content.includes('\n') ? `\n${content}\n` : content;
 
-		return content === undefined
-			? { attributes: merged }
-			: {
-				attributes: merged,
-				// A resolver return value is inserted verbatim, so the CLI's
-				// static multiline padding is applied here instead.
-				content: content.includes('\n') ? `\n${content}\n` : content,
-			};
-	};
+	// Spread preserves an own `__proto__` data property, so an attribute with
+	// that name survives as data instead of hitting the prototype setter.
+	const requestedAttributes = Object.fromEntries(attributes);
+
+	return (current: Record<string, string>) => ({
+		attributes: {
+			...current,
+			...requestedAttributes,
+		},
+		content: requestedContent,
+	});
 };
 
 const updated: string[] = [];
