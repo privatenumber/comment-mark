@@ -175,12 +175,21 @@ describe('resolver targeting', () => {
 		expect(await commentMark(content, { b: () => 'new' })).toBe(content);
 	});
 
-	test('a static value still replaces only the first match', async () => {
-		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
-			a: 'new',
+	test('passes the position of a skipped array entry', async () => {
+		const positions: Array<[string, number]> = [];
+
+		await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
+			a: [
+				null,
+				({ content }, index) => {
+					positions.push([content, index]);
+					return content;
+				},
+			],
 		});
 
-		expect(output).toBe(`${createMarker('a', 'new')}\n${createMarker('a', 'two')}`);
+		// The `null` entry skips the first match, so the second is position 1.
+		expect(positions).toStrictEqual([['two', 1]]);
 	});
 });
 
