@@ -14,7 +14,7 @@ Compare runs made on the same machine with the same Node version. Only compare r
 
 ## Recorded results
 
-Refresh the table with `pnpm bench:results`, which runs the same suite and updates the block between the markers. Treat the numbers as a same-machine reference: micro-benchmark results vary between runs, so compare repeated runs in the same environment instead of a single pair.
+`pnpm bench` runs the suite and writes the table between the markers. Treat the numbers as a same-machine reference: micro-benchmark results vary between runs, so compare repeated runs in the same environment instead of a single pair.
 
 <!-- results -->
 Measured with `node 24.14.1` on __Apple M2 Max__ (`arm64-darwin`), 2026-09-22.

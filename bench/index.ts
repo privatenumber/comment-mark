@@ -90,15 +90,12 @@ bench('getCommentMarkAll - distinct backtick runs $size', function* distinctBack
 	yield () => getCommentMarkAll(input);
 }).args('size', [16, 64, 256]);
 
-// `--results` records the run in the bench README instead of printing the
-// table. `throw` rejects the run when a benchmark fails, so a broken benchmark
-// is never printed as a partial table or recorded as a result row.
-const recordResults = process.argv.includes('--results');
+// `throw` rejects the run when a benchmark fails, so a broken benchmark is
+// never recorded as a result row. Results are written to the bench README, so
+// the run itself stays quiet.
 const benchmarkRun = await run({
-	format: recordResults ? 'quiet' : 'mitata',
+	format: 'quiet',
 	throw: true,
 });
 
-if (recordResults) {
-	await writeResults(benchmarkRun);
-}
+await writeResults(benchmarkRun);

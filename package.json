@@ -45,7 +45,6 @@
 	"packageManager": "pnpm@12.3.4",
 	"scripts": {
 		"bench": "pnpm build && tsx --expose-gc bench/index.ts",
-		"bench:results": "pnpm build && tsx --expose-gc bench/index.ts --results",
 		"lint": "lintroll . --cache",
 		"test": "tsx tests",
 		"dev": "tsx --conditions=development tests",
