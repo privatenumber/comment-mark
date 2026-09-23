@@ -12,8 +12,8 @@ export type CommentMarkData = {
 };
 
 export type CommentMarkUpdate = {
-	attributes?: Record<string, string>;
-	content?: string;
+	attributes?: Record<string, string> | undefined;
+	content?: string | undefined;
 };
 
 export type CommentMarkResolverResult = string | CommentMarkUpdate | null | undefined;
@@ -26,10 +26,11 @@ export type CommentMarkResolver = (
 	index: number,
 ) => CommentMarkResolverResult | Promise<CommentMarkResolverResult>;
 
-// A static replacement is the exact content to write, or `null`/`undefined` to
-// consume a position without replacing anything, which is what an array entry
-// needs to skip one match and reach the next.
-export type CommentMarkStatic = string | null | undefined;
+// A static replacement is the content to write, an update object that replaces
+// the attributes and content it names, or `null`/`undefined` to consume a
+// position without replacing anything, which is what an array entry needs to
+// skip one match and reach the next.
+export type CommentMarkStatic = string | CommentMarkUpdate | null | undefined;
 
 // A replacement is a resolver, a static value, or an array of static values. A
 // resolver runs for every match, a static value replaces only the first, and an
@@ -236,7 +237,7 @@ const collectClaims = (
 	replacements: Record<string, CommentMarkReplacement>,
 ) => {
 	const claims: Array<{ state: MarkerState;
-		value: string | CommentMarkResolver;
+		value: CommentMarkStatic | CommentMarkResolver;
 		index: number; }> = [];
 	const claimed = new Map<MarkerState, string>();
 
