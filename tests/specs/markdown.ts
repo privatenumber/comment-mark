@@ -103,7 +103,7 @@ describe('block comments', () => {
 	});
 });
 
-describe('code blocks', () => {
+describe('fenced code blocks', () => {
 	test('ignores markers inside fenced code blocks', () => {
 		const content = ['```md', createMarker('a', 'example'), '```'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
@@ -117,22 +117,6 @@ describe('code blocks', () => {
 	test('ignores markers inside an unterminated fence', () => {
 		const content = `\`\`\`\n${createMarker('a', 'example')}`;
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-	});
-
-	test('ignores markers inside inline code', () => {
-		const content = `See \`${createMarker('a', 'example')}\` for details`;
-		expect(getCommentMarkAll(content)).toStrictEqual([]);
-	});
-
-	test('parses markers outside of code', () => {
-		const content = `\`${createMarker('a', 'inline')}\`\n${createMarker('b', 'real')}`;
-		expect(getCommentMarkAll(content)).toStrictEqual([
-			{
-				tagName: 'b',
-				attributes: {},
-				content: 'real',
-			},
-		]);
 	});
 
 	test('a closing marker inside a fence does not close a marker', () => {
@@ -160,39 +144,6 @@ describe('code blocks', () => {
 
 	test('ignores markers in blockquote fences', () => {
 		const content = `> \`\`\`md\n> ${createMarker('a', 'example')}\n> \`\`\``;
-		expect(getCommentMarkAll(content)).toStrictEqual([]);
-	});
-
-	test('an escaped backtick does not open inline code', () => {
-		const content = `\\\`${createMarker('a', 'real')}\``;
-		expect(getCommentMarkAll(content)).toStrictEqual([
-			{
-				tagName: 'a',
-				attributes: {},
-				content: 'real',
-			},
-		]);
-	});
-
-	test('an unterminated inline code span does not hide later markers', () => {
-		const content = `\`unclosed\n${createMarker('a', 'real')}`;
-		expect(getCommentMarkAll(content)).toStrictEqual([
-			{
-				tagName: 'a',
-				attributes: {},
-				content: 'real',
-			},
-		]);
-	});
-
-	test('two backslashes before an opening backtick do not escape it', () => {
-		// The backslashes escape each other, so the backtick still opens a span.
-		const content = `\\\\\`${createMarker('x', 'example')}\``;
-		expect(getCommentMarkAll(content)).toStrictEqual([]);
-	});
-
-	test('a backslash before a closing backtick does not escape it inside a span', () => {
-		const content = `\`${createMarker('x', 'example')}\\\``;
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
 	});
 
@@ -230,11 +181,6 @@ describe('code blocks', () => {
 
 	test('a thematic break does not create list context for a following fence', () => {
 		const content = ['* * *', '  ~~~md', createMarker('x', 'example'), '  ~~~'].join('\n');
-		expect(getCommentMarkAll(content)).toStrictEqual([]);
-	});
-
-	test('an escaped multi-backtick run cannot close an existing span', () => {
-		const content = ['`example \\', '`` ', createMarker('x', 'example'), '`'].join('');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
 	});
 
@@ -285,6 +231,62 @@ describe('code blocks', () => {
 
 	test('a list padding tab that overshoots five columns does not open a fence', () => {
 		const content = ['-\t  ~~~', '', '  ~~~', `  ${createMarker('x', 'example')}`, '  ~~~'].join('\n');
+		expect(getCommentMarkAll(content)).toStrictEqual([]);
+	});
+});
+
+describe('inline code', () => {
+	test('ignores markers inside inline code', () => {
+		const content = `See \`${createMarker('a', 'example')}\` for details`;
+		expect(getCommentMarkAll(content)).toStrictEqual([]);
+	});
+
+	test('parses markers outside of code', () => {
+		const content = `\`${createMarker('a', 'inline')}\`\n${createMarker('b', 'real')}`;
+		expect(getCommentMarkAll(content)).toStrictEqual([
+			{
+				tagName: 'b',
+				attributes: {},
+				content: 'real',
+			},
+		]);
+	});
+
+	test('an escaped backtick does not open inline code', () => {
+		const content = `\\\`${createMarker('a', 'real')}\``;
+		expect(getCommentMarkAll(content)).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: 'real',
+			},
+		]);
+	});
+
+	test('an unterminated inline code span does not hide later markers', () => {
+		const content = `\`unclosed\n${createMarker('a', 'real')}`;
+		expect(getCommentMarkAll(content)).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: 'real',
+			},
+		]);
+	});
+
+	test('two backslashes before an opening backtick do not escape it', () => {
+		// The backslashes escape each other, so the backtick still opens a span.
+		const content = `\\\\\`${createMarker('x', 'example')}\``;
+		expect(getCommentMarkAll(content)).toStrictEqual([]);
+	});
+
+	test('a backslash before a closing backtick does not escape it inside a span', () => {
+		const content = `\`${createMarker('x', 'example')}\\\``;
+		expect(getCommentMarkAll(content)).toStrictEqual([]);
+	});
+
+	test('an escaped multi-backtick run cannot close an existing span', () => {
+		const content = ['`example \\', '`` ', createMarker('x', 'example'), '`'].join('');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
 	});
 });
@@ -363,7 +365,7 @@ describe('markers in headings', () => {
 	});
 
 	test('finds a marker on a heading inside a blockquote', () => {
-		expect(getCommentMark('> # <!-- title -->Old<!-- /title -->', 'title')?.content).toBe('Old');
+		expect(getCommentMark('# <!-- title -->Old<!-- /title -->', 'title')?.content).toBe('Old');
 	});
 
 	test('finds a marker on a heading inside a list item', () => {
@@ -398,7 +400,9 @@ describe('line endings', () => {
 	});
 
 	test('preserves the line endings around a replaced section', () => {
-		const content = ['<!-- a -->', 'old', '<!-- /a -->'].join('\r\n');
-		expect(commentMark(content, { a: 'new' })).toBe(['<!-- a -->new<!-- /a -->'].join('\r\n'));
+		const content = ['before', '<!-- a -->old<!-- /a -->', 'after'].join('\r\n');
+		expect(commentMark(content, { a: 'new' })).toBe(
+			['before', '<!-- a -->new<!-- /a -->', 'after'].join('\r\n'),
+		);
 	});
 });

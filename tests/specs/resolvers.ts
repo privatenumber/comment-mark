@@ -46,6 +46,21 @@ describe('resolvers', () => {
 		expect(output).toBe(`${createMarker('a', 'ONE')}\n${createMarker('a', 'TWO')}`);
 	});
 
+	test('runs resolvers in document order regardless of key order', () => {
+		const calls: string[] = [];
+		const resolver = (label: string) => () => {
+			calls.push(label);
+			return label;
+		};
+
+		commentMark(`${createMarker('a', 'one')}\n${createMarker('b', 'two')}`, {
+			b: resolver('b'),
+			a: resolver('a'),
+		});
+
+		expect(calls).toStrictEqual(['a', 'b']);
+	});
+
 	test('inserts a resolver string verbatim', () => {
 		expect(commentMark(createMarker('a', 'old'), {
 			a: () => 'first\nsecond',

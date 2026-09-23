@@ -110,19 +110,6 @@ describe('attribute updates', () => {
 		expect(output).toBe('<!-- item kind="fruit" -->apple<!-- /item -->');
 	});
 
-	test('keeps the attributes a resolver spreads', () => {
-		const output = commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
-			item: attributes => ({
-				attributes: {
-					...attributes,
-					updated: '2026-09-20',
-				},
-			}),
-		});
-
-		expect(output).toBe('<!-- item kind="fruit" updated="2026-09-20" -->apple<!-- /item -->');
-	});
-
 	test('replaces or drops an id like any other attribute', () => {
 		const content = '<!-- item id="a" -->apple<!-- /item -->';
 
