@@ -102,19 +102,19 @@ describe('update objects', () => {
 		expect(output).toBe(`${createMarker('a', 'one')}\n${createMarker('a', 'second')}`);
 	});
 
-	test('mixes object, string, and async resolver entries by position', async () => {
+	test('mixes object, string, and nullish entries by position', async () => {
 		const content = `${createMarker('a', 'one')}\n${createMarker('a', 'two')}\n${createMarker('a', 'three')}`;
 
 		const output = await commentMark(content, {
 			a: [
 				{ content: 'first' },
-				'second',
-				async () => ({ content: 'third' }),
+				null,
+				'third',
 			],
 		});
 
 		expect(output).toBe(
-			`${createMarker('a', 'first')}\n${createMarker('a', 'second')}\n${createMarker('a', 'third')}`,
+			`${createMarker('a', 'first')}\n${createMarker('a', 'two')}\n${createMarker('a', 'third')}`,
 		);
 	});
 

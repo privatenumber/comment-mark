@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { bench, run, summary } from 'mitata';
-import { commentMark, getCommentMarkAll } from '#comment-mark';
+import { type CommentMarkData, commentMark, getCommentMarkAll } from '#comment-mark';
 import {
 	createMarker, distinctBacktickRuns, fixtures,
 } from './fixtures.ts';
@@ -53,10 +53,10 @@ for (const [name, input] of Object.entries(fixtures)) {
 		}
 
 		const staticData = { [selector]: 'updated value' };
-		// An array of one resolver targets the first match, like the static
-		// value, so the rows differ only in the replacement mechanism. A scalar
-		// resolver would run for every match instead.
-		const resolverData = { [selector]: [() => 'updated value'] };
+		// A resolver is invoked for every match, so it returns `undefined` after
+		// the first one. Both rows replace only the first match and differ in the
+		// replacement mechanism.
+		const resolverData = { [selector]: (_marker: CommentMarkData, index: number) => (index === 0 ? 'updated value' : undefined) };
 		bench(`commentMark - ${name}`, () => commentMark(input, staticData));
 		bench(`commentMark resolver - ${name}`, () => commentMark(input, resolverData));
 	});

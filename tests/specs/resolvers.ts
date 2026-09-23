@@ -50,21 +50,6 @@ describe('resolvers', () => {
 		}]);
 	});
 
-	test('runs each resolver for its own occurrence in document order', async () => {
-		const calls: string[] = [];
-		const resolver = ({ content }: CommentMarkData) => {
-			calls.push(content);
-			return content.toUpperCase();
-		};
-
-		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
-			a: [resolver, resolver],
-		});
-
-		expect(calls).toStrictEqual(['one', 'two']);
-		expect(output).toBe(`${createMarker('a', 'ONE')}\n${createMarker('a', 'TWO')}`);
-	});
-
 	test('runs resolvers in document order regardless of key order', async () => {
 		const calls: string[] = [];
 		const resolver = (label: string) => () => {
@@ -173,14 +158,6 @@ describe('resolver targeting', () => {
 	test('is a no-op when the selector matches nothing', async () => {
 		const content = createMarker('a', 'old');
 		expect(await commentMark(content, { b: () => 'new' })).toBe(content);
-	});
-
-	test('a static value still replaces only the first match', async () => {
-		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
-			a: 'new',
-		});
-
-		expect(output).toBe(`${createMarker('a', 'new')}\n${createMarker('a', 'two')}`);
 	});
 });
 

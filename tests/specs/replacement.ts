@@ -118,6 +118,13 @@ describe('replacement', () => {
 		})).rejects.toThrow('[comment-mark] Selector "a" matched 1 marker but received 2 values');
 	});
 
+	test('rejects a function as an array entry', async () => {
+		await expect(commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
+			// @ts-expect-error A function is the selector's value, not an array entry
+			a: [null, () => 'new'],
+		})).rejects.toThrow('[comment-mark] Selector "a" received a function at position 1; a function must be the selector value, not an array entry');
+	});
+
 	test('rejects two selectors targeting the same marker', async () => {
 		const selector = 'a[id="x"]';
 

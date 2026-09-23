@@ -26,15 +26,20 @@ export type CommentMarkResolver = (
 	index: number,
 ) => CommentMarkResolverResult | Promise<CommentMarkResolverResult>;
 
-// A replacement is the new content, an update object that replaces the
-// attributes and content it names, or a resolver that computes either from the
-// marker it targets. A resolver runs for every match; a static value replaces
-// only the first. `null` and `undefined` consume their position without
-// replacing anything, which is what an array entry needs to skip one match and
-// reach the next.
-export type CommentMarkValue = string | CommentMarkUpdate | CommentMarkResolver | null | undefined;
+// A static replacement is the content to write, an update object that replaces
+// the attributes and content it names, or `null`/`undefined` to consume a
+// position without replacing anything, which is what an array entry needs to
+// skip one match and reach the next.
+export type CommentMarkStatic = string | CommentMarkUpdate | null | undefined;
 
-export type CommentMarkReplacement = CommentMarkValue | readonly CommentMarkValue[];
+// A replacement is a resolver, a static value, or an array of static values. A
+// resolver runs for every match, a static value replaces only the first, and an
+// array replaces matches by position. A function is the selector's value, never
+// an array entry, so an array cannot compute a replacement per match.
+export type CommentMarkReplacement =
+	| CommentMarkResolver
+	| CommentMarkStatic
+	| readonly CommentMarkStatic[];
 
 export type MarkerState = {
 	index: number;
@@ -223,15 +228,16 @@ export const createDocument = (input: string | Buffer): CommentDocument => {
 // Pairs each selector's replacement with the markers it targets: a resolver
 // runs for every match, an array runs by position, and a static value targets
 // the first match. The whole request is validated before anything is applied,
-// so a static replacement that matches nothing, more values than matches, or
-// two selectors targeting one marker throws first. Returns the claims in
-// selector order; `applyReplacements` sorts them into document order.
+// so a static replacement that matches nothing, more values than matches, a
+// function inside an array, or two selectors targeting one marker throws first.
+// Returns the claims in selector order; `applyReplacements` sorts them into
+// document order.
 const collectClaims = (
 	document: CommentDocument,
 	replacements: Record<string, CommentMarkReplacement>,
 ) => {
 	const claims: Array<{ state: MarkerState;
-		value: CommentMarkValue;
+		value: CommentMarkStatic | CommentMarkResolver;
 		index: number; }> = [];
 	const claimed = new Map<MarkerState, string>();
 
@@ -271,10 +277,20 @@ const collectClaims = (
 		const count = positional ? replacement.length : (resolver ? matches.length : 1);
 
 		for (let index = 0; index < count; index += 1) {
-			const value = positional ? replacement[index] : replacement;
+			// The annotation widens the entry type so a JavaScript caller's
+			// function is rejected below instead of being silently run.
+			const value: CommentMarkStatic | CommentMarkResolver = positional
+				? replacement[index]
+				: replacement;
 
 			if (value === null || value === undefined) {
 				continue;
+			}
+
+			if (positional && typeof value === 'function') {
+				throw new Error(
+					`[comment-mark] Selector ${JSON.stringify(selectorText)} received a function at position ${index}; a function must be the selector value, not an array entry`,
+				);
 			}
 
 			const state = matches[index];
