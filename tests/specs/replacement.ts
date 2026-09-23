@@ -151,10 +151,9 @@ describe('replacement', () => {
 				calls.push('a');
 				return 'updated';
 			},
-			missing: () => {
-				calls.push('missing');
-				return 'updated';
-			},
+			// A static value rejects a selector that matches nothing, so the
+			// call fails before the `a` resolver runs.
+			missing: 'updated',
 		})).rejects.toThrow('[comment-mark] Selector "missing" matched no markers');
 		expect(calls).toStrictEqual([]);
 	});

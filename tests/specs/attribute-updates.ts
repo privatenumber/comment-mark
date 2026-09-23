@@ -16,7 +16,7 @@ describe('attribute updates', () => {
 		].join('\n');
 
 		const output = await commentMark(content, {
-			item: attributes => ({
+			item: ({ attributes }) => ({
 				attributes: {
 					...attributes,
 					kind: 'vegetable',
@@ -69,7 +69,7 @@ describe('attribute updates', () => {
 		const content = '<!-- item kind="fruit" -->apple<!-- /item -->';
 
 		expect(await commentMark(content, {
-			item: attributes => ({
+			item: ({ attributes }) => ({
 				attributes: {
 					...attributes,
 					updated: '2026-09-20',
@@ -90,7 +90,7 @@ describe('attribute updates', () => {
 		const content = "<!-- comment-mark id = 'a'  file='b' -->old<!-- / comment-mark -->";
 
 		expect(await commentMark(content, {
-			"comment-mark[id='a']": attributes => ({ attributes: { ...attributes } }),
+			"comment-mark[id='a']": ({ attributes }) => ({ attributes: { ...attributes } }),
 		})).toBe(content);
 	});
 

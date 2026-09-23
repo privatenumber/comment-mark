@@ -18,7 +18,7 @@ The closing comment repeats the name after a `/`. A comment is a marker only whe
 
 | v2 | v3 |
 | --- | --- |
-| `commentMark(input, data)` | Now returns a promise, so `await` it. Values are keyed by selector instead of name. A string replaces the first match, an array replaces matches by position, and a function value receives `(attributes, content)` and returns a string or an `{ attributes?, content? }` update, or a promise of either. Unlike v2, it validates the whole document |
+| `commentMark(input, data)` | Now returns a promise, so `await` it. Values are keyed by selector instead of name. A string replaces the first match, an array replaces matches by position, and a function value receives the marker and its index, runs for every match, and returns a string or an `{ attributes?, content? }` update, or a promise of either. Unlike v2, it validates the whole document |
 | `getCommentMarks(input)` | Removed. Use `getCommentMark(input, selector)` for the first match, or `getCommentMarkAll(input, selector)` for every marker in document order |
 | none | New: `getCommentMark` and `getCommentMarkAll` read markers as plain `{ tagName, attributes, content }` data |
 

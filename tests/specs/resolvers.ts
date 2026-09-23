@@ -1,6 +1,7 @@
 import { setTimeout } from 'node:timers/promises';
 import { describe, test, expect } from 'manten';
 import {
+	type CommentMarkData,
 	commentMark,
 	getCommentMark,
 	getCommentMarkAll,
@@ -10,7 +11,7 @@ import { createMarker } from '../utils/create-marker.ts';
 describe('resolvers', () => {
 	test('computes content from the current value and attributes', async () => {
 		const output = await commentMark('<!-- views source="analytics" -->40<!-- /views -->', {
-			views: (attributes, content) => String(Number(content) + 1),
+			views: ({ content }) => String(Number(content) + 1),
 		});
 
 		expect(output).toBe('<!-- views source="analytics" -->41<!-- /views -->');
@@ -20,7 +21,7 @@ describe('resolvers', () => {
 		const seen: Array<[Record<string, string>, string]> = [];
 
 		await commentMark('<!-- item id="a" kind="fruit" -->apple<!-- /item -->', {
-			item: (attributes, content) => {
+			item: ({ attributes, content }) => {
 				seen.push([attributes, content]);
 				return null;
 			},
@@ -32,9 +33,26 @@ describe('resolvers', () => {
 		}, 'apple']]);
 	});
 
+	test('receives the marker data', async () => {
+		const seen: CommentMarkData[] = [];
+
+		await commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
+			item: (marker) => {
+				seen.push(marker);
+				return null;
+			},
+		});
+
+		expect(seen).toStrictEqual([{
+			tagName: 'item',
+			attributes: { kind: 'fruit' },
+			content: 'apple',
+		}]);
+	});
+
 	test('runs each resolver for its own occurrence in document order', async () => {
 		const calls: string[] = [];
-		const resolver = (attributes: Record<string, string>, content: string) => {
+		const resolver = ({ content }: CommentMarkData) => {
 			calls.push(content);
 			return content.toUpperCase();
 		};
@@ -84,7 +102,7 @@ describe('resolvers', () => {
 
 	test('updates content and attributes together', async () => {
 		const output = await commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
-			item: attributes => ({
+			item: ({ attributes }) => ({
 				attributes: {
 					...attributes,
 					kind: 'vegetable',
@@ -108,6 +126,64 @@ describe('resolvers', () => {
 	});
 });
 
+describe('resolver targeting', () => {
+	test('runs a scalar resolver for every match', async () => {
+		const calls: string[] = [];
+
+		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
+			a: ({ content }) => {
+				calls.push(content);
+				return content.toUpperCase();
+			},
+		});
+
+		expect(calls).toStrictEqual(['one', 'two']);
+		expect(output).toBe(`${createMarker('a', 'ONE')}\n${createMarker('a', 'TWO')}`);
+	});
+
+	test('claims every match, so another selector cannot target one', async () => {
+		const selector = 'a[id="two"]';
+
+		await expect(commentMark(
+			'<!-- a id="one" -->1<!-- /a -->\n<!-- a id="two" -->2<!-- /a -->',
+			{
+				a: () => 'new',
+				[selector]: 'other',
+			},
+		)).rejects.toThrow(`[comment-mark] Selectors "a" and ${JSON.stringify(selector)} both target the marker "a"`);
+	});
+
+	test('passes the zero-based position among the selector matches', async () => {
+		const positions: Array<[string, number]> = [];
+
+		await commentMark(
+			`${createMarker('a', 'one')}\n${createMarker('b', 'skip')}\n${createMarker('a', 'two')}`,
+			{
+				a: ({ content }, index) => {
+					positions.push([content, index]);
+					return content;
+				},
+			},
+		);
+
+		// `b` is not an `a` match, so the two `a` markers are positions 0 and 1.
+		expect(positions).toStrictEqual([['one', 0], ['two', 1]]);
+	});
+
+	test('is a no-op when the selector matches nothing', async () => {
+		const content = createMarker('a', 'old');
+		expect(await commentMark(content, { b: () => 'new' })).toBe(content);
+	});
+
+	test('a static value still replaces only the first match', async () => {
+		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
+			a: 'new',
+		});
+
+		expect(output).toBe(`${createMarker('a', 'new')}\n${createMarker('a', 'two')}`);
+	});
+});
+
 describe('async resolvers', () => {
 	test('awaits a promise result', async () => {
 		const output = await commentMark(createMarker('a', 'old'), {
@@ -122,7 +198,7 @@ describe('async resolvers', () => {
 
 	test('awaits a promise resolving to an update object', async () => {
 		const output = await commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
-			item: async attributes => ({
+			item: async ({ attributes }) => ({
 				attributes: {
 					...attributes,
 					kind: 'vegetable',
