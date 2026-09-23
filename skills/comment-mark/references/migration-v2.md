@@ -36,6 +36,8 @@ The closing comment repeats the name after a `/`. A comment is a marker only whe
 
 v3 requires Node.js 22.22.2 or newer. v2 supported Node.js 20.
 
+v3 ships as an ES module only. `import` loads it directly. On Node.js 22.12 or newer, CommonJS `require('comment-mark')` still loads it. TypeScript projects that compile to CommonJS need a `module` setting that models `require(esm)`, such as `nodenext`; `node16` and `node18` reject it even though the Node.js runtime supports it.
+
 ## Behavior changes
 
 | Change | Consequence |
