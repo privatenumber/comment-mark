@@ -50,6 +50,9 @@ export type MarkerState = {
 	// The replacement content, or `undefined` while the marker is untouched.
 	content: string | undefined;
 	changed: boolean;
+	// The attribute set changed, so the opening comment must be rebuilt. A
+	// content-only change keeps the opening comment exactly as written.
+	attributesChanged: boolean;
 };
 
 /**
@@ -116,6 +119,7 @@ const replaceAttributes = (state: MarkerState, attributes: Record<string, string
 	}
 
 	state.changed = true;
+	state.attributesChanged = true;
 };
 
 const renderOpeningTag = (state: MarkerState) => {
@@ -169,7 +173,11 @@ export const renderDocument = (document: CommentDocument) => {
 		}
 
 		output += source.slice(cursor, state.node.openingStart);
-		output += renderOpeningTag(state);
+		// A content-only change leaves the opening comment as written, so it is
+		// copied rather than rebuilt from its attributes.
+		output += state.attributesChanged
+			? renderOpeningTag(state)
+			: source.slice(state.node.openingStart, state.node.contentStart);
 		output += currentContent(state);
 		cursor = state.node.contentEnd;
 	}
@@ -219,6 +227,7 @@ export const createDocument = (input: string | Buffer): CommentDocument => {
 			))),
 			content: undefined,
 			changed: false,
+			attributesChanged: false,
 		})),
 	};
 };
