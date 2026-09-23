@@ -66,7 +66,7 @@ Run the script again with a new value to replace the section. The surrounding do
 Use the CLI to read or update a file without writing a script:
 
 ```sh
-npx comment-mark <file> [--<selector>=<value>...]
+npx comment-mark <file> [--<selector>=<value>...] [--<selector>.<attribute>=<value>...]
 ```
 
 `file` is the path to a Markdown or HTML file. The examples below use `npx`; package scripts can call `comment-mark` directly.
@@ -79,7 +79,7 @@ Pass each value as `--<selector>=<value>`. A tag name selects on its own, so the
 npx comment-mark README.md --lastUpdated="2026-09-07"
 ```
 
-Give each section you update its own tag name. A unique tag name needs no quoting, and the flag reads as the section it updates. Attributes are metadata; putting one in a flag makes the command harder to type.
+Give each section you update its own tag name. A unique tag name needs no quoting, and the flag reads as the section it updates.
 
 A selector replaces the first matching section. Set several sections in one invocation:
 
@@ -99,17 +99,39 @@ Saved README.md. Updated 1 selector; 1 unchanged; 1 missing.
 
 | Status | Meaning |
 | --- | --- |
-| `Updated` | The selector matches and applying the value changes the document |
-| `Unchanged` | Applying the value leaves the section unchanged |
+| `Updated` | The selector matches and applying the update changes the document |
+| `Unchanged` | The update leaves the marker unchanged |
 | `Missing` | No marker matches the selector |
 
-When updates are saved alongside missing selectors, the command exits `1`. If every requested selector is missing, it exits `1` without writing. If every requested selector matches and its value already matches, it exits `0` without rewriting the file.
+When updates are saved alongside missing selectors, the command exits `1`. If every requested selector is missing, it exits `1` without writing. If every requested selector matches and nothing changes, it exits `0` without rewriting the file.
 
 If several sections do share a tag name, a selector can still narrow by attribute. Quote the selector and the value, because the selector contains brackets:
 
 ```sh
 npx comment-mark README.md --"contributors[role='maintainer']"="Jane Doe"
 ```
+
+### Update attributes
+
+Pass `--<selector>.<attribute>=<value>` to change one attribute. The other attributes and the section content stay as they are:
+
+```sh
+npx comment-mark README.md --item.status="archived"
+```
+
+The `.` is the first dot outside brackets and quotes, so an attribute predicate can contain one:
+
+```sh
+npx comment-mark README.md --"item[file='package.json'].status"="archived"
+```
+
+Set the content and attributes of the same section in one invocation, in any order:
+
+```sh
+npx comment-mark README.md --item="pear" --item.kind="fruit"
+```
+
+An empty value (`--item.kind=`) sets the attribute to an empty string. Each field can be set once; repeating a flag, or naming an attribute the marker grammar rejects, aborts the run before writing.
 
 ### Read sections
 
