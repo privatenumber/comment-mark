@@ -1,8 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { bold, code, table } from 'md-pen';
-import { run } from 'mitata';
+import type { run } from 'mitata';
 import { commentMark, getCommentMarkAll } from '#comment-mark';
-import './suite.js';
+
+type BenchmarkRun = Awaited<ReturnType<typeof run>>;
 
 const formatTime = (nanoseconds: number) => {
 	if (nanoseconds < 1000) {
@@ -14,13 +15,7 @@ const formatTime = (nanoseconds: number) => {
 	return `${(nanoseconds / 1_000_000).toFixed(2)} ms`;
 };
 
-(async () => {
-	// `throw` rejects the run when a benchmark fails, so a broken benchmark is
-	// never recorded as a result row.
-	const { context, benchmarks } = await run({
-		format: 'quiet',
-		throw: true,
-	});
+export const writeResults = async ({ context, benchmarks }: BenchmarkRun) => {
 	const runtime = context.runtime as string;
 	const { version } = context as { version?: string };
 
@@ -65,4 +60,4 @@ const formatTime = (nanoseconds: number) => {
 
 	await writeFile(readmeUrl, updated);
 	console.error('Updated the results table in bench/README.md.');
-})();
+};

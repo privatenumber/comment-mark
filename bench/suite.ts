@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { bench, summary } from 'mitata';
+import { bench, run, summary } from 'mitata';
 import { commentMark, getCommentMarkAll } from '#comment-mark';
 import {
 	createMarker, distinctBacktickRuns, fixtures,
 } from './fixtures.js';
+import { writeResults } from './results.js';
 
 type BenchState = {
 	get: (name: string) => number;
@@ -88,3 +89,16 @@ bench('getCommentMarkAll - distinct backtick runs $size', function* distinctBack
 	const input = distinctBacktickRuns(state.get('size'));
 	yield () => getCommentMarkAll(input);
 }).args('size', [16, 64, 256]);
+
+// `--results` records the run in the bench README instead of printing the
+// table. `throw` rejects the run when a benchmark fails, so a broken benchmark
+// is never printed as a partial table or recorded as a result row.
+const recordResults = process.argv.includes('--results');
+const benchmarkRun = await run({
+	format: recordResults ? 'quiet' : 'mitata',
+	throw: true,
+});
+
+if (recordResults) {
+	await writeResults(benchmarkRun);
+}
