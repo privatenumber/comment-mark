@@ -1,7 +1,6 @@
 import {
-	isNameChar,
-	isNameStart,
 	isWhitespace,
+	readName,
 	skipWhitespace,
 } from './characters.ts';
 import { type Attribute, parseAttributeNodes } from './parse-attributes.ts';
@@ -30,22 +29,6 @@ type CommentKind =
 const openDelimiter = '<!--';
 const closeDelimiter = '-->';
 
-const readTagName = (source: string, index: number, end: number) => {
-	if (index >= end || !isNameStart(source[index])) {
-		return undefined;
-	}
-
-	const start = index;
-	index += 1;
-	while (index < end && isNameChar(source[index])) {
-		index += 1;
-	}
-	return {
-		name: source.slice(start, index),
-		end: index,
-	};
-};
-
 /**
  * Classifies a comment's inner text. A tag name must be followed by whitespace
  * or the end of the comment, so `<!-- TODO: fix -->` and `<!-- 1 + 1 -->` stay
@@ -65,7 +48,7 @@ const classifyComment = (source: string, innerStart: number, innerEnd: number): 
 		index = skipWhitespace(source, index + 1, innerEnd);
 	}
 
-	const tag = readTagName(source, index, innerEnd);
+	const tag = readName(source, index, innerEnd);
 	if (!tag) {
 		return { type: 'other' };
 	}
@@ -164,31 +147,24 @@ export const parseDocument = (source: string): MarkerNode[] => {
 		}
 	});
 
-	// A matched marker is nested when it opens before an earlier matched marker
-	// closes. Matched markers are in opening order, so one stack detects
-	// containment without walking a parent chain per marker.
+	// A matched marker is nested when it opens before the previous matched
+	// marker closes. Matched markers are in opening order, so the previous
+	// closing offset is enough: there is never more than one enclosing marker,
+	// because a second one throws.
 	const markers: MarkerNode[] = [];
-	const ancestors: Opener[] = [];
+	let previousCloserStart = -1;
 
 	for (const opener of openers) {
 		if (!opener.matched) {
 			continue;
 		}
 
-		while (ancestors.length > 0) {
-			const ancestor = ancestors.at(-1);
-			if (!ancestor || ancestor.closerStart >= opener.openingStart) {
-				break;
-			}
-			ancestors.pop();
-		}
-
-		if (ancestors.length > 0) {
+		if (previousCloserStart >= opener.openingStart) {
 			throw new Error(
 				`[comment-mark] Nested marker ${JSON.stringify(opener.kind.tagName)} is not supported`,
 			);
 		}
-		ancestors.push(opener);
+		previousCloserStart = opener.closerStart;
 
 		markers.push({
 			tagName: opener.kind.tagName,

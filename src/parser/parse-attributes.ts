@@ -14,8 +14,7 @@ export type Attribute = {
 	value: string;
 	// The quote that wrapped the value, or undefined when it was unquoted.
 	quote: '"' | "'" | undefined;
-	// The whole attribute, from its name through the end of its value.
-	start: number;
+	// The index just after the value, where the next attribute can start.
 	end: number;
 	// The value token, including its quotes, so a rewrite can replace only the
 	// value and leave the whitespace around `=` and the line endings intact.
@@ -87,7 +86,6 @@ const readAttribute = (source: string, index: number, end: number): Attribute | 
 		name,
 		value,
 		quote,
-		start,
 		end: index,
 		valueStart,
 		valueEnd: index,
