@@ -26,14 +26,25 @@
 	"main": "./dist/index.mjs",
 	"types": "./dist/index.d.mts",
 	"exports": {
-		"types": "./dist/index.d.mts",
-		"default": "./dist/index.mjs"
+		".": {
+			"types": "./dist/index.d.mts",
+			"default": "./dist/index.mjs"
+		},
+		"./plugins/files": {
+			"types": "./dist/plugins/files.d.mts",
+			"default": "./dist/plugins/files.mjs"
+		}
 	},
 	"imports": {
 		"#comment-mark": {
 			"types": "./src/index.ts",
 			"development": "./src/index.ts",
 			"default": "./dist/index.mjs"
+		},
+		"#comment-mark/plugins/files": {
+			"types": "./src/plugins/files.ts",
+			"development": "./src/plugins/files.ts",
+			"default": "./dist/plugins/files.mjs"
 		}
 	},
 	"packageManager": "pnpm@12.3.4",

@@ -10,6 +10,7 @@ Keep generated content, like contributor lists and benchmark results, alongside 
 - Update sections from the CLI or JavaScript
 - Select sections by tag name and attributes, like a CSS selector
 - Compute section content and attributes from the marker's current values
+- Fill sections from other files with the `comment-mark/plugins/files` plugin
 - Read marked content as JSON or a JavaScript object, preserving whitespace
 - Supports Markdown and HTML files, including multiline content
 - Ignores markers inside fenced code blocks and single-line inline code, so documentation examples stay literal
@@ -344,6 +345,44 @@ console.log(markers.map(marker => marker.content))
 ```
 
 Omitting the selector returns every recognized marker. Each entry is a plain object with `tagName`, `attributes`, and `content`. Every occurrence is kept, so a tag name can appear more than once.
+
+### `comment-mark/plugins/files`
+
+Fill markers with the contents of other files. The plugin returns replacements keyed by tag name, so pass them straight to `commentMark`:
+
+```js
+import { commentMark } from 'comment-mark'
+import { files } from 'comment-mark/plugins/files'
+
+const updated = await commentMark(markdown, files({
+    baseDirectory: import.meta.dirname
+}))
+
+console.log(updated)
+```
+
+Each marker names a file in its `path` attribute:
+
+```md
+<!-- file path="./examples/hello.js" -->
+<!-- /file -->
+```
+
+The file is read as UTF-8 and inserted verbatim, so the section's cached copy matches the file. The inserted text is not parsed again, so a marker written inside an included file stays part of the section's content.
+
+- `baseDirectory` (`string`, required): every `path` is resolved against this directory. An absolute `path` is used as written.
+- `tagName` (`string`): the tag name of the markers to fill. Defaults to `file`.
+
+The returned object composes with other replacements, so one call can fill files and set other sections:
+
+```js
+await commentMark(markdown, {
+    ...files({ baseDirectory: import.meta.dirname }),
+    version: '2.0.0'
+})
+```
+
+A marker without a `path` attribute, or a file that cannot be read, rejects the call.
 
 ## Example: Git contributors
 

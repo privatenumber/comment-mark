@@ -1,6 +1,6 @@
 ---
 name: comment-mark
-description: Editing, updating, or reading comment-mark sections in Markdown or HTML, including the `comment-mark` CLI, the `commentMark` / `getCommentMark` API, selectors, or migrating v2 `<!-- name:start -->` markers.
+description: Editing, updating, or reading comment-mark sections in Markdown or HTML, including the `comment-mark` CLI, the `commentMark` / `getCommentMark` API, selectors, filling sections from other files with the files plugin, or migrating v2 `<!-- name:start -->` markers.
 ---
 
 # comment-mark
@@ -56,6 +56,25 @@ Marker data is a plain object: `{ tagName, attributes, content }`.
 - In an object value, an omitted or `undefined` field preserves that part, `content: ''` clears the content, and `attributes: {}` removes every attribute. Attribute values must be strings.
 - Setting an attribute rewrites only its value, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses the original quoting when it fits and is re-quoted otherwise. Removing one drops the attribute and the whitespace written before it.
 
+## Files plugin
+
+`comment-mark/plugins/files` fills markers with the contents of other files. It returns replacements, so pass them to `commentMark`:
+
+```js
+import { commentMark } from 'comment-mark'
+import { files } from 'comment-mark/plugins/files'
+
+await commentMark(markdown, files({ baseDirectory: import.meta.dirname }))
+```
+
+Each `file` marker names a file in its `path` attribute: `<!-- file path="./LICENSE" --><!-- /file -->`.
+
+- `baseDirectory` is required and resolves every `path`; an absolute `path` is used as written.
+- `tagName` changes the marker tag name from the default `file`.
+- The file is read as UTF-8 and inserted verbatim, and is not parsed again, so a marker written inside an included file stays literal text.
+- A marker without a `path` attribute, or a file that cannot be read, rejects the call.
+- It composes with other replacements: `{ ...files({ baseDirectory }), version: '2.0.0' }`.
+
 ## CLI
 
 ```sh
@@ -78,6 +97,7 @@ npx comment-mark <file> [--<selector>=<value>...] [--<selector>.<attribute>=<val
 | Marker missing during update | A static API value rejects with `Selector "<selector>" matched no markers`; a function is a no-op. The CLI prints `Missing` and exits `1` |
 | Value is multiline | A static string gets surrounding newlines; object content and function return values are inserted verbatim |
 | Need every marker, in document order, with attributes | Use `getCommentMarkAll` or CLI read mode |
+| A section must copy another file's contents | Use the files plugin; it fills `file` markers from their `path` attribute |
 | A comment must stay ordinary | Leave it unpaired; only a matched opening and closing pair is a marker |
 | A marker sits inside another marker | Only the outermost pair is a marker; the inner pair is part of the outer marker's content and no selector matches it |
 | v2 `<!-- name:start -->` markers | Read `references/migration-v2.md` |
@@ -88,3 +108,4 @@ Code regions: fenced code blocks (backtick or tilde, including `>` blockquote pr
 
 - Read `references/migration-v2.md` when migrating v2 `<!-- name:start -->` / `<!-- name:end -->` markers to v3.
 - Read `references/cli.md` when scripting the CLI or depending on its output and exit codes.
+- Use `comment-mark/plugins/files` when a section's content comes from another file.
