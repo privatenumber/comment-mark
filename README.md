@@ -368,7 +368,7 @@ Each marker names a file in its `path` attribute:
 <!-- /file -->
 ```
 
-The file is read as UTF-8 and inserted verbatim, so the section's cached copy matches the file. The inserted text is not parsed again, so a marker written inside an included file stays literal text.
+The file is read as UTF-8 and inserted verbatim, so the section's cached copy matches the file. The inserted text is not parsed again, so a marker written inside an included file stays part of the section's content.
 
 - `baseDirectory` (`string`, required): every `path` is resolved against this directory. An absolute `path` is used as written.
 - `tagName` (`string`): the tag name of the markers to fill. Defaults to `file`.

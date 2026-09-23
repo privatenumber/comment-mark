@@ -86,7 +86,7 @@ describe('files plugin', () => {
 		expect(output).toBe('<!-- file path="hello.txt" -->Hello<!-- /file -->\n<!-- version -->2.0.0<!-- /version -->');
 	});
 
-	test('inserts a marker in the included file as literal text', async () => {
+	test('keeps a marker in the included file inside the section', async () => {
 		await using fixture = await createFixture({
 			'nested.md': '<!-- inner -->kept<!-- /inner -->',
 		});
@@ -98,10 +98,11 @@ describe('files plugin', () => {
 
 		expect(output).toBe('<!-- file path="nested.md" --><!-- inner -->kept<!-- /inner --><!-- /file -->');
 
-		// The included marker now sits inside the `file` marker, which
-		// re-parsing rejects, so an included marker cannot be filled later.
+		// The included marker is part of the section's content, so it is not a
+		// marker to select, while the section itself can still be refreshed.
 		await expect(commentMark(output, { inner: 'new' }))
-			.rejects.toThrow('[comment-mark] Nested marker "inner" is not supported');
+			.rejects.toThrow('[comment-mark] Selector "inner" matched no markers');
+		expect(await commentMark(output, files({ baseDirectory: fixture.path }))).toBe(output);
 	});
 
 	test('rejects a marker without a path attribute', async () => {
