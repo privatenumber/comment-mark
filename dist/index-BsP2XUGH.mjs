@@ -1,5 +1,3 @@
-'use strict';
-
 const isWhitespace = (char) => char === " " || char === "	" || char === "\n" || char === "\r" || char === "\f";
 const skipWhitespace = (source, index, end) => {
   while (index < end && isWhitespace(source[index])) {
@@ -927,7 +925,7 @@ const createDocument = (input) => {
     }))
   };
 };
-const applyReplacements = (document, replacements) => {
+const collectClaims = (document, replacements) => {
   const claims = [];
   const claimed = /* @__PURE__ */ new Map();
   for (const [selectorText, replacement] of Object.entries(replacements)) {
@@ -941,13 +939,23 @@ const applyReplacements = (document, replacements) => {
     if (positional && replacement.length === 0) {
       continue;
     }
+    const resolver = !positional && typeof replacement === "function";
     if (matches.length === 0) {
+      if (resolver) {
+        continue;
+      }
       throw new Error(`[comment-mark] Selector ${JSON.stringify(selectorText)} matched no markers`);
     }
-    const values = positional ? replacement : [replacement];
-    values.forEach((value, index) => {
+    const count = positional ? replacement.length : resolver ? matches.length : 1;
+    for (let index = 0; index < count; index += 1) {
+      const value = positional ? replacement[index] : replacement;
       if (value === null || value === void 0) {
-        return;
+        continue;
+      }
+      if (positional && typeof value === "function") {
+        throw new Error(
+          `[comment-mark] Selector ${JSON.stringify(selectorText)} received a function at position ${index}; a function must be the selector value, not an array entry`
+        );
       }
       const state = matches[index];
       const owner = claimed.get(state);
@@ -959,14 +967,19 @@ const applyReplacements = (document, replacements) => {
       claimed.set(state, selectorText);
       claims.push({
         state,
-        value
+        value,
+        index
       });
-    });
+    }
   }
+  return claims;
+};
+const applyReplacements = async (document, replacements) => {
+  const claims = collectClaims(document, replacements);
   claims.sort((a, b) => a.state.index - b.state.index);
-  for (const { state, value } of claims) {
+  for (const { state, value, index } of claims) {
     const resolver = typeof value === "function";
-    const updated = resolver ? value(currentAttributes(state), currentContent(state)) : value;
+    const updated = resolver ? await value(markerData(state), index) : value;
     if (updated === null || updated === void 0) {
       continue;
     }
@@ -985,12 +998,12 @@ ${updated}
   }
 };
 
-const commentMark = (input, replacements) => {
+const commentMark = async (input, replacements) => {
   if (typeof input !== "string" && !Buffer.isBuffer(input) || typeof replacements !== "object" || replacements === null) {
     return input;
   }
   const document = createDocument(input);
-  applyReplacements(document, replacements);
+  await applyReplacements(document, replacements);
   return renderDocument(document);
 };
 const getCommentMark = (input, selector) => {
@@ -999,6 +1012,4 @@ const getCommentMark = (input, selector) => {
 };
 const getCommentMarkAll = (input, selector) => selectMarkers(createDocument(input), selector).map(markerData);
 
-exports.commentMark = commentMark;
-exports.getCommentMark = getCommentMark;
-exports.getCommentMarkAll = getCommentMarkAll;
+export { getCommentMark as a, commentMark as c, encodeAttributeValue as e, getCommentMarkAll as g, isAttributeName as i };

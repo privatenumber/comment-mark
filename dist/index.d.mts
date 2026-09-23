@@ -4,17 +4,22 @@ type CommentMarkData = {
     content: string;
 };
 type CommentMarkUpdate = {
-    attributes?: Record<string, string>;
-    content?: string;
+    attributes?: Record<string, string> | undefined;
+    content?: string | undefined;
 };
-type CommentMarkResolver = (attributes: Record<string, string>, content: string) => string | CommentMarkUpdate | null | undefined;
-type CommentMarkValue = string | CommentMarkResolver | null | undefined;
-type CommentMarkReplacement = CommentMarkValue | readonly CommentMarkValue[];
+type CommentMarkResolverResult = string | CommentMarkUpdate | null | undefined;
+type CommentMarkResolver = (marker: CommentMarkData, index: number) => CommentMarkResolverResult | Promise<CommentMarkResolverResult>;
+type CommentMarkStatic = string | CommentMarkUpdate | null | undefined;
+type CommentMarkReplacement = CommentMarkResolver | CommentMarkStatic | readonly CommentMarkStatic[];
 
 /**
  * Replaces marked sections in `input` and returns the updated source.
+ *
+ * Returns a promise, so a resolver can read a file or do other async work. All
+ * selectors are validated before any resolver runs, and resolvers run in
+ * document order.
  */
-declare const commentMark: (input: string | Buffer, replacements: Record<string, CommentMarkReplacement>) => string;
+declare const commentMark: (input: string | Buffer, replacements: Record<string, CommentMarkReplacement>) => Promise<string>;
 /**
  * Returns the first marker matching `selector`, or null.
  */

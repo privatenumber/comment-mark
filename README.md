@@ -45,7 +45,7 @@ import fs from 'node:fs/promises'
 import { commentMark } from 'comment-mark'
 
 const markdown = await fs.readFile('README.md', 'utf8')
-const updated = commentMark(markdown, {
+const updated = await commentMark(markdown, {
     lastUpdated: '2026-09-07'
 })
 
@@ -66,7 +66,7 @@ Run the script again with a new value to replace the section. The surrounding do
 Use the CLI to read or update a file without writing a script:
 
 ```sh
-npx comment-mark <file> [--<selector>=<value>...]
+npx comment-mark <file> [--<selector>=<value>...] [--<selector>.<attribute>=<value>...]
 ```
 
 `file` is the path to a Markdown or HTML file. The examples below use `npx`; package scripts can call `comment-mark` directly.
@@ -79,7 +79,7 @@ Pass each value as `--<selector>=<value>`. A tag name selects on its own, so the
 npx comment-mark README.md --lastUpdated="2026-09-07"
 ```
 
-Give each section you update its own tag name. A unique tag name needs no quoting, and the flag reads as the section it updates. Attributes are metadata; putting one in a flag makes the command harder to type.
+Give each section you update its own tag name. A unique tag name needs no quoting, and the flag reads as the section it updates.
 
 A selector replaces the first matching section. Set several sections in one invocation:
 
@@ -99,17 +99,41 @@ Saved README.md. Updated 1 selector; 1 unchanged; 1 missing.
 
 | Status | Meaning |
 | --- | --- |
-| `Updated` | The selector matches and applying the value changes the document |
-| `Unchanged` | Applying the value leaves the section unchanged |
+| `Updated` | The selector matches and applying the update changes the document |
+| `Unchanged` | The update leaves the marker unchanged |
 | `Missing` | No marker matches the selector |
 
-When updates are saved alongside missing selectors, the command exits `1`. If every requested selector is missing, it exits `1` without writing. If every requested selector matches and its value already matches, it exits `0` without rewriting the file.
+When updates are saved alongside missing selectors, the command exits `1`. If every requested selector is missing, it exits `1` without writing. If every requested selector matches and nothing changes, it exits `0` without rewriting the file.
 
 If several sections do share a tag name, a selector can still narrow by attribute. Quote the selector and the value, because the selector contains brackets:
 
 ```sh
 npx comment-mark README.md --"contributors[role='maintainer']"="Jane Doe"
 ```
+
+### Update attributes
+
+Pass `--<selector>.<attribute>=<value>` to change one attribute. The other attributes and the section content stay as they are:
+
+```sh
+npx comment-mark README.md --item.status="archived"
+```
+
+The `.` is the first dot outside brackets and quotes, so an attribute predicate can contain one:
+
+```sh
+npx comment-mark README.md --"item[file='package.json'].status"="archived"
+```
+
+Set the content and attributes of the same section in one invocation, in any order:
+
+```sh
+npx comment-mark README.md --item="pear" --item.kind="fruit"
+```
+
+An empty value (`--item.kind=`) sets the attribute to an empty string. Each field can be set once; repeating a flag, or naming an attribute the marker grammar rejects, aborts the run before writing.
+
+A selector is reported once even when a content flag and attribute flags address it together. Selectors resolve against the file as read, so flag order does not change which marker each one updates.
 
 ### Read sections
 
@@ -194,12 +218,12 @@ A selector is a tag name followed by optional attribute predicates:
 
 ### `commentMark(input, replacements)`
 
-Replace marked sections. This function transforms content in memory; it does not read or write files.
+Replace marked sections. This function transforms content in memory; it does not read or write files. It returns a promise, so a value can be a function that reads a file or does other async work.
 
 ```js
 import { commentMark } from 'comment-mark'
 
-const updated = commentMark('Version: <!-- version -->1.0.0<!-- /version -->', {
+const updated = await commentMark('Version: <!-- version -->1.0.0<!-- /version -->', {
     version: '2.0.0'
 })
 
@@ -207,22 +231,39 @@ console.log(updated)
 // Version: <!-- version -->2.0.0<!-- /version -->
 ```
 
-A value can also be a function that computes the replacement from the section's own attributes and content:
+A value can also be a function that computes the replacement from the marker it targets:
 
 ```js
-const updated = commentMark('<!-- views -->40<!-- /views -->', {
-    views: (attributes, content) => String(Number(content) + 1)
+const updated = await commentMark('<!-- views -->40<!-- /views -->', {
+    views: ({ content }) => String(Number(content) + 1)
 })
 
 console.log(updated)
 // <!-- views -->41<!-- /views -->
 ```
 
-Return an object instead of a string to update the marker's attributes, its content, or both:
+To update the marker's attributes, its content, or both, pass an object. This works when the replacement is already known:
 
 ```js
-const updated = commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
-    item: attributes => ({
+const updated = await commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
+    item: {
+        attributes: {
+            kind: 'vegetable',
+            size: 'small'
+        },
+        content: 'carrot'
+    }
+})
+
+console.log(updated)
+// <!-- item kind="vegetable" size="small" -->carrot<!-- /item -->
+```
+
+`attributes` is the marker's complete attribute set, so that object drops anything the marker had besides `kind` and `size`. When the new value depends on the marker's current attributes, use a function instead and spread what it receives:
+
+```js
+const updated = await commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
+    item: ({ attributes }) => ({
         attributes: {
             ...attributes,
             size: 'small'
@@ -235,30 +276,42 @@ console.log(updated)
 ```
 
 - `input` (`string | Buffer`): Markdown or HTML content
-- `replacements` (object): Values keyed by selector. Each value is a string, a function, `null`, `undefined`, or an array of those.
+- `replacements` (object): Values keyed by selector. Each value is a string, an object, a function, `null`, `undefined`, or an array of static values.
 
-Returns the updated content as a string. Buffer input is decoded as UTF-8.
+Returns a promise that resolves to the updated content as a string. Buffer input is decoded as UTF-8.
 
 - A string replaces the first matching section.
 - An array replaces matches by position in document order: entry `0` updates the first match, entry `1` the second, and so on. Matches past the end of the array are left alone.
 - A `null` or `undefined` entry consumes its position without replacing anything.
 - Resolves every selector before applying any replacement, so one replacement cannot change which markers another targets.
-- A function value runs for each match it targets, in document order, and receives that match's attributes and content. A scalar targets only the first match; an array of functions runs one per entry. Its string result is inserted verbatim, with no added newline.
-- An object result replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.
+- A function used as the selector's value runs for every match, in document order. It receives the marker (`{ tagName, attributes, content }`) and its zero-based position among the selector's matches. Its string result is inserted verbatim, with no added newline. The function may return a promise, which is awaited before the next resolver runs.
+- A function must be the selector's value, not an array entry: an array holds static values and replaces matches by position, so a computed replacement always runs for every match.
+- An object value (`{ attributes?, content? }`) replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so an attribute left out is removed. Its `content` is inserted verbatim, with no added newline.
+- In an object value, an omitted or `undefined` field preserves that part, `content: ''` clears the content, and `attributes: {}` removes every attribute. An attribute value must be a string, so `attributes: { hash: undefined }` is invalid.
+- A function may return an object with the same rules. It receives the marker, so spread `marker.attributes` to keep the ones you do not change.
 - A changed attribute value is written back in place, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses its original quoting when it still fits, and is re-quoted otherwise. A new attribute is appended as `name="value"`.
-- A selector that matches no marker throws, so a typo or a stale selector is not mistaken for a successful no-op. Pass an empty array to request no change explicitly.
-- Rejects an array with more values than matches, and two selectors that target the same marker, rather than dropping values or picking a winner.
+- A static value whose selector matches no marker rejects, so a typo or a stale selector is not mistaken for a successful no-op. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
+- Rejects an array with more values than matches, a function as an array entry, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
-- Wraps static values containing `\n` in an additional newline on each side.
-- Throws when a marker is malformed or nested, when a resolver throws, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
+- Wraps bare string replacements containing `\n` in an additional newline on each side.
+- Rejects when a marker is malformed or nested, when a resolver throws or rejects, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
 
 An array updates matches by position, so one call can set repeated sections:
 
 ```js
-commentMark('<!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', {
+await commentMark('<!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', {
     item: ['orange', 'grape']
 })
 // <!-- item -->orange<!-- /item --><!-- item -->grape<!-- /item -->
+```
+
+A function runs for every match, so one call can compute each section from its own data:
+
+```js
+await commentMark('<!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', {
+    item: ({ content }, index) => `${index + 1}. ${content}`
+})
+// <!-- item -->1. apple<!-- /item --><!-- item -->2. pear<!-- /item -->
 ```
 
 Indented code blocks and code spans that wrap across lines are not detected as code, so a marker placed there is treated as real. Put active markers in prose, and put literal examples inside fenced code or single-line inline code.

@@ -18,7 +18,7 @@ The closing comment repeats the name after a `/`. A comment is a marker only whe
 
 | v2 | v3 |
 | --- | --- |
-| `commentMark(input, data)` | Values are keyed by selector instead of name. A string replaces the first match, an array replaces matches by position, and a function value receives `(attributes, content)` and returns a string or an `{ attributes?, content? }` update. Unlike v2, it validates the whole document |
+| `commentMark(input, data)` | Now returns a promise, so `await` it. Values are keyed by selector instead of name. A string replaces the first match, an array replaces matches by position, and a function value receives the marker and its index, runs for every match, and returns a string or an `{ attributes?, content? }` update, or a promise of either. Unlike v2, it validates the whole document |
 | `getCommentMarks(input)` | Removed. Use `getCommentMark(input, selector)` for the first match, or `getCommentMarkAll(input, selector)` for every marker in document order |
 | none | New: `getCommentMark` and `getCommentMarkAll` read markers as plain `{ tagName, attributes, content }` data |
 
@@ -36,6 +36,8 @@ The closing comment repeats the name after a `/`. A comment is a marker only whe
 
 v3 requires Node.js 22.22.2 or newer. v2 supported Node.js 20.
 
+v3 ships as an ES module only. `import` loads it directly. On Node.js 22.12 or newer, CommonJS `require('comment-mark')` still loads it. TypeScript projects that compile to CommonJS need a `module` setting that models `require(esm)`, such as `nodenext`; `node16` and `node18` reject it even though the Node.js runtime supports it.
+
 ## Behavior changes
 
 | Change | Consequence |
@@ -43,7 +45,7 @@ v3 requires Node.js 22.22.2 or newer. v2 supported Node.js 20.
 | Markers in fenced code and inline code are ignored | A v2 marker shown as a documentation example no longer updates. This is the fix that stops examples from being treated as real markers |
 | Only a matched comment pair is a marker | An unclosed `<!-- name -->` is left alone instead of throwing, and `<!-- TODO -->` stays ordinary text unless a matching `<!-- /TODO -->` follows. A marker pair nested inside another aborts parsing with `Nested marker ... is not supported` |
 | Markers are selected, not looked up by name | `commentMark` keys are selectors. A tag name selects on its own, and attribute predicates narrow it: `contributors[role='maintainer']` |
-| A scalar replaces the first match | v2 updated every marker with a matching name. Pass an array to update several matches by position |
+| A static value replaces the first match | v2 updated every marker with a matching name. A function value runs for every match, and an array updates matches by position |
 | Attribute values have a grammar | v2 marker names were free-form text. Attributes must be separated by whitespace, and `id="a"file="b"` throws `Expected whitespace between attributes` |
 | Attributes can be updated | New capability: return `{ attributes }` from a function value to rewrite a marker's attributes |
 | Updates validate the whole document | A malformed or nested marker anywhere aborts the update, even when it is unrelated to the requested selectors |
