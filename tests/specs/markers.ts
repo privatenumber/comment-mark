@@ -41,10 +41,51 @@ describe('marker pairing', () => {
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
 	});
 
-	test('rejects nested markers', () => {
-		expect(() => getCommentMarkAll(
+	test('reads only the outermost marker', () => {
+		expect(getCommentMarkAll(
 			'<!-- a -->outer<!-- b -->inner<!-- /b -->x<!-- /a -->',
-		)).toThrow('[comment-mark] Nested marker "b" is not supported');
+		)).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: 'outer<!-- b -->inner<!-- /b -->x',
+			},
+		]);
+	});
+
+	test('keeps a nested marker out of selectors', () => {
+		const content = '<!-- a -->outer<!-- b -->inner<!-- /b -->x<!-- /a -->';
+
+		expect(getCommentMarkAll(content, 'b')).toStrictEqual([]);
+		expect(getCommentMark(content, 'b')).toBe(null);
+	});
+
+	test('pairs a nested marker with the same tag name to the outer closer', () => {
+		// The first closing comment closes the innermost `a`, so the outer
+		// marker's content spans the inner pair.
+		expect(getCommentMarkAll(
+			'<!-- a -->outer<!-- a -->inner<!-- /a --><!-- /a -->',
+		)).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: 'outer<!-- a -->inner<!-- /a -->',
+			},
+		]);
+	});
+
+	test('keeps markers a replacement introduced inside the outer marker', async () => {
+		const inner = '<!-- b -->inner<!-- /b -->';
+		const output = await commentMark(createMarker('a', 'old'), { a: inner });
+
+		expect(output).toBe(createMarker('a', inner));
+		expect(getCommentMarkAll(output).map(mark => mark.tagName)).toStrictEqual(['a']);
+
+		// `b` sits inside `a`'s content, so it is not a marker to update, while
+		// the outer marker can still be replaced on a later run.
+		await expect(commentMark(output, { b: 'changed' }))
+			.rejects.toThrow('[comment-mark] Selector "b" matched no markers');
+		expect(await commentMark(output, { a: 'new' })).toBe(createMarker('a', 'new'));
 	});
 
 	test('allows an unmatched opening comment inside a marker', () => {
@@ -67,12 +108,18 @@ describe('marker pairing', () => {
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
 	});
 
-	test('rejects a matched pair inside a marker behind an unmatched comment', () => {
-		// `<!-- x -->` is never closed, but `b` still opens and closes inside
-		// `a`, so replacing `a` would overwrite `b`'s comments.
-		expect(() => getCommentMarkAll(
+	test('skips a matched pair inside a marker behind an unmatched comment', () => {
+		// `<!-- x -->` is never closed, so it is not a marker, and `b` opens and
+		// closes inside `a`, which makes `b` part of `a`'s content.
+		expect(getCommentMarkAll(
 			'<!-- a --><!-- x --><!-- b -->inner<!-- /b --><!-- /a -->',
-		)).toThrow('[comment-mark] Nested marker "b" is not supported');
+		)).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: '<!-- x --><!-- b -->inner<!-- /b -->',
+			},
+		]);
 	});
 });
 

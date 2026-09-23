@@ -17,7 +17,7 @@ This skill covers comment-mark's marker syntax, selectors, JavaScript API, and C
 - The pair is what makes it a marker: `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
 - Whitespace inside the comments is padding, so `<!-- contributors -->` and `<!--contributors-->` are equivalent.
 - An update replaces the content between the comments; the opening comment's attributes can also change. The tag name and the closing comment stay as written, so later updates still find the section.
-- A marker pair cannot sit inside another marker pair. Nesting aborts parsing.
+- Only the outermost pair is a marker. A pair nested inside another pair stays part of the outer marker's content.
 - Tag names and attribute names are case-sensitive and matched verbatim.
 
 ## Selectors
@@ -79,6 +79,7 @@ npx comment-mark <file> [--<selector>=<value>...] [--<selector>.<attribute>=<val
 | Value is multiline | A static string gets surrounding newlines; object content and function return values are inserted verbatim |
 | Need every marker, in document order, with attributes | Use `getCommentMarkAll` or CLI read mode |
 | A comment must stay ordinary | Leave it unpaired; only a matched opening and closing pair is a marker |
+| A marker sits inside another marker | Only the outermost pair is a marker; the inner pair is part of the outer marker's content and no selector matches it |
 | v2 `<!-- name:start -->` markers | Read `references/migration-v2.md` |
 
 Code regions: fenced code blocks (backtick or tilde, including `>` blockquote prefixes) and single-line inline code are ignored, so documentation examples stay literal. Indented code blocks and code spans that wrap across lines are not detected. Put active markers in prose; put literal examples inside fenced or single-line inline code.

@@ -106,13 +106,16 @@ type Opener = {
 };
 
 /**
- * Collects the paired tag markers in document order.
+ * Collects the outermost paired tag markers in document order.
  *
  * A marker is an opening comment and a later closing comment with the same tag
  * name. Any other comment stays ordinary text, so `<!-- TODO -->` is never
- * treated as an unfinished marker. A matched pair nested inside another matched
- * pair aborts parsing, because replacing the outer marker's content would
- * overwrite the inner marker's comments.
+ * treated as an unfinished marker.
+ *
+ * A matched pair nested inside another matched pair is skipped. The outer
+ * marker's content already spans it, so it is not part of the marker set that
+ * readers and replacements see. Content inserted into a section can therefore
+ * contain markers of its own without changing which markers the document has.
  */
 export const parseDocument = (source: string): MarkerNode[] => {
 	if (!source.includes(openDelimiter)) {
@@ -166,7 +169,9 @@ export const parseDocument = (source: string): MarkerNode[] => {
 
 	// A matched marker is nested when it opens before an earlier matched marker
 	// closes. Matched markers are in opening order, so one stack detects
-	// containment without walking a parent chain per marker.
+	// containment without walking a parent chain per marker. Only the outermost
+	// markers reach the stack, so a marker under an open one is skipped instead
+	// of being reported.
 	const markers: MarkerNode[] = [];
 	const ancestors: Opener[] = [];
 
@@ -183,10 +188,10 @@ export const parseDocument = (source: string): MarkerNode[] => {
 			ancestors.pop();
 		}
 
+		// A nested marker stays inside the outer marker's content, so it is not
+		// a marker this document exposes.
 		if (ancestors.length > 0) {
-			throw new Error(
-				`[comment-mark] Nested marker ${JSON.stringify(opener.kind.tagName)} is not supported`,
-			);
+			continue;
 		}
 		ancestors.push(opener);
 
