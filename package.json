@@ -1,62 +1,55 @@
 {
-	"name": "comment-mark",
-	"version": "0.0.0-semantic-release",
-	"description": "Interpolate strings with HTML comment markers",
-	"keywords": [
-		"string",
-		"interpolation",
-		"inject",
-		"html",
-		"comment",
-		"markdown"
-	],
-	"license": "MIT",
-	"repository": "privatenumber/comment-mark",
-	"funding": "https://github.com/privatenumber/comment-mark?sponsor=1",
-	"author": {
-		"name": "Hiroki Osame",
-		"email": "hiroki.osame@gmail.com"
-	},
-	"files": [
-		"dist"
-	],
-	"main": "./dist/index.cjs",
-	"module": "./dist/index.mjs",
-	"types": "./dist/index.d.cts",
-	"exports": {
-		"require": {
-			"types": "./dist/index.d.cts",
-			"default": "./dist/index.cjs"
-		},
-		"import": {
-			"types": "./dist/index.d.mts",
-			"default": "./dist/index.mjs"
-		}
-	},
-	"imports": {
-		"#comment-mark": {
-			"types": "./src/index.ts",
-			"development": "./src/index.ts",
-			"default": "./dist/index.mjs"
-		}
-	},
-	"packageManager": "pnpm@10.9.0",
-	"scripts": {
-		"lint": "lintroll . --cache",
-		"pretest": "pnpm build",
-		"test": "tsx tests",
-		"build": "pkgroll",
-		"type-check": "tsc"
-	},
-	"engines": {
-		  "node": ">=20"
-	},
-	"devDependencies": {
-		"@types/node": "^22.15.19",
-		"lintroll": "^1.15.0",
-		"manten": "^1.3.0",
-		"pkgroll": "^2.12.2",
-		"tsx": "^4.19.4",
-		"typescript": "^5.8.3"
-	}
+  "name": "comment-mark",
+  "version": "0.0.0-semantic-release",
+  "description": "Interpolate strings with HTML comment markers",
+  "keywords": [
+    "string",
+    "interpolation",
+    "inject",
+    "html",
+    "comment",
+    "markdown"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "privatenumber/comment-mark"
+  },
+  "funding": "https://github.com/privatenumber/comment-mark?sponsor=1",
+  "author": {
+    "name": "Hiroki Osame",
+    "email": "hiroki.osame@gmail.com"
+  },
+  "files": [
+    "dist",
+    "skills"
+  ],
+  "type": "module",
+  "bin": {
+    "comment-mark": "./dist/cli.mjs"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    "require": {
+      "types": "./dist/index.d.cts",
+      "default": "./dist/index.cjs"
+    },
+    "import": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "imports": {
+    "#comment-mark": {
+      "default": "./dist/index.mjs"
+    }
+  },
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "dependencies": {
+    "cleye": "^3.0.0-beta.2"
+  }
 }
