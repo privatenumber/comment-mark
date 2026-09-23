@@ -70,4 +70,4 @@ Each entry is `{ tagName, attributes, content }`. Read mode prints `[]` when the
 
 ## Validation
 
-Update mode parses and validates the whole document before writing. A malformed or nested marker aborts the run without partial edits. A comment with no matching closing comment is not a marker, so it is left alone and reported as `Missing` when a selector targets it.
+Update mode parses and validates the whole document before writing. A malformed marker aborts the run without partial edits. A comment with no matching closing comment is not a marker, so it is left alone and reported as `Missing` when a selector targets it.

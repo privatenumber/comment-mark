@@ -106,13 +106,16 @@ type Opener = {
 };
 
 /**
- * Collects the paired tag markers in document order.
+ * Collects the outermost paired tag markers in document order.
  *
  * A marker is an opening comment and a later closing comment with the same tag
  * name. Any other comment stays ordinary text, so `<!-- TODO -->` is never
- * treated as an unfinished marker. A matched pair nested inside another matched
- * pair aborts parsing, because replacing the outer marker's content would
- * overwrite the inner marker's comments.
+ * treated as an unfinished marker.
+ *
+ * A matched pair nested inside another matched pair is skipped. The outer
+ * marker's content already spans it, so it is not part of the marker set that
+ * readers and replacements see. A section can hold balanced marker pairs of its
+ * own without adding markers to the document.
  */
 export const parseDocument = (source: string): MarkerNode[] => {
 	if (!source.includes(openDelimiter)) {
@@ -164,31 +167,24 @@ export const parseDocument = (source: string): MarkerNode[] => {
 		}
 	});
 
-	// A matched marker is nested when it opens before an earlier matched marker
-	// closes. Matched markers are in opening order, so one stack detects
-	// containment without walking a parent chain per marker.
+	// A matched marker is nested when it opens before an earlier emitted marker
+	// closes. Matched markers are in opening order and the emitted ones do not
+	// overlap, so the last one is enough to detect containment without a stack.
 	const markers: MarkerNode[] = [];
-	const ancestors: Opener[] = [];
+	let enclosingMarker: Opener | undefined;
 
 	for (const opener of openers) {
 		if (!opener.matched) {
 			continue;
 		}
 
-		while (ancestors.length > 0) {
-			const ancestor = ancestors.at(-1);
-			if (!ancestor || ancestor.closerStart >= opener.openingStart) {
-				break;
-			}
-			ancestors.pop();
+		// A nested marker stays inside the outer marker's content, so it is not
+		// a marker this document exposes.
+		if (enclosingMarker && enclosingMarker.closerStart >= opener.openingStart) {
+			continue;
 		}
 
-		if (ancestors.length > 0) {
-			throw new Error(
-				`[comment-mark] Nested marker ${JSON.stringify(opener.kind.tagName)} is not supported`,
-			);
-		}
-		ancestors.push(opener);
+		enclosingMarker = opener;
 
 		markers.push({
 			tagName: opener.kind.tagName,
