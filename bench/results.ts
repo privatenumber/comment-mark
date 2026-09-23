@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { bold, code, table } from 'md-pen';
 import type { run } from 'mitata';
-import { commentMark, getCommentMarkAll } from '#comment-mark';
+import { commentMark } from '#comment-mark';
 
 type BenchmarkRun = Awaited<ReturnType<typeof run>>;
 
@@ -44,12 +44,6 @@ export const writeResults = async ({ context, benchmarks }: BenchmarkRun) => {
 
 	const readmeUrl = new URL('README.md', import.meta.url);
 	const readme = await readFile(readmeUrl, 'utf8');
-
-	// Fail loudly when the marker is missing instead of reporting that the
-	// results are already up to date.
-	if (getCommentMarkAll(readme, 'results').length === 0) {
-		throw new Error('bench/README.md has no results marker');
-	}
 
 	const updated = commentMark(readme, { results: recorded });
 

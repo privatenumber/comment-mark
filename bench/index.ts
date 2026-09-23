@@ -10,8 +10,8 @@ type BenchState = {
 	get: (name: string) => number;
 };
 
-// The selector each fixture declares, so the replacement benchmarks exercise a
-// matching selector instead of the unmatched-selector path.
+// The selector each fixture declares. The replacement benchmarks use it, and a
+// fixture whose selector matches nothing only gets the reader benchmark.
 const fixtureSelectors: Record<string, string> = {
 	'prose only': 'x',
 	'sparse markers': 'x',
@@ -39,14 +39,21 @@ assert.strictEqual(countMarkers(distinctBacktickRuns(64), 'x'), 1);
 assert.strictEqual(getCommentMarkAll(fixtures['dense markers'], 'x')[0]?.content, 'value');
 
 // Each summary groups the APIs on one input, so only rows within the same
-// group share an input and are comparable.
+// group share an input and are comparable. A fixture without markers only gets
+// the reader benchmark, because `commentMark` rejects a selector that matches
+// nothing.
 for (const [name, input] of Object.entries(fixtures)) {
 	const selector = fixtureSelectors[name];
-	const staticData = { [selector]: 'updated value' };
-	const resolverData = { [selector]: () => 'updated value' };
 
 	summary(() => {
 		bench(`getCommentMarkAll - ${name}`, () => getCommentMarkAll(input));
+
+		if (countMarkers(input, selector) === 0) {
+			return;
+		}
+
+		const staticData = { [selector]: 'updated value' };
+		const resolverData = { [selector]: () => 'updated value' };
 		bench(`commentMark - ${name}`, () => commentMark(input, staticData));
 		bench(`commentMark resolver - ${name}`, () => commentMark(input, resolverData));
 	});
