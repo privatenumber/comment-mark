@@ -42,19 +42,16 @@ describe('edge cases', () => {
 	test('ignores an unmatched opening comment', () => {
 		const content = '<!-- a -->never closed\n';
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { a: 'x' })).toBe(content);
 	});
 
 	test('ignores a closing comment with no opening comment', () => {
 		const content = '<!-- /a -->text<!-- a -->';
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { a: 'x' })).toBe(content);
 	});
 
 	test('does not pair a closing comment with a different tag', () => {
 		const content = '<!-- a -->text<!-- /b -->';
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { a: 'x' })).toBe(content);
 	});
 
 	test('ignores comments that are not tags', () => {
@@ -67,7 +64,6 @@ describe('edge cases', () => {
 		].join('\n');
 
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { TODO: 'x' })).toBe(content);
 	});
 
 	test('ignores an unmatched comment with malformed attributes', () => {
@@ -101,7 +97,6 @@ describe('edge cases', () => {
 		// so it cannot silently pair with the opener and leave `extra` unread.
 		const content = '<!-- a -->x<!-- /a extra -->';
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { a: 'y' })).toBe(content);
 	});
 
 	test('rejects a matched pair inside a marker behind an unmatched comment', () => {
@@ -214,11 +209,36 @@ describe('replacement', () => {
 		})).toThrow(`[comment-mark] Selectors "a" and ${JSON.stringify(selector)} both target the marker "a"`);
 	});
 
-	test('leaves markers without a matching selector untouched', () => {
-		const output = commentMark(createMarker('a', 'hello world'), {
+	test('rejects a selector that matches no markers', () => {
+		expect(() => commentMark(createMarker('a', 'hello world'), {
 			b: 'goodbye world',
-		});
-		expect(output).toBe(createMarker('a', 'hello world'));
+		})).toThrow('[comment-mark] Selector "b" matched no markers');
+	});
+
+	test('rejects a nullish scalar whose selector matches no markers', () => {
+		expect(() => commentMark(createMarker('a', 'hello world'), {
+			b: undefined,
+		})).toThrow('[comment-mark] Selector "b" matched no markers');
+	});
+
+	test('an empty array is a no-op even when nothing matches', () => {
+		const content = createMarker('a', 'hello world');
+		expect(commentMark(content, { b: [] })).toBe(content);
+	});
+
+	test('validates every selector before running a resolver', () => {
+		const calls: string[] = [];
+		expect(() => commentMark(`${createMarker('a', 'one')}\n${createMarker('b', 'two')}`, {
+			a: () => {
+				calls.push('a');
+				return 'updated';
+			},
+			missing: () => {
+				calls.push('missing');
+				return 'updated';
+			},
+		})).toThrow('[comment-mark] Selector "missing" matched no markers');
+		expect(calls).toStrictEqual([]);
 	});
 
 	test('round trips source with no replacements byte for byte', () => {
@@ -544,28 +564,24 @@ describe('block comments', () => {
 		const content = ['<!-- note -->', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
 
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('an indented standalone comment does not expose a following list fence', () => {
 		const content = ['  <!-- note -->', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
 
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a multiline standalone comment does not expose a following list fence', () => {
 		const content = ['<!--', 'note', '-->', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
 
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a block comment interrupts an open paragraph', () => {
 		const content = ['paragraph', '<!-- note -->', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
 
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a comment inside a paragraph does not end it', () => {
@@ -587,7 +603,6 @@ describe('code blocks', () => {
 	test('ignores markers inside fenced code blocks', () => {
 		const content = ['```md', createMarker('a', 'example'), '```'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { a: 'hello world' })).toBe(content);
 	});
 
 	test('ignores markers inside tilde fences', () => {
@@ -680,7 +695,6 @@ describe('code blocks', () => {
 	test('a blockquote fence line inside a top-level fence does not close it', () => {
 		const content = ['```md', '> ```', createMarker('x', 'example'), '```'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a blockquote that ends before its unclosed fence does not hide later markers', () => {
@@ -708,79 +722,66 @@ describe('code blocks', () => {
 	test('a fence indented to a list item content column is recognized', () => {
 		const content = ['1. item', '', '    ```', `    ${createMarker('x', 'example')}`, '    ```'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a thematic break does not create list context for a following fence', () => {
 		const content = ['* * *', '  ~~~md', createMarker('x', 'example'), '  ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('an escaped multi-backtick run cannot close an existing span', () => {
 		const content = ['`example \\', '`` ', createMarker('x', 'example'), '`'].join('');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a tab-indented line continues a list fence', () => {
 		const content = ['- item', '', '  ~~~md', `\t${createMarker('x', 'example')}`, '  ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a tab after a blockquote marker still opens a fence', () => {
 		const content = ['>\t~~~md', `> ${createMarker('x', 'example')}`, '> ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a tab can satisfy indentation for nested list levels', () => {
 		const content = ['- outer', '  - inner', '    ~~~md', `\t${createMarker('x', 'example')}`, '    ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('indentation from a blockquote tab cannot close a fence', () => {
 		const content = ['> ~~~md', '>\t  ~~~', `> ${createMarker('x', 'example')}`, '> ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('indentation from a list tab cannot close a fence', () => {
 		const content = ['- item', '  ~~~md', '\t  ~~~', `  ${createMarker('x', 'example')}`, '  ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a fence with mixed space and tab padding is recognized', () => {
 		const content = ['- \t~~~md', `\t${createMarker('x', 'example')}`, '\t~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a blank line ends a fence inside a blockquote', () => {
 		const content = ['> ~~~', '', '> ~~~', `> ${createMarker('x', 'example')}`, '> ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a blank line continues a fence inside a list item', () => {
 		const content = ['- ~~~md', '', `  ${createMarker('x', 'example')}`, '  ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a quote-prefixed blank line keeps a list fence open', () => {
 		const content = ['> - ~~~', '>', `>   ${createMarker('x', 'example')}`, '>   ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a list padding tab that overshoots five columns does not open a fence', () => {
 		const content = ['-\t  ~~~', '', '  ~~~', `  ${createMarker('x', 'example')}`, '  ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 });
 
@@ -804,7 +805,6 @@ describe('paragraph interruption', () => {
 		// and hides the fenced example that follows.
 		const content = ['- item', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('an ordered marker inside a blockquote paragraph does not interrupt it', () => {
@@ -825,19 +825,16 @@ describe('heading context', () => {
 		// fence hides the example that follows.
 		const content = ['# Heading', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a setext heading does not leave a paragraph open', () => {
 		const content = ['Heading', '===', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 
 	test('a setext dash underline does not leave a paragraph open', () => {
 		const content = ['Heading', '---', '2. ~~~', `   ${createMarker('x', 'example')}`, '   ~~~'].join('\n');
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { x: 'NEW' })).toBe(content);
 	});
 });
 
@@ -859,7 +856,6 @@ describe('markers in headings', () => {
 		const content = `# \`${createMarker('title', 'example')}\``;
 
 		expect(getCommentMarkAll(content)).toStrictEqual([]);
-		expect(commentMark(content, { title: 'New' })).toBe(content);
 	});
 
 	test('finds a marker on a heading inside a blockquote', () => {
@@ -1049,14 +1045,14 @@ describe('callbacks', () => {
 	});
 
 	test('resolves selectors against the state at the start of the call', () => {
-		// The first resolver gives `b` a `kind`, but the second selector is
-		// resolved before any replacement runs, so it does not match.
-		const output = commentMark('<!-- b -->apple<!-- /b -->', {
+		// The first resolver gives `b` a `kind`, but every selector is resolved
+		// before any replacement runs, so the second selector matches nothing
+		// and the call is rejected before the first resolver runs.
+		const selector = "b[kind='fruit']";
+		expect(() => commentMark('<!-- b -->apple<!-- /b -->', {
 			b: () => ({ attributes: { kind: 'fruit' } }),
-			"b[kind='fruit']": 'unexpected',
-		});
-
-		expect(output).toBe('<!-- b kind="fruit" -->apple<!-- /b -->');
+			[selector]: 'unexpected',
+		})).toThrow(`[comment-mark] Selector ${JSON.stringify(selector)} matched no markers`);
 	});
 });
 

@@ -246,7 +246,7 @@ Returns the updated content as a string. Buffer input is decoded as UTF-8.
 - A function value runs for each match it targets, in document order, and receives that match's attributes and content. A scalar targets only the first match; an array of functions runs one per entry. Its string result is inserted verbatim, with no added newline.
 - An object result replaces the parts it sets and preserves the parts it omits. `attributes` is the marker's complete attribute set, including `id`, so spread the received `attributes` to keep the ones you do not change; an attribute left out is removed.
 - A changed attribute value is written back in place, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses its original quoting when it still fits, and is re-quoted otherwise. A new attribute is appended as `name="value"`.
-- Silently skips selectors with no matching marker. Unlike the CLI, the API does not report missing selectors.
+- A selector that matches no marker throws, so a typo or a stale selector is not mistaken for a successful no-op. Pass an empty array to request no change explicitly.
 - Rejects an array with more values than matches, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
 - Wraps static values containing `\n` in an additional newline on each side.

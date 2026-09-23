@@ -215,9 +215,11 @@ export const createDocument = (input: string | Buffer): CommentDocument => {
 /**
  * Applies `replacements` to a document. Every selector is resolved before any
  * replacement is applied, so one replacement cannot change which markers the
- * others target. A scalar replaces the first match and an array replaces
- * matches by position; giving more values than matches, or targeting one marker
- * from two selectors, is an error rather than a silent partial update.
+ * others target and a rejected selector fails before any resolver runs. A
+ * scalar replaces the first match and an array replaces matches by position;
+ * an empty array is an explicit no-op. Giving more values than matches,
+ * targeting one marker from two selectors, or naming a selector that matches
+ * nothing is an error rather than a silent partial update.
  */
 export const applyReplacements = (
 	document: CommentDocument,
@@ -237,10 +239,17 @@ export const applyReplacements = (
 			);
 		}
 
-		// A selector with no matching marker is skipped, like a key with no
-		// marker always was. Only an explicit array has to fit its matches.
-		if (matches.length === 0) {
+		// An empty array is the explicit way to request no change, even when
+		// nothing matches.
+		if (positional && replacement.length === 0) {
 			continue;
+		}
+
+		// A selector with no matching marker is an error, so a typo or a stale
+		// selector fails loudly instead of being mistaken for a successful
+		// no-op.
+		if (matches.length === 0) {
+			throw new Error(`[comment-mark] Selector ${JSON.stringify(selectorText)} matched no markers`);
 		}
 
 		const values = positional ? replacement : [replacement];
