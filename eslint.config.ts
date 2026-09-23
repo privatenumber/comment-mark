@@ -13,9 +13,6 @@ import { defineConfig, pvtnbr } from 'lintroll';
 // These rules cover `src/` only; tests may still use regular expressions in
 // assertions. `pnpm lint` runs in CI, so a config that fails to load fails the
 // build instead of silently dropping the ban.
-//
-// Keep this config as `.mts`: lintroll loads it through tsx, and a `.ts` config
-// fails to import the lintroll plugin graph in this CommonJS package.
 const scanByIndex = 'Scan by character index with parse-local state.';
 
 export default defineConfig([
