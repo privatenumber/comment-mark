@@ -8,6 +8,7 @@
 		],
 		"allowImportingTsExtensions": true,
 		"strict": true,
+		"exactOptionalPropertyTypes": true,
 		"noEmit": true,
 		"esModuleInterop": true,
 		"verbatimModuleSyntax": true,
