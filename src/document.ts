@@ -12,8 +12,8 @@ export type CommentMarkData = {
 };
 
 export type CommentMarkUpdate = {
-	attributes?: Record<string, string>;
-	content?: string;
+	attributes?: Record<string, string> | undefined;
+	content?: string | undefined;
 };
 
 export type CommentMarkResolverResult = string | CommentMarkUpdate | null | undefined;
@@ -26,11 +26,13 @@ export type CommentMarkResolver = (
 	index: number,
 ) => CommentMarkResolverResult | Promise<CommentMarkResolverResult>;
 
-// A replacement is the new content, or a resolver that computes it. A resolver
-// runs for every match; a static value replaces only the first. `null` and
-// `undefined` consume their position without replacing anything, which is what
-// an array entry needs to skip one match and reach the next.
-export type CommentMarkValue = string | CommentMarkResolver | null | undefined;
+// A replacement is the new content, an update object that replaces the
+// attributes and content it names, or a resolver that computes either from the
+// marker it targets. A resolver runs for every match; a static value replaces
+// only the first. `null` and `undefined` consume their position without
+// replacing anything, which is what an array entry needs to skip one match and
+// reach the next.
+export type CommentMarkValue = string | CommentMarkUpdate | CommentMarkResolver | null | undefined;
 
 export type CommentMarkReplacement = CommentMarkValue | readonly CommentMarkValue[];
 
