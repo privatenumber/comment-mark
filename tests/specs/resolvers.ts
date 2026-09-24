@@ -65,10 +65,16 @@ describe('resolvers', () => {
 		expect(calls).toStrictEqual(['a', 'b']);
 	});
 
-	test('inserts a resolver string verbatim', async () => {
+	test('pads a resolver string that needs block layout', async () => {
 		expect(await commentMark(createMarker('a', 'old'), {
 			a: () => 'first\nsecond',
-		})).toBe(createMarker('a', 'first\nsecond'));
+		})).toBe(createMarker('a', '\nfirst\nsecond\n'));
+	});
+
+	test('inserts an inline resolver string as written', async () => {
+		expect(await commentMark(createMarker('a', 'old'), {
+			a: () => 'value',
+		})).toBe(createMarker('a', 'value'));
 	});
 
 	test('a nullish resolver result preserves the section', async () => {
