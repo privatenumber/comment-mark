@@ -236,7 +236,7 @@ describe('resolver reentrancy', () => {
 		const output = await commentMark(createMarker('a', 'old'), {
 			a: () => {
 				try {
-					getCommentMarkAll('<!-- a -->x<!-- b -->y<!-- /b -->z<!-- /a -->');
+					getCommentMarkAll('<!-- a id -->x<!-- /a -->');
 				} catch {
 					return 'recovered';
 				}

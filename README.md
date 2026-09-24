@@ -170,9 +170,9 @@ Read mode preserves section whitespace and prints `[]` when no markers exist. It
 - The first `=` outside brackets and quotes separates the flag from its value, so `--"item[kind='fruit']"=pear` passes the selector `item[kind='fruit']`.
 - Use `--selector=` to clear a section. Multiline values get a newline before and after the supplied content.
 - Attributes must be separated by whitespace and appear at most once: `id="a"file="b"` and `id="a" id="b"` are rejected.
-- A marker pair cannot sit inside another marker pair. Markers cannot nest.
+- Only the outermost marker pair is a marker. A pair nested inside another pair is part of the outer marker's content.
 - Each selector can be set once per invocation. Repeated flags, valueless flags, and extra positional arguments are rejected before writing.
-- Update mode validates the document before writing. A malformed or nested marker aborts the update.
+- Update mode validates the document before writing. A malformed marker aborts the update.
 - Bare `--help`, `-h`, and `--version` work without a file. Markers named `help` or `version` remain settable with `--help=<value>` or `--version=<value>`.
 
 ## Markers
@@ -192,6 +192,7 @@ Attributes are optional and carry metadata for the section. They are written aft
 - The closing comment repeats the tag name, so `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
 - Whitespace inside the comments is padding: `<!-- contributors -->` and `<!--contributors-->` are equivalent.
 - The content between the comments is replaced; the comment pair stays in the output so later updates can find the section.
+- Only the outermost pair is a marker. A balanced pair nested inside another pair stays part of the outer marker's content.
 - A tag name starts with a letter or `_`, then letters, digits, `_`, or `-`.
 - Tag names and attribute names are case-sensitive and matched verbatim.
 - Attribute values are literal text: surrounding quotes are removed and HTML entities are not decoded.
@@ -294,7 +295,7 @@ Returns a promise that resolves to the updated content as a string. Buffer input
 - Rejects an array with more values than matches, a function as an array entry, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
 - Wraps bare string replacements containing `\n` in an additional newline on each side.
-- Rejects when a marker is malformed or nested, when a resolver throws or rejects, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
+- Rejects when a marker is malformed, when a resolver throws or rejects, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
 
 An array updates matches by position, so one call can set repeated sections:
 
@@ -394,9 +395,11 @@ The opening and closing comments delimit the content to replace. Both stay in th
 
 Fenced code blocks (backtick or tilde, including blockquote prefixes) and single-line inline code spans are skipped, so a marker shown as an example is not treated as real. Indented code blocks and code spans that wrap across lines are not detected, so a marker there is treated as real.
 
-### Why are nested markers rejected?
+### What happens to a marker inside another marker?
 
-A marker's content runs until its closing comment, so replacing the outer section would delete the inner markers. Nesting aborts parsing instead of silently dropping them.
+Only the outermost pair is a marker. A balanced pair nested inside another pair stays part of the outer marker's content, so `getCommentMark` and `getCommentMarkAll` do not return it and no selector matches it. Replacing the outer section replaces that content, so a replacement can insert its own marker pairs without adding markers to the document.
+
+Pairing still reads the whole text, so an unbalanced comment inside a section takes part in pairing. An opening comment there that is never closed can consume the section's closing comment, which moves the section boundary on the next run.
 
 ### Why does a marker have a tag name and attributes?
 
