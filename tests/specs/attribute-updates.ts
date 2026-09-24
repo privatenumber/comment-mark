@@ -33,6 +33,14 @@ describe('attribute updates', () => {
 		].join('\n'));
 	});
 
+	test('keeps the opening comment as written when only the content changes', async () => {
+		const content = '<!-- item\n\tkind = "fruit"   size=\'small\'\n-->apple<!-- /item -->';
+
+		expect(await commentMark(content, { item: 'pear' })).toBe(
+			'<!-- item\n\tkind = "fruit"   size=\'small\'\n-->pear<!-- /item -->',
+		);
+	});
+
 	test('keeps the line endings around a changed value', async () => {
 		const content = '<!-- item\r\n\tkind\r\n\t\t=\r\n\t\t"fruit"\r\n-->apple<!-- /item -->';
 

@@ -1,5 +1,5 @@
 import {
-	isNameChar, isNameStart, isWhitespace, skipWhitespace,
+	isWhitespace, readName, skipWhitespace,
 } from './characters.ts';
 
 export type SelectorAttribute = {
@@ -20,22 +20,6 @@ const isSelectorValueChar = (char: string) => (
 	&& char !== "'"
 	&& char !== '='
 );
-
-const readName = (source: string, index: number, end: number) => {
-	if (index >= end || !isNameStart(source[index])) {
-		return undefined;
-	}
-
-	const start = index;
-	index += 1;
-	while (index < end && isNameChar(source[index])) {
-		index += 1;
-	}
-	return {
-		name: source.slice(start, index),
-		end: index,
-	};
-};
 
 const invalidSelector = (selector: string): never => {
 	throw new Error(`[comment-mark] Invalid selector: ${JSON.stringify(selector)}`);

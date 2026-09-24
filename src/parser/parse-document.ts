@@ -1,7 +1,6 @@
 import {
-	isNameChar,
-	isNameStart,
 	isWhitespace,
+	readName,
 	skipWhitespace,
 } from './characters.ts';
 import { type Attribute, parseAttributeNodes } from './parse-attributes.ts';
@@ -30,22 +29,6 @@ type CommentKind =
 const openDelimiter = '<!--';
 const closeDelimiter = '-->';
 
-const readTagName = (source: string, index: number, end: number) => {
-	if (index >= end || !isNameStart(source[index])) {
-		return undefined;
-	}
-
-	const start = index;
-	index += 1;
-	while (index < end && isNameChar(source[index])) {
-		index += 1;
-	}
-	return {
-		name: source.slice(start, index),
-		end: index,
-	};
-};
-
 /**
  * Classifies a comment's inner text. A tag name must be followed by whitespace
  * or the end of the comment, so `<!-- TODO: fix -->` and `<!-- 1 + 1 -->` stay
@@ -65,7 +48,7 @@ const classifyComment = (source: string, innerStart: number, innerEnd: number): 
 		index = skipWhitespace(source, index + 1, innerEnd);
 	}
 
-	const tag = readTagName(source, index, innerEnd);
+	const tag = readName(source, index, innerEnd);
 	if (!tag) {
 		return { type: 'other' };
 	}
