@@ -4,6 +4,7 @@ import {
 } from './parser/parse-attributes.ts';
 import { type MarkerNode, parseDocument } from './parser/parse-document.ts';
 import { type Selector, parseSelector } from './parser/parse-selector.ts';
+import { padContent } from './padding.ts';
 
 export type CommentMarkData = {
 	tagName: string;
@@ -342,9 +343,7 @@ export const applyReplacements = async (
 		}
 
 		if (typeof updated === 'string') {
-			// A resolver returns exact replacement content, so no newline padding
-			// is added. A static multiline value keeps its surrounding newlines.
-			setContent(state, resolver || !updated.includes('\n') ? updated : `\n${updated}\n`);
+			setContent(state, padContent(updated));
 			continue;
 		}
 
@@ -356,7 +355,7 @@ export const applyReplacements = async (
 		}
 
 		if (updated.content !== undefined) {
-			setContent(state, updated.content);
+			setContent(state, padContent(updated.content));
 		}
 	}
 };
