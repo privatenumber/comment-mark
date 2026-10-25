@@ -9,3 +9,20 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - type-flag
   - cleye
+permissions:
+  clean-pkg-json:
+    skills: true
+  cleye:
+    skills: true
+  fs-fixture:
+    skills: true
+  lintroll:
+    skills: true
+  manten:
+    skills: true
+  md-pen:
+    skills: true
+skills:
+  dirs:
+    - .claude/skills
+    - .agents/skills
