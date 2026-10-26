@@ -69,12 +69,15 @@ describe('update objects', () => {
 		expect(await commentMark(content, { item: {} })).toBe(content);
 	});
 
-	test('inserts object content verbatim while a bare string keeps its padding', async () => {
+	test('pads object content and bare strings the same way', async () => {
 		expect(await commentMark(createMarker('a'), { a: { content: 'first\nsecond' } })).toBe(
-			createMarker('a', 'first\nsecond'),
+			createMarker('a', '\nfirst\nsecond\n'),
 		);
 		expect(await commentMark(createMarker('a'), { a: 'first\nsecond' })).toBe(
 			createMarker('a', '\nfirst\nsecond\n'),
+		);
+		expect(await commentMark(createMarker('a'), { a: { content: 'value' } })).toBe(
+			createMarker('a', 'value'),
 		);
 	});
 
