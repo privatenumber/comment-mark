@@ -78,8 +78,8 @@ const currentAttributes = (state: MarkerState) => {
 	return Object.fromEntries(attributes);
 };
 
-const setContent = (state: MarkerState, content: string) => {
-	state.content = content;
+const setContent = (state: MarkerState, content: string, getLineEnding: () => string) => {
+	state.content = padContent(content, getLineEnding);
 	state.changed = true;
 };
 
@@ -328,6 +328,14 @@ export const applyReplacements = async (
 	// Apply in document order so the result does not depend on key order.
 	const claims = collectClaims(document, replacements);
 	claims.sort((a, b) => a.state.index - b.state.index);
+	let lineEnding: string | undefined;
+	const getLineEnding = () => {
+		if (lineEnding === undefined) {
+			const lineFeed = document.source.indexOf('\n');
+			lineEnding = lineFeed > 0 && document.source[lineFeed - 1] === '\r' ? '\r\n' : '\n';
+		}
+		return lineEnding;
+	};
 
 	for (const { state, value, index } of claims) {
 		const resolver = typeof value === 'function';
@@ -343,7 +351,7 @@ export const applyReplacements = async (
 		}
 
 		if (typeof updated === 'string') {
-			setContent(state, padContent(updated));
+			setContent(state, updated, getLineEnding);
 			continue;
 		}
 
@@ -355,7 +363,7 @@ export const applyReplacements = async (
 		}
 
 		if (updated.content !== undefined) {
-			setContent(state, padContent(updated.content));
+			setContent(state, updated.content, getLineEnding);
 		}
 	}
 };
