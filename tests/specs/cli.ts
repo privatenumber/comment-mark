@@ -162,12 +162,22 @@ describe('CLI', () => {
 		);
 	});
 
-	test('reports the selector whose replacement would hide markers', async () => {
+	test('reports changed selectors when their combined replacement hides markers', async () => {
 		const input = 'Example: <!-- a --><!-- /a -->\n\n<!-- b -->old<!-- /b -->';
 		await using fixture = await createFixture({ 'README.md': input });
 		await expect(commentMarkCli(fixture.getPath('README.md'), '--a=```js\nx\n```', '--b=new')).rejects.toMatchObject({
 			exitCode: 1,
-			stderr: expect.stringContaining('Replacement for "a" would change the document\'s markers'),
+			stderr: expect.stringContaining('Replacement for "a", "b" would change the document\'s markers'),
+		});
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(input);
+	});
+
+	test('rejects a combined update that changes a marker line context', async () => {
+		const input = 'x <!-- a --><!-- /a --><!-- b --><!-- /b -->\n2. ~~~\n   <!-- c -->old<!-- /c -->\n   ~~~';
+		await using fixture = await createFixture({ 'README.md': input });
+		await expect(commentMarkCli(fixture.getPath('README.md'), '--a=\n', '--b=\ntext')).rejects.toMatchObject({
+			exitCode: 1,
+			stderr: expect.stringContaining('would change the document\'s markers'),
 		});
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(input);
 	});
@@ -245,6 +255,13 @@ describe('CLI', () => {
 		expect(firstResult).toBe(createMarker('a', '\nsame\n'));
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(firstResult);
 		expect(stderr).toContain('is unchanged. All 1 requested selectors already match.');
+	});
+
+	test('saves container formatting changes even when read content is unchanged', async () => {
+		await using fixture = await createFixture({ 'README.md': '> <!-- a -->\n>x\n><!-- /a -->' });
+		const { stderr } = await commentMarkCli(fixture.getPath('README.md'), '--a=\nx\n');
+		expect(stderr).toContain('Updated: a');
+		expect(await fixture.readFile('README.md', 'utf8')).toBe('> <!-- a -->\n> x\n> <!-- /a -->');
 	});
 
 	test('exits non-zero without writing when every requested marker is missing', async () => {

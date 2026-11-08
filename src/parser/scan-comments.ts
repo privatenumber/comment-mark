@@ -214,7 +214,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				commentStartsLine,
 			);
 			commentStart = -1;
-			scanInline(line, lineStart, close + closeDelimiter.length, false);
+			scanInline(line, lineStart, close + closeDelimiter.length, commentStartsLine);
 			return;
 		}
 

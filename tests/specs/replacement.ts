@@ -33,6 +33,19 @@ describe('input handling', () => {
 });
 
 describe('replacement', () => {
+	test('rejects changes to another marker\'s line context', async () => {
+		await expect(commentMark('x <!-- a --><!-- /a --><!-- b --><!-- /b -->', {
+			a: '\n',
+			b: '**bold**',
+		})).rejects.toThrow('would change the document\'s markers');
+		await expect(commentMark('x <!-- a -->\n<!-- /a --><!-- b --><!-- /b -->', {
+			a: 'text',
+		})).rejects.toThrow('would change the document\'s markers');
+		expect(await commentMark('x <!-- a --><!-- /a --><!-- b --><!-- /b -->', {
+			a: 'first',
+			b: 'second',
+		})).toBe('x <!-- a -->first<!-- /a --><!-- b -->second<!-- /b -->');
+	});
 	test('rejects adding or removing a newline that changes later marker discovery', async () => {
 		const tail = '\n2. ~~~\n   <!-- b -->old<!-- /b -->\n   ~~~';
 		await expect(commentMark(`x <!-- a --><!-- /a -->${tail}`, { a: '\n' }))

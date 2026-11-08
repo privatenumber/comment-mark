@@ -18,9 +18,9 @@ export type FilesOptions = {
  *     commentMark(markdown, { ...files({ baseDirectory }), version: '2.0.0' })
  *
  * Each `path` is resolved against `baseDirectory`, and the file is read as
- * UTF-8 and returned unchanged, so it gets the same block-layout padding as
- * any other content. The included text is not parsed again, so a marker
- * written inside an included file stays literal text.
+ * UTF-8 and returned unchanged, so it gets the same layout as any other
+ * content. Included markers are not expanded. An update is rejected if the
+ * included text would change the document's markers.
  */
 export const files = ({
 	baseDirectory,

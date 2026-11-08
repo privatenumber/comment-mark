@@ -1,9 +1,11 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { isDeepStrictEqual } from 'node:util';
 import { cli } from 'cleye';
 import packageJson from '../package.json' with { type: 'json' };
 import {
-	commentMark, getCommentMark, getCommentMarkAll,
+	commentMark, getCommentMarkAll,
 } from './index.ts';
+import { createDocument, markerData, selectMarkers } from './document.ts';
 import { encodeAttributeValue, isAttributeName } from './parser/parse-attributes.ts';
 
 const { description, name, version } = packageJson;
@@ -272,28 +274,36 @@ const main = async () => {
 	// selectors are passed to the combined update; a missing selector is reported
 	// while the others are still saved.
 	const matched: Replacements = Object.create(null);
+	const originalDocument = createDocument(original);
+	const matchedIndexes = new Map<string, number>();
 
 	for (const [selector, update] of updates) {
-		const marker = getCommentMark(original, selector);
-		if (marker === null) {
+		const state = selectMarkers(originalDocument, selector)[0];
+		if (!state) {
 			missing.push(selector);
 			continue;
 		}
 
-		const replacement = buildReplacement(update, marker.attributes);
+		const replacement = buildReplacement(update, markerData(state).attributes);
 		matched[selector] = replacement;
+		matchedIndexes.set(selector, state.index);
+	}
 
-		// A solo application classifies the selector by its own effect, independent
-		// of the other selectors' replacements.
-		const applied = await commentMark(original, { [selector]: replacement });
-		if (applied === original) {
+	const updatedSource = await commentMark(original, matched);
+	const updatedDocument = createDocument(updatedSource);
+	for (const [selector, index] of matchedIndexes) {
+		const before = originalDocument.markers[index];
+		const after = updatedDocument.markers[index];
+		// Container prefix normalization can change bytes without changing the
+		// content returned by the reader, and still needs to be written.
+		const beforeSource = original.slice(before.node.openingStart, before.node.contentEnd);
+		const afterSource = updatedSource.slice(after.node.openingStart, after.node.contentEnd);
+		if (isDeepStrictEqual(markerData(before), markerData(after)) && beforeSource === afterSource) {
 			unchanged.push(selector);
 		} else {
 			updated.push(selector);
 		}
 	}
-
-	const updatedSource = await commentMark(original, matched);
 
 	const report = () => {
 		if (updated.length > 0) {

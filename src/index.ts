@@ -35,6 +35,9 @@ export const commentMark = async (
 
 	const document = createDocument(input);
 	await applyReplacements(document, replacements);
+	if (!document.markers.some(marker => marker.changed)) {
+		return document.source;
+	}
 	const boundaries: Array<[number, number]> = [];
 	const output = renderDocument(document, boundaries);
 	if (output === document.source) {
@@ -45,6 +48,7 @@ export const commentMark = async (
 		const markers = parseDocument(output);
 		valid = markers.length === document.markers.length && markers.every((marker, index) => (
 			marker.tagName === document.markers[index].node.tagName
+			&& marker.startsLine === document.markers[index].node.startsLine
 			&& marker.openingStart === boundaries[index][0]
 			&& marker.contentEnd === boundaries[index][1]
 		));

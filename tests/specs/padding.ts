@@ -3,6 +3,14 @@ import { commentMark, getCommentMark } from '#comment-mark';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('marker position layout', () => {
+	test('inherits line context after a multiline comment closes', async () => {
+		expect(await commentMark('<!-- note\n--> <!-- a --><!-- /a -->', { a: '**bold**' })).toBe(
+			'<!-- note\n--> <!-- a -->\n**bold**\n<!-- /a -->',
+		);
+		expect(await commentMark('text <!-- note\n--> <!-- a --><!-- /a -->', { a: '**bold**' })).toBe(
+			'text <!-- note\n--> <!-- a -->**bold**<!-- /a -->',
+		);
+	});
 	test('all markers on a comment-started line use line-start layout', async () => {
 		expect(await commentMark('<!-- ordinary --><!-- a --><!-- /a -->', { a: '# Heading' })).toBe(
 			'<!-- ordinary --><!-- a -->\n# Heading\n<!-- /a -->',
