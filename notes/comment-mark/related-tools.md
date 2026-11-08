@@ -9,7 +9,7 @@ Sources were checked on 2026-11-08 at the versions or commits named in the linke
 comment-mark combines four properties. No inspected tool has all of them:
 
 - **Content between paired markers.** The section is cached between an opening and a closing comment, so the same file is both the template and the output. See [markers and selectors](./markers-and-selectors.md).
-- **Code examples stay literal.** Markers inside fenced code and single-line inline code spans are ignored. Indented code and inline spans that wrap across lines are not protected. See [comment scanning](./comment-scanning.md).
+- **Code examples stay literal.** Markers inside fenced code and single-line inline code spans are ignored. Indented code, inline spans that wrap across lines, and some code spans in GFM table cells are not protected; see the [scanner gaps](./comment-scanning.md#supported-limits-and-observed-gaps). See [comment scanning](./comment-scanning.md).
 - **Selection by tag name and attributes.** A selector can target one of several markers with the same tag name. See [markers and selectors](./markers-and-selectors.md).
 - **Content-based layout.** Block content gets line breaks and container prefixes, so it renders inside the section. See [content padding](./content-padding.md).
 
@@ -20,7 +20,7 @@ These tools write generated content between paired comment markers, which is com
 | Tool | What it does | Relation to comment-mark |
 | --- | --- | --- |
 | [markdown-magic](../markdown-magic/README.md) | General transform runner over paired comment blocks, with `FILE`, `CODE`, `REMOTE`, and TOC transforms | Closest analogue. Its block parser is regex-based and not fence-aware, so a syntax example inside a code fence is treated as a real block; comment-mark's scanner exists to avoid that. comment-mark follows its multiline padding and indentation behavior. |
-| [markdown-autodocs](https://github.com/dineshsonachalam/markdown-autodocs/blob/068d9d071aa4ac245d5fbe1a7b8a39df65637c99/README.md) | GitHub Action that generates and updates Markdown content from local or remote files | Delegates to markdown-magic, so it shares markdown-magic's parser and layout. See the [markdown-magic notes](../markdown-magic/README.md). |
+| [markdown-autodocs](https://github.com/dineshsonachalam/markdown-autodocs/blob/068d9d071aa4ac245d5fbe1a7b8a39df65637c99/README.md) | GitHub Action that generates and updates Markdown content from local or remote files | Delegates to markdown-magic, but depends on `markdown-magic` `^2.6.0` ([package.json](https://github.com/dineshsonachalam/markdown-autodocs/blob/068d9d071aa4ac245d5fbe1a7b8a39df65637c99/package.json#L35)). The [markdown-magic notes](../markdown-magic/README.md) audit a later version with a different parser, so their findings do not carry over. |
 | doctoc, markdown-toc | Generate a table of contents between markers | Always put the TOC on its own lines. doctoc's per-document line-ending detection is the precedent for [padding line endings](./content-padding.md#line-endings). |
 | all-contributors CLI | Writes a contributor table between markers | Always uses its own fixed layout. Precedent for [content padding](./content-padding.md#precedent). |
 | cog | Runs Python generators between marker lines in any text file | Line-oriented, so no inline values. Its final-newline rule exists for idempotency, the same reason comment-mark pads block content. |

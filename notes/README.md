@@ -1,6 +1,6 @@
 # Engineering research notes
 
-Tracked maintainer references for the decisions and contracts that shape comment-mark. These notes are not published: the package ships only `dist` and `skills` (`files` in [`package.json`](../package.json)).
+Tracked maintainer references for the decisions and contracts that shape comment-mark. These notes are not published: the `files` allowlist in [`package.json`](../package.json) includes only `dist` and `skills`, and npm adds only the manifest, README, and license on top of it.
 
 ## Ownership
 

@@ -26,7 +26,7 @@ The previously reported quadratic search for distinct unmatched backtick runs ha
 
 ## Supported limits and observed gaps
 
-Fenced code blocks, including fences in list and blockquote contexts, and single-line inline code spans are protected. Ordinary indented code blocks and inline code spans that wrap across lines are not detected as code. Markers there can be treated as active. The [README](../../README.md) documents this boundary. Revisit the scanner or a parser dependency if full CommonMark protection becomes a requirement or further block-context bugs make the bounded scanner too costly to maintain. Re-measure alternatives against current offset and throughput requirements before changing the implementation.
+Fenced code blocks, including fences in list and blockquote contexts, and single-line inline code spans are protected, except some code spans in GFM table cells (see below). Ordinary indented code blocks and inline code spans that wrap across lines are not detected as code. Markers there can be treated as active. The [README](../../README.md) documents this boundary. Revisit the scanner or a parser dependency if full CommonMark protection becomes a requirement or further block-context bugs make the bounded scanner too costly to maintain. Re-measure alternatives against current offset and throughput requirements before changing the implementation.
 
 The following observations are not claims of full Markdown or HTML parsing. They were re-established against `d41c4a5` with Node 26.13.0 on 2026-11-08. Run this command from the repository root:
 
@@ -48,6 +48,13 @@ fence []
 - **HTML context:** the scanner recognizes a marker-looking string inside `<script>`. The scanner is Markdown-oriented; its HTML context support is limited. This observation does not decide a fix.
 - **Multiline opening comment in a blockquote:** the continuation prefix is read as marker attribute text and throws. [PR #37](https://github.com/privatenumber/comment-mark/pull/37) fixed continuation of marker content, not parsing of a multiline opening comment.
 - **Unbalanced same-name opener:** the only closer pairs with the later opener, so `inner` becomes the recognized content instead of `outer`. **Unclosed fence:** a fence inside the section hides the later closer, so the reader returns no marker. See [marker pairing](./markers-and-selectors.md) for the pairing rule.
+- **Code spans in GFM table cells:** the scanner matches backticks across a whole line, but GFM splits a table row into cells first. In the table below, GitHub renders the second cell as inline code, while the scanner pairs the first cell's unmatched backtick with the second cell's opening backtick. `getCommentMarkAll` then returns the marker, and `commentMark(s, { a: "new" })` changes `old` to `new`. Observed with Node 26.13.0 at `d41c4a5` and GitHub's `/markdown` API (`mode=gfm`) on 2026-11-08.
+
+  ```md
+  | a | b |
+  | - | - |
+  | `literal | `<!-- a -->old<!-- /a -->` |
+  ```
 
 ## Parser alternatives
 

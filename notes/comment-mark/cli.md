@@ -22,16 +22,18 @@ The library rejects a missing static selector, but the CLI classifies selectors 
 
 ### Read mode can truncate piped JSON
 
-Read mode writes JSON and immediately calls `process.exit(0)` ([source](../../src/cli.ts)). On macOS with Node `v26.13.0`, a built CLI at `d41c4a5` emitted 65,536 bytes of an expected 300,064-byte JSON response through a pipe, while both pipeline commands exited 0. The output is incomplete JSON. Reproduce from the repository root in zsh:
+Read mode writes JSON and immediately calls `process.exit(0)` ([source](../../src/cli.ts)). On macOS with Node `v26.13.0`, a built CLI at `d41c4a5` emitted 65,536 bytes of an expected 300,064-byte JSON response through a pipe, while both pipeline commands exited 0. The output is incomplete JSON. Reproduce from the repository root in zsh. Each example runs in a subshell, so its cleanup trap removes only its own temporary file:
 
 ```zsh
-fnm exec --using=26.13.0 pnpm build
-f=$(mktemp "${TMPDIR%/}/comment-mark-cli.XXXXXX")
-trap 'rm -f "$f"' EXIT
-fnm exec --using=26.13.0 node -e 'require("node:fs").writeFileSync(process.argv[1], "<!-- a -->" + "x".repeat(300000) + "<!-- /a -->")' "$f"
-fnm exec --using=26.13.0 node -e 'console.log(Buffer.byteLength(JSON.stringify([{tagName:"a",attributes:{},content:"x".repeat(300000)}], null, "\t") + "\n"))'
-fnm exec --using=26.13.0 node dist/cli.mjs "$f" | wc -c
-print -r -- "pipeline statuses: $pipestatus"
+(
+	fnm exec --using=26.13.0 pnpm build
+	f=$(mktemp "${TMPDIR%/}/comment-mark-cli.XXXXXX")
+	trap 'rm -f "$f"' EXIT
+	fnm exec --using=26.13.0 node -e 'require("node:fs").writeFileSync(process.argv[1], "<!-- a -->" + "x".repeat(300000) + "<!-- /a -->")' "$f"
+	fnm exec --using=26.13.0 node -e 'console.log(Buffer.byteLength(JSON.stringify([{tagName:"a",attributes:{},content:"x".repeat(300000)}], null, "\t") + "\n"))'
+	fnm exec --using=26.13.0 node dist/cli.mjs "$f" | wc -c
+	print -r -- "pipeline statuses: $pipestatus"
+)
 ```
 
 Observed output: `300064`, `65536`, and `pipeline statuses: 0 0`. Pipe buffering varies by environment. A fix needs a subprocess regression test larger than the pipe buffer and must let stdout drain before exit.
@@ -41,11 +43,13 @@ Observed output: `300064`, `65536`, and `pipeline statuses: 0 0`. Pipe buffering
 The CLI pre-pads content containing `\n` when the same selector also has an attribute update ([source](../../src/cli.ts)). On a CRLF document this can insert LF boundaries, even though the core would use CRLF. The following was observed with the built CLI and Node `v26.13.0` at `d41c4a5`:
 
 ```zsh
-f=$(mktemp "${TMPDIR%/}/comment-mark-padding.XXXXXX")
-trap 'rm -f "$f"' EXIT
-printf '# T\r\n<!-- a --><!-- /a -->\r\n' > "$f"
-fnm exec --using=26.13.0 node dist/cli.mjs "$f" $'--a=x\ny' '--a.k=v'
-fnm exec --using=26.13.0 node --input-type=module -e 'import {readFile} from "node:fs/promises"; import {commentMark} from "./dist/index.mjs"; const input="# T\r\n<!-- a --><!-- /a -->\r\n"; console.log("CLI:",JSON.stringify(await readFile(process.argv[1],"utf8"))); console.log("core:",JSON.stringify(await commentMark(input,{a:{content:"x\ny",attributes:{k:"v"}}})))' "$f"
+(
+	f=$(mktemp "${TMPDIR%/}/comment-mark-padding.XXXXXX")
+	trap 'rm -f "$f"' EXIT
+	printf '# T\r\n<!-- a --><!-- /a -->\r\n' > "$f"
+	fnm exec --using=26.13.0 node dist/cli.mjs "$f" $'--a=x\ny' '--a.k=v'
+	fnm exec --using=26.13.0 node --input-type=module -e 'import {readFile} from "node:fs/promises"; import {commentMark} from "./dist/index.mjs"; const input="# T\r\n<!-- a --><!-- /a -->\r\n"; console.log("CLI:",JSON.stringify(await readFile(process.argv[1],"utf8"))); console.log("core:",JSON.stringify(await commentMark(input,{a:{content:"x\ny",attributes:{k:"v"}}})))' "$f"
+)
 ```
 
 The CLI result was `"# T\r\n<!-- a k=\"v\" -->\nx\ny\n<!-- /a -->\r\n"`; the core result was `"# T\r\n<!-- a k=\"v\" -->\r\nx\ny\r\n<!-- /a -->\r\n"`. The input content's own LF is unchanged in both results. See [content padding](./content-padding.md) for the core policy.
