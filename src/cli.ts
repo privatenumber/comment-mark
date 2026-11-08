@@ -27,19 +27,6 @@ const exitWithError = (message: string): never => {
 	throw exitSignal;
 };
 
-// Expected library errors use this prefix; unexpected failures keep their stack.
-const fromLibrary = async <T>(call: () => T | Promise<T>): Promise<T> => {
-	try {
-		return await call();
-	} catch (error) {
-		if (error instanceof Error && error.message.startsWith('[comment-mark] ')) {
-			exitWithError(error.message);
-		}
-
-		throw error;
-	}
-};
-
 const helpOptions = {
 	description,
 	usage: `${name} <file> [--<selector>=<value>...] [--<selector>.<attribute>=<value>...]`,
@@ -184,7 +171,7 @@ const main = async () => {
 			// The writer validates values while rewriting a marker, but only when the
 			// selector matches. Validate here too, so an unwritable value always
 			// aborts instead of being skipped along with a missing selector.
-			await fromLibrary(() => encodeAttributeValue(value, undefined));
+			encodeAttributeValue(value, undefined);
 		}
 
 		let update = updates.get(selector);
@@ -236,7 +223,7 @@ const main = async () => {
 	// Read mode: no selector flags prints every detected marker as JSON.
 	if (updates.size === 0) {
 		const content = await readFile(filePath, 'utf8');
-		const markers = await fromLibrary(() => getCommentMarkAll(content));
+		const markers = getCommentMarkAll(content);
 		// The callback reports write failures; the listener prevents the matching
 		// 'error' event from crashing the process.
 		// A reader that closes early is a normal exit: EPIPE for a pipe such as
@@ -287,7 +274,7 @@ const main = async () => {
 	const matched: Replacements = Object.create(null);
 
 	for (const [selector, update] of updates) {
-		const marker = await fromLibrary(() => getCommentMark(original, selector));
+		const marker = getCommentMark(original, selector);
 		if (marker === null) {
 			missing.push(selector);
 			continue;
@@ -298,7 +285,7 @@ const main = async () => {
 
 		// A solo application classifies the selector by its own effect, independent
 		// of the other selectors' replacements.
-		const applied = await fromLibrary(() => commentMark(original, { [selector]: replacement }));
+		const applied = await commentMark(original, { [selector]: replacement });
 		if (applied === original) {
 			unchanged.push(selector);
 		} else {
@@ -306,7 +293,7 @@ const main = async () => {
 		}
 	}
 
-	const updatedSource = await fromLibrary(() => commentMark(original, matched));
+	const updatedSource = await commentMark(original, matched);
 
 	const report = () => {
 		if (updated.length > 0) {
@@ -325,14 +312,15 @@ const main = async () => {
 		exitWithError(`No matching markers found for any of the ${missing.length} requested selectors`);
 	}
 
+	if (missing.length > 0) {
+		process.exitCode = 1;
+	}
+
 	if (updated.length === 0) {
 		report();
-		// Missing selectors still fail here; only an all-unchanged request exits 0.
-		if (missing.length > 0) {
-			process.exitCode = 1;
-			return;
+		if (missing.length === 0) {
+			console.error(`${filePath} is unchanged. All ${updates.size} requested selectors already match.`);
 		}
-		console.error(`${filePath} is unchanged. All ${updates.size} requested selectors already match.`);
 		return;
 	}
 
@@ -346,17 +334,18 @@ const main = async () => {
 	].filter(Boolean).join('; ');
 
 	console.error(`Saved ${filePath}. Updated ${updated.length} selector${updated.length === 1 ? '' : 's'}${summary ? `; ${summary}` : ''}.`);
-
-	if (missing.length > 0) {
-		process.exitCode = 1;
-	}
 };
 
 try {
 	await main();
 } catch (error) {
 	if (error !== exitSignal) {
-		console.error(error);
+		// Expected library errors use this prefix; unexpected failures keep their stack.
+		if (error instanceof Error && error.message.startsWith('[comment-mark] ')) {
+			console.error(`Error: ${error.message}`);
+		} else {
+			console.error(error);
+		}
 		process.exitCode = 1;
 	}
 }
