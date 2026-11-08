@@ -26,7 +26,7 @@ Read mode writes JSON and immediately calls `process.exit(0)` ([source](../../sr
 
 ```zsh
 (
-	fnm exec --using=26.13.0 pnpm build
+	fnm exec --using=26.13.0 pnpm build || exit 1
 	f=$(mktemp "${TMPDIR%/}/comment-mark-cli.XXXXXX")
 	trap 'rm -f "$f"' EXIT
 	fnm exec --using=26.13.0 node -e 'require("node:fs").writeFileSync(process.argv[1], "<!-- a -->" + "x".repeat(300000) + "<!-- /a -->")' "$f"
@@ -44,6 +44,7 @@ The CLI pre-pads content containing `\n` when the same selector also has an attr
 
 ```zsh
 (
+	fnm exec --using=26.13.0 pnpm build || exit 1
 	f=$(mktemp "${TMPDIR%/}/comment-mark-padding.XXXXXX")
 	trap 'rm -f "$f"' EXIT
 	printf '# T\r\n<!-- a --><!-- /a -->\r\n' > "$f"
@@ -58,6 +59,6 @@ The CLI result was `"# T\r\n<!-- a k=\"v\" -->\nx\ny\n<!-- /a -->\r\n"`; the cor
 
 Library errors in the update path pass through `fromLibrary` for a concise message. Read-mode parsing and filesystem failures are outside that wrapper and can expose raw stack traces ([source](../../src/cli.ts)).
 
-For each matched selector the update path calls `getCommentMark` and applies a solo `commentMark` to classify its status, then calls `commentMark` again for the combined result. For `S` matched selectors that is approximately `2S + 1` document parses, before accounting for selector scans ([source](../../src/cli.ts)). A parse-once plan is a possible improvement, not a measured requirement; benchmark representative documents before adding an index or changing the boundary.
+For each matched selector the update path calls `getCommentMark` and applies a solo `commentMark` to classify its status, then calls `commentMark` again for the combined result. The status lookup also runs for each missing selector. For `S` matched and `M` missing selectors that is `2S + M + 1` document parses, before accounting for selector scans ([source](../../src/cli.ts)). A parse-once plan is a possible improvement, not a measured requirement; benchmark representative documents before adding an index or changing the boundary.
 
 Possible CLI extensions include a no-write `--check` mode for generated sections, stdin/stdout support for pipelines, and an explicit all-matches update mode. None is implemented. Revisit these when a concrete workflow needs them; retain the existing partial-update and first-match contracts unless a new mode explicitly changes them.

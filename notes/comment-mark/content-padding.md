@@ -26,6 +26,16 @@ The rows show both sides of the rule:
 - **Trailing break:** without it, the closing comment joins the last line. A closing fence with trailing text is not a closing fence, so the rest of the document becomes code.
 - **Inline content:** a comment inside a paragraph is inline HTML, so inline content must not be padded there. A line break would change the paragraph.
 
+## Limits of a content-only rule
+
+Padding decides from the replacement content alone. It does not see the Markdown around the marker, so it cannot guarantee that the result renders as intended in every context. Known cases:
+
+- **Markers inside a paragraph.** A line break before block content does not always start a block. CommonMark lets only some blocks interrupt a paragraph: updating `Intro <!-- a --><!-- /a -->` with `2. item` adds the line break, but an ordered list that starts at 2 cannot interrupt the paragraph, so `2. item` renders as paragraph text.
+- **Bare CR line endings.** The scanner accepts a bare `\r` as a line ending, but padding and container continuation look only for `\n`. Updating `> <!-- a --><!-- /a -->\n` with `foo\rbar` adds no padding or `> ` prefix, and `bar` renders outside the blockquote.
+- **Content that changes marker structure.** Padding cannot stop inserted text from hiding or redirecting the closing comment. See [file inclusion](./file-inclusion.md) and the [scanner gaps](./comment-scanning.md#supported-limits-and-observed-gaps).
+
+The marker's position also matters in the other direction: the same content may need a leading line break when the opening comment starts its line, and must not get one when the marker sits inside a heading or sentence. A position-aware rule is an open design question.
+
 ## What counts as block layout
 
 `needsBlockPadding` returns true when the content has a line break before any trailing line endings, or when its first line opens a block: an ATX heading, thematic break, setext underline, fenced code, blockquote, list item, a table row starting with `|`, or indented code. It reuses the scanner's block matchers from [`src/parser/block-context.ts`](../../src/parser/block-context.ts), so padding and marker scanning agree on what a block is.
@@ -100,7 +110,7 @@ Decision: when the closing comment is in a different container than the opening 
 
 ## Performance
 
-Padding runs once per updated marker. Rough timing on Node v24.20.0, Apple M2 Max, 2026-11-08, average of 20 calls to `padContent` with `performance.now()` (not a benchmark harness):
+Padding runs once per updated marker. Rough timing on Node v24.20.0, Apple M2 Max, 2026-11-08, average of 20 calls to `padContent` with `performance.now()` (not a benchmark harness), measured against the padding code of [#33](https://github.com/privatenumber/comment-mark/pull/33). The inputs were `'MIT License\n'.repeat(200_000)`, `'x'.repeat(5_000_000)`, and `'a '.repeat(2_000_000)`. The code has changed since, so treat the figures as a historical order of magnitude and re-measure before relying on them:
 
 | Input | Time per call |
 | --- | --- |

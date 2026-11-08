@@ -11,7 +11,7 @@ comment-mark combines four properties. No inspected tool has all of them:
 - **Content between paired markers.** The section is cached between an opening and a closing comment, so the same file is both the template and the output. See [markers and selectors](./markers-and-selectors.md).
 - **Code examples stay literal.** Markers inside fenced code and single-line inline code spans are ignored. Indented code, inline spans that wrap across lines, and some code spans in GFM table cells are not protected; see the [scanner gaps](./comment-scanning.md#supported-limits-and-observed-gaps). See [comment scanning](./comment-scanning.md).
 - **Selection by tag name and attributes.** A selector can target one of several markers with the same tag name. See [markers and selectors](./markers-and-selectors.md).
-- **Content-based layout.** Block content gets line breaks and container prefixes, so it renders inside the section. See [content padding](./content-padding.md).
+- **Content-based layout.** Block content gets line breaks and container prefixes so it starts on its own line inside the section. The rule looks only at the content, so some contexts still render differently; see [content padding](./content-padding.md#limits-of-a-content-only-rule).
 
 ## Section generators
 
