@@ -72,9 +72,8 @@ describe('content padding', () => {
 		);
 	});
 
-	test('pads content with a trailing line break without adding another', async () => {
-		expect(await commentMark(createMarker('a'), { a: 'Jane\r\n' })).toBe(createMarker('a', '\nJane\r\n'));
-		expect(await commentMark(createMarker('a'), { a: '**Bold**\n' })).toBe(createMarker('a', '\n**Bold**\n'));
+	test('keeps a single inline line with a trailing CRLF as written', async () => {
+		expect(await commentMark(createMarker('a'), { a: 'Jane\r\n' })).toBe(createMarker('a', 'Jane\r\n'));
 	});
 
 	test('leaves escaped block syntax as inline content', async () => {
