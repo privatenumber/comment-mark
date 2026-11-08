@@ -46,6 +46,15 @@ describe('CLI', () => {
 		]);
 	});
 
+	test('prints complete JSON for large marker content', async () => {
+		const content = 'x'.repeat(1024 * 1024);
+		await using fixture = await createFixture({ 'README.md': createMarker('a', content) });
+
+		const { stdout } = await commentMarkCli(fixture.getPath('README.md'));
+
+		expect(JSON.parse(stdout)[0].content.length).toBe(content.length);
+	});
+
 	test('prints an empty JSON array in read mode when no markers exist', async () => {
 		await using fixture = await createFixture({ 'README.md': '<!-- ordinary comment -->\n' });
 
