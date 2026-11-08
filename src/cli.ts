@@ -237,12 +237,13 @@ const main = async () => {
 	// Read mode: no selector flags prints every detected marker as JSON.
 	if (updates.size === 0) {
 		const content = await readFile(filePath, 'utf8');
+		const markers = await fromLibrary(() => getCommentMarkAll(content));
 		// The callback reports write failures; the listener prevents the matching
 		// 'error' event from crashing the process.
 		// A reader that closes early (EPIPE, as with `| head`) is a normal exit.
 		process.stdout.once('error', () => {});
 		const error = await new Promise<NodeJS.ErrnoException | null | undefined>((resolve) => {
-			process.stdout.write(`${JSON.stringify(getCommentMarkAll(content), null, '\t')}\n`, resolve);
+			process.stdout.write(`${JSON.stringify(markers, null, '\t')}\n`, resolve);
 		});
 		if (error && error.code !== 'EPIPE') {
 			exitWithError(error.message);
