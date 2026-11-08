@@ -4,6 +4,11 @@ import { commentMark } from '#comment-mark';
 import { files } from '#comment-mark/plugins/files';
 
 describe('files plugin', () => {
+	test('rejects a file that hides a marker behind an unclosed fence', async () => {
+		await using fixture = await createFixture({ 'bad.md': '\n```js\nx' });
+		await expect(commentMark('Example: <!-- file path="bad.md" --><!-- /file -->', files({ baseDirectory: fixture.path })))
+			.rejects.toThrow('[comment-mark] Replacement for "file" would change the document\'s markers');
+	});
 	test('inserts the file contents on their own lines', async () => {
 		await using fixture = await createFixture({
 			'hello.txt': 'Hello\nWorld\n',

@@ -50,7 +50,8 @@ Marker data is a plain object: `{ tagName, attributes, content }`.
 - A string replaces the first matching section. An array replaces matches by position in document order, and matches past the end of the array are left alone. An array holds static values only; a function is the selector's value.
 - A `null` or `undefined` entry consumes its position without replacing anything.
 - `commentMark` rejects a static value whose selector matches no marker, an array with more values than matches, a function as an array entry, and two selectors that target the same marker. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
-- A marker at the start of a line puts nonempty content on its own lines, adding missing boundary line breaks. A marker inside a line inserts content as written. The same rule applies to HTML; added breaks may be visible inside `<pre>`.
+- Markers on a line that starts with a comment after container prefixes and whitespace put nonempty content on its own lines. Markers on a line starting with text insert content as written. Added breaks use the ending of the first LF line break (CRLF or LF), or LF when there is none. The same rule applies to HTML; added breaks may be visible inside `<pre>`.
+- Updates that would change marker boundaries are rejected, such as an unclosed fence hiding a closing comment.
 - Content in a list item or blockquote stays in that container. Reading the content removes its container prefixes.
 - A function value runs for every match, in document order. It receives the marker (`{ tagName, attributes, content }`) and its zero-based position among the selector's matches, and its string result is inserted like any other content. The function may be async; its promise is awaited before the next resolver runs. Returning `null`/`undefined` preserves the section.
 - An object value (`{ attributes?, content? }`) replaces the parts it sets and preserves the parts it omits, whether passed directly or returned from a function. `attributes` is the marker's complete attribute set, including `id`, so an attribute left out is removed; a function can spread `marker.attributes` to keep the rest. An object's `content` is inserted like any other content.
@@ -72,7 +73,7 @@ Each `file` marker names a file in its `path` attribute: `<!-- file path="./LICE
 
 - `baseDirectory` is required and resolves every `path`; an absolute `path` is used as written.
 - `tagName` changes the marker tag name from the default `file`.
-- The file is read as UTF-8 and inserted with the same marker-position layout as any other content. It is not parsed again, so a marker written inside an included file stays literal text.
+- The file is read as UTF-8 and inserted with the same marker-position layout as any other content. A balanced marker written inside an included file stays part of the section's content.
 - A marker without a `path` attribute, or a file that cannot be read, rejects the call.
 - It composes with other replacements: `{ ...files({ baseDirectory }), version: '2.0.0' }`.
 

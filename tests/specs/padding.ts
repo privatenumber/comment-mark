@@ -3,6 +3,20 @@ import { commentMark, getCommentMark } from '#comment-mark';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('marker position layout', () => {
+	test('all markers on a comment-started line use line-start layout', async () => {
+		expect(await commentMark('<!-- ordinary --><!-- a --><!-- /a -->', { a: '# Heading' })).toBe(
+			'<!-- ordinary --><!-- a -->\n# Heading\n<!-- /a -->',
+		);
+		expect(await commentMark('<!-- a -->x<!-- /a --><!-- b -->y<!-- /b -->', {
+			a: 'A',
+			b: 'B',
+		})).toBe(
+			'<!-- a -->\nA\n<!-- /a --><!-- b -->\nB\n<!-- /b -->',
+		);
+		expect(await commentMark('text <!-- ordinary --><!-- a --><!-- /a -->', { a: '# Heading' })).toBe(
+			'text <!-- ordinary --><!-- a --># Heading<!-- /a -->',
+		);
+	});
 	const contents = ['value', '**bold**', 'value\n', 'a\nb', '# Heading', '- item', '```js\nx\n```', ''];
 	const positions = [
 		{
@@ -95,6 +109,10 @@ describe('marker position layout', () => {
 		for (const content of contents) {
 			test(`${position.name}: ${JSON.stringify(content)}`, async () => {
 				const input = `${position.before}${createMarker('a')}${position.after}`;
+				if (!position.lineStart && content.startsWith('```')) {
+					await expect(commentMark(input, { a: content })).rejects.toThrow('would change the document\'s markers');
+					return;
+				}
 				const padded = position.lineStart && content
 					? `\n${content}${content.endsWith('\n') ? '' : '\n'}`
 					: content;

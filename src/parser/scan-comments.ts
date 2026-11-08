@@ -146,15 +146,13 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		pending: 0,
 	};
 
-	const scanInline = (line: string, lineStart: number, start: number, canStartLine = true) => {
+	const scanInline = (line: string, lineStart: number, start: number, startsLine: boolean) => {
 		const runs = line.includes('`', start) ? findBacktickRuns(line, start) : undefined;
 		let index = start;
-		let whitespaceOnly = canStartLine;
 
 		while (index < line.length) {
 			const run = runs?.get(index);
 			if (run) {
-				whitespaceOnly = false;
 				if (run.escaped) {
 					// Skip only the escaped backtick so the rest of the run can open.
 					index += 1;
@@ -178,7 +176,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				if (close === -1) {
 					commentStart = lineStart + index;
 					commentContinuation = continuation;
-					commentStartsLine = whitespaceOnly;
+					commentStartsLine = startsLine;
 					return;
 				}
 				visit(
@@ -186,16 +184,12 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 					lineStart + index + openDelimiter.length,
 					lineStart + close,
 					continuation,
-					whitespaceOnly,
+					startsLine,
 				);
-				whitespaceOnly = false;
 				index = close + closeDelimiter.length;
 				continue;
 			}
 
-			if (line[index] !== ' ' && line[index] !== '\t') {
-				whitespaceOnly = false;
-			}
 			index += 1;
 		}
 	};
@@ -315,7 +309,11 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		// interrupts an open paragraph and leaves none open, so a following
 		// ordered list is recognized and its fenced example stays code.
 		inParagraph = !startsBlockComment(line, cursor);
-		scanInline(line, lineStart, cursor.index);
+		let contentStart = cursor.index;
+		while (line[contentStart] === ' ' || line[contentStart] === '\t') {
+			contentStart += 1;
+		}
+		scanInline(line, lineStart, cursor.index, line.startsWith(openDelimiter, contentStart));
 	};
 
 	// Lines end with LF, CRLF, or CR. Both searches only move forward, and the

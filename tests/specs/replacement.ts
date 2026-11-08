@@ -33,6 +33,37 @@ describe('input handling', () => {
 });
 
 describe('replacement', () => {
+	test('rejects adding or removing a newline that changes later marker discovery', async () => {
+		const tail = '\n2. ~~~\n   <!-- b -->old<!-- /b -->\n   ~~~';
+		await expect(commentMark(`x <!-- a --><!-- /a -->${tail}`, { a: '\n' }))
+			.rejects.toThrow('[comment-mark] Replacement for "a" would change the document\'s markers');
+		await expect(commentMark(`x <!-- a -->\n<!-- /a -->${tail}`, { a: '' }))
+			.rejects.toThrow('[comment-mark] Replacement for "a" would change the document\'s markers');
+	});
+
+	test('reports changed selectors but excludes no-op updates', async () => {
+		const input = 'Example: <!-- a --><!-- /a -->\n\n<!-- b -->\nsame\n<!-- /b -->\n<!-- c -->old<!-- /c -->';
+		await expect(commentMark(input, {
+			a: '\n```js\nx',
+			b: 'same',
+			c: 'new',
+		}))
+			.rejects.toThrow('[comment-mark] Replacement for "a", "c" would change the document\'s markers');
+	});
+	test('rejects content that changes marker boundaries', async () => {
+		const input = 'Example: <!-- a --><!-- /a -->\n\n<!-- b -->old<!-- /b -->';
+		for (const content of ['```js\nx\n```', '\n```js\nx', '<!-- a -->', '<!-- note']) {
+			await expect(commentMark(input, { a: content })).rejects.toThrow('[comment-mark] Replacement for "a" would change the document\'s markers');
+		}
+		expect(await commentMark(input, { b: 'new' })).toBe('Example: <!-- a --><!-- /a -->\n\n<!-- b -->\nnew\n<!-- /b -->');
+	});
+
+	test('accepts scanner-sensitive content that preserves marker boundaries', async () => {
+		const input = 'Example: <!-- a --><!-- /a -->';
+		for (const content of ['<br>', '`code`', '<!-- b -->inner<!-- /b -->']) {
+			expect(await commentMark(input, { a: content })).toBe(`Example: <!-- a -->${content}<!-- /a -->`);
+		}
+	});
 	test('returns a string for valid input', async () => {
 		// The annotation is the contract: the resolved value is a string for
 		// every supported call, not a document or a buffer.

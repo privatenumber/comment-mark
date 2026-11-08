@@ -50,13 +50,13 @@ export type MarkerState = {
 	// The replacement content, or `undefined` while the marker is untouched.
 	content: string | undefined;
 	changed: boolean;
+	selectorText: string | undefined;
 };
 
 /**
  * The result of parsing `input`: the source text plus one state per marker, in
  * document order. Applying replacements records them on the states, and
- * rendering reads the source back around the recorded spans, so a document is
- * parsed once and never re-read.
+ * rendering reads the source back around the recorded spans.
  */
 export type CommentDocument = {
 	source: string;
@@ -182,17 +182,22 @@ const renderOpeningTag = (state: MarkerState) => {
 	return parts.join('');
 };
 
-export const renderDocument = (document: CommentDocument) => {
+export const renderDocument = (document: CommentDocument, boundaries?: Array<[number, number]>) => {
 	const { source } = document;
 	let output = '';
 	let cursor = 0;
 
 	for (const state of document.markers) {
 		if (!state.changed) {
+			boundaries?.push([
+				output.length + state.node.openingStart - cursor,
+				output.length + state.node.contentEnd - cursor,
+			]);
 			continue;
 		}
 
 		output += source.slice(cursor, state.node.openingStart);
+		const openingStart = output.length;
 		output += renderOpeningTag(state);
 		if (state.content !== undefined && state.node.continuation) {
 			const { continuation } = state.node;
@@ -205,6 +210,7 @@ export const renderDocument = (document: CommentDocument) => {
 		} else {
 			output += state.content ?? source.slice(state.node.contentStart, state.node.contentEnd);
 		}
+		boundaries?.push([openingStart, output.length]);
 		cursor = state.node.contentEnd;
 	}
 
@@ -253,6 +259,7 @@ export const createDocument = (input: string | Buffer): CommentDocument => {
 			))),
 			content: undefined,
 			changed: false,
+			selectorText: undefined,
 		})),
 	};
 };
@@ -270,7 +277,8 @@ const collectClaims = (
 ) => {
 	const claims: Array<{ state: MarkerState;
 		value: CommentMarkStatic | CommentMarkResolver;
-		index: number; }> = [];
+		index: number;
+		selectorText: string; }> = [];
 	const claimed = new Map<MarkerState, string>();
 
 	for (const [selectorText, replacement] of Object.entries(replacements)) {
@@ -338,6 +346,7 @@ const collectClaims = (
 				state,
 				value,
 				index,
+				selectorText,
 			});
 		}
 	}
@@ -370,7 +379,9 @@ export const applyReplacements = async (
 		return lineEnding;
 	};
 
-	for (const { state, value, index } of claims) {
+	for (const {
+		state, value, index, selectorText,
+	} of claims) {
 		const resolver = typeof value === 'function';
 		// A resolver computes its own replacement from the marker it targets;
 		// each occurrence gets its own call with its position. Awaiting each
@@ -384,6 +395,7 @@ export const applyReplacements = async (
 		}
 
 		if (typeof updated === 'string') {
+			state.selectorText = selectorText;
 			setContent(state, updated, getLineEnding);
 			continue;
 		}
@@ -392,10 +404,12 @@ export const applyReplacements = async (
 		// throw, while a content assignment cannot, so a rejected update leaves
 		// the marker untouched.
 		if (updated.attributes !== undefined) {
+			state.selectorText = selectorText;
 			replaceAttributes(state, updated.attributes);
 		}
 
 		if (updated.content !== undefined) {
+			state.selectorText = selectorText;
 			setContent(state, updated.content, getLineEnding);
 		}
 	}

@@ -162,6 +162,16 @@ describe('CLI', () => {
 		);
 	});
 
+	test('reports the selector whose replacement would hide markers', async () => {
+		const input = 'Example: <!-- a --><!-- /a -->\n\n<!-- b -->old<!-- /b -->';
+		await using fixture = await createFixture({ 'README.md': input });
+		await expect(commentMarkCli(fixture.getPath('README.md'), '--a=```js\nx\n```', '--b=new')).rejects.toMatchObject({
+			exitCode: 1,
+			stderr: expect.stringContaining('Replacement for "a" would change the document\'s markers'),
+		});
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(input);
+	});
+
 	test('selects a marker by attribute', async () => {
 		await using fixture = await createFixture({
 			'README.md': '<!-- item kind="fruit" -->apple<!-- /item -->\n',
