@@ -37,14 +37,14 @@ describe('replacement', () => {
 		// The annotation is the contract: the resolved value is a string for
 		// every supported call, not a document or a buffer.
 		const output: string = await commentMark(createMarker('a', 'old'), { a: 'new' });
-		expect(output).toBe(createMarker('a', 'new'));
+		expect(output).toBe(createMarker('a', '\nnew\n'));
 	});
 
 	test('basic', async () => {
 		const output = await commentMark(createMarker('a'), {
 			a: 'hello world',
 		});
-		expect(output).toBe(createMarker('a', 'hello world'));
+		expect(output).toBe(createMarker('a', '\nhello world\n'));
 	});
 
 	test('skip nullish properties', async () => {
@@ -76,35 +76,35 @@ describe('replacement', () => {
 			ba: 'something world',
 		});
 
-		expect(output).toBe(`\n\t\t\t${createMarker('a', 'hello world')}\n\t\t\t${createMarker('b', 'goodbye world')}\n\t\t\t${createMarker('ba', 'something world')}\n\t\t`);
+		expect(output).toBe(`\n\t\t\t${createMarker('a', '\nhello world\n')}\n\t\t\t${createMarker('b', '\ngoodbye world\n')}\n\t\t\t${createMarker('ba', '\nsomething world\n')}\n\t\t`);
 	});
 
 	test('updates the first match for a scalar value', async () => {
 		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
 			a: 'hello world',
 		});
-		expect(output).toBe(`${createMarker('a', 'hello world')}\n${createMarker('a', 'two')}`);
+		expect(output).toBe(`${createMarker('a', '\nhello world\n')}\n${createMarker('a', 'two')}`);
 	});
 
 	test('updates matches by position for an array value', async () => {
 		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
 			a: ['first', 'second'],
 		});
-		expect(output).toBe(`${createMarker('a', 'first')}\n${createMarker('a', 'second')}`);
+		expect(output).toBe(`${createMarker('a', '\nfirst\n')}\n${createMarker('a', '\nsecond\n')}`);
 	});
 
 	test('leaves matches beyond the array untouched', async () => {
 		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
 			a: ['first'],
 		});
-		expect(output).toBe(`${createMarker('a', 'first')}\n${createMarker('a', 'two')}`);
+		expect(output).toBe(`${createMarker('a', '\nfirst\n')}\n${createMarker('a', 'two')}`);
 	});
 
 	test('lets a nullish entry skip a match', async () => {
 		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
 			a: [null, 'second'],
 		});
-		expect(output).toBe(`${createMarker('a', 'one')}\n${createMarker('a', 'second')}`);
+		expect(output).toBe(`${createMarker('a', 'one')}\n${createMarker('a', '\nsecond\n')}`);
 	});
 
 	test('an empty array changes nothing', async () => {
@@ -174,6 +174,6 @@ describe('replacement', () => {
 		const output = await commentMark(Buffer.from(createMarker('a')), {
 			a: 'hello world',
 		});
-		expect(output).toBe(createMarker('a', 'hello world'));
+		expect(output).toBe(createMarker('a', '\nhello world\n'));
 	});
 });

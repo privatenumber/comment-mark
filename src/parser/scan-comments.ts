@@ -18,6 +18,7 @@ export type CommentVisitor = (
 	innerStart: number,
 	innerEnd: number,
 	continuation: string,
+	startsLine: boolean,
 ) => void;
 
 type BacktickRun = {
@@ -134,6 +135,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	let fence: Fence | undefined;
 	let commentStart = -1;
 	let commentContinuation = '';
+	let commentStartsLine = false;
 	let inParagraph = false;
 
 	// One cursor reused across lines. The scan is synchronous, so the cursor
@@ -144,13 +146,15 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		pending: 0,
 	};
 
-	const scanInline = (line: string, lineStart: number, start: number) => {
+	const scanInline = (line: string, lineStart: number, start: number, canStartLine = true) => {
 		const runs = line.includes('`', start) ? findBacktickRuns(line, start) : undefined;
 		let index = start;
+		let whitespaceOnly = canStartLine;
 
 		while (index < line.length) {
 			const run = runs?.get(index);
 			if (run) {
+				whitespaceOnly = false;
 				if (run.escaped) {
 					// Skip only the escaped backtick so the rest of the run can open.
 					index += 1;
@@ -174,6 +178,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				if (close === -1) {
 					commentStart = lineStart + index;
 					commentContinuation = continuation;
+					commentStartsLine = whitespaceOnly;
 					return;
 				}
 				visit(
@@ -181,11 +186,16 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 					lineStart + index + openDelimiter.length,
 					lineStart + close,
 					continuation,
+					whitespaceOnly,
 				);
+				whitespaceOnly = false;
 				index = close + closeDelimiter.length;
 				continue;
 			}
 
+			if (line[index] !== ' ' && line[index] !== '\t') {
+				whitespaceOnly = false;
+			}
 			index += 1;
 		}
 	};
@@ -207,9 +217,10 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				commentStart + openDelimiter.length,
 				lineStart + close,
 				commentContinuation,
+				commentStartsLine,
 			);
 			commentStart = -1;
-			scanInline(line, lineStart, close + closeDelimiter.length);
+			scanInline(line, lineStart, close + closeDelimiter.length, false);
 			return;
 		}
 
@@ -285,7 +296,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		const headingContent = matchAtxHeading(line, cursor);
 		if (headingContent !== undefined) {
 			inParagraph = false;
-			scanInline(line, lineStart, headingContent);
+			scanInline(line, lineStart, headingContent, false);
 			return;
 		}
 

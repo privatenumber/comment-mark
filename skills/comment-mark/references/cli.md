@@ -41,7 +41,7 @@ npx comment-mark README.md --item="pear" --item.kind="fruit"
 - Selectors resolve against the document as read, so the outcome does not depend on flag order or on which marker an earlier flag changed.
 - Use `--selector=value`, not `--selector value`. Quote values with spaces or newlines, and quote the whole flag when the selector contains brackets.
 - The first `=` outside brackets and quotes separates the flag from its value, so `--"item[kind='fruit']"=pear` passes the selector `item[kind='fruit']`.
-- `--selector=` clears a section. Multiline values get a newline before and after.
+- `--selector=` clears a section. A marker at the start of a line puts nonempty content on its own lines; a marker inside a line inserts it as written.
 - `--<selector>.<attribute>=<value>` sets one attribute and keeps the others and the content. `--selector.attribute=` sets an empty value.
 - The first `.` outside brackets and quotes separates the attribute from the selector, so a predicate value can contain one: `--"item[file='package.json'].kind"=metadata`.
 - Flags with identical selector text form one update: `--item=pear` and `--item.kind="fruit"` are reported together as `item`. Two different selectors that target the same marker conflict and abort before writing.

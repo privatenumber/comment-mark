@@ -4,7 +4,6 @@ import {
 } from './parser/parse-attributes.ts';
 import { type MarkerNode, parseDocument } from './parser/parse-document.ts';
 import { type Selector, parseSelector } from './parser/parse-selector.ts';
-import { padContent } from './padding.ts';
 
 export type CommentMarkData = {
 	tagName: string;
@@ -96,7 +95,14 @@ const currentAttributes = (state: MarkerState) => {
 };
 
 const setContent = (state: MarkerState, content: string, getLineEnding: () => string) => {
-	state.content = padContent(content, getLineEnding);
+	if (state.node.startsLine && content) {
+		const lineEnding = getLineEnding();
+		const leading = content.startsWith('\n') || content.startsWith('\r\n') ? '' : lineEnding;
+		const trailing = content.endsWith('\n') ? '' : lineEnding;
+		state.content = `${leading}${content}${trailing}`;
+	} else {
+		state.content = content;
+	}
 	state.changed = true;
 };
 

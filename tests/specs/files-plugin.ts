@@ -28,7 +28,7 @@ describe('files plugin', () => {
 			files({ baseDirectory: fixture.path }),
 		);
 
-		expect(output).toBe('<!-- file path="a.txt" -->AAA<!-- /file -->\n<!-- file path="b.txt" -->BBB<!-- /file -->');
+		expect(output).toBe('<!-- file path="a.txt" -->\nAAA\n<!-- /file -->\n<!-- file path="b.txt" -->\nBBB\n<!-- /file -->');
 	});
 
 	test('resolves the path against baseDirectory', async () => {
@@ -41,7 +41,7 @@ describe('files plugin', () => {
 			files({ baseDirectory: fixture.path }),
 		);
 
-		expect(output).toBe('<!-- file path="nested/hello.txt" -->Hello<!-- /file -->');
+		expect(output).toBe('<!-- file path="nested/hello.txt" -->\nHello\n<!-- /file -->');
 	});
 
 	test('reads markers under a configured tag name', async () => {
@@ -57,7 +57,7 @@ describe('files plugin', () => {
 			}),
 		);
 
-		expect(output).toBe('<!-- snippet path="hello.txt" -->Hello<!-- /snippet -->');
+		expect(output).toBe('<!-- snippet path="hello.txt" -->\nHello\n<!-- /snippet -->');
 	});
 
 	test('leaves markers with another tag name alone', async () => {
@@ -83,7 +83,7 @@ describe('files plugin', () => {
 			},
 		);
 
-		expect(output).toBe('<!-- file path="hello.txt" -->Hello<!-- /file -->\n<!-- version -->2.0.0<!-- /version -->');
+		expect(output).toBe('<!-- file path="hello.txt" -->\nHello\n<!-- /file -->\n<!-- version -->\n2.0.0\n<!-- /version -->');
 	});
 
 	test('keeps a marker in the included file inside the section', async () => {
@@ -96,7 +96,7 @@ describe('files plugin', () => {
 			files({ baseDirectory: fixture.path }),
 		);
 
-		expect(output).toBe('<!-- file path="nested.md" --><!-- inner -->kept<!-- /inner --><!-- /file -->');
+		expect(output).toBe('<!-- file path="nested.md" -->\n<!-- inner -->kept<!-- /inner -->\n<!-- /file -->');
 
 		// The included marker is part of the section's content, so it is not a
 		// marker to select, while the section itself can still be refreshed.

@@ -11,7 +11,7 @@ describe('update objects', () => {
 			},
 		});
 
-		expect(output).toBe('<!-- item kind="vegetable" -->carrot<!-- /item -->');
+		expect(output).toBe('<!-- item kind="vegetable" -->\ncarrot\n<!-- /item -->');
 	});
 
 	test('matches the result of the equivalent resolver', async () => {
@@ -46,7 +46,7 @@ describe('update objects', () => {
 		const content = '<!-- item kind="fruit" -->apple<!-- /item -->';
 
 		expect(await commentMark(content, { item: { content: 'pear' } })).toBe(
-			'<!-- item kind="fruit" -->pear<!-- /item -->',
+			'<!-- item kind="fruit" -->\npear\n<!-- /item -->',
 		);
 		expect(await commentMark(content, { item: { attributes: { kind: 'vegetable' } } })).toBe(
 			'<!-- item kind="vegetable" -->apple<!-- /item -->',
@@ -77,7 +77,7 @@ describe('update objects', () => {
 			createMarker('a', '\nfirst\nsecond\n'),
 		);
 		expect(await commentMark(createMarker('a'), { a: { content: 'value' } })).toBe(
-			createMarker('a', 'value'),
+			createMarker('a', '\nvalue\n'),
 		);
 	});
 
@@ -86,7 +86,7 @@ describe('update objects', () => {
 			a: { content: 'first' },
 		});
 
-		expect(output).toBe(`${createMarker('a', 'first')}\n${createMarker('a', 'two')}`);
+		expect(output).toBe(`${createMarker('a', '\nfirst\n')}\n${createMarker('a', 'two')}`);
 	});
 
 	test('updates matches by position in an array', async () => {
@@ -94,7 +94,7 @@ describe('update objects', () => {
 			a: [{ content: 'first' }, 'second'],
 		});
 
-		expect(output).toBe(`${createMarker('a', 'first')}\n${createMarker('a', 'second')}`);
+		expect(output).toBe(`${createMarker('a', '\nfirst\n')}\n${createMarker('a', '\nsecond\n')}`);
 	});
 
 	test('a nullish array entry skips a match', async () => {
@@ -102,7 +102,7 @@ describe('update objects', () => {
 			a: [null, { content: 'second' }],
 		});
 
-		expect(output).toBe(`${createMarker('a', 'one')}\n${createMarker('a', 'second')}`);
+		expect(output).toBe(`${createMarker('a', 'one')}\n${createMarker('a', '\nsecond\n')}`);
 	});
 
 	test('mixes object, string, and nullish entries by position', async () => {
@@ -117,7 +117,7 @@ describe('update objects', () => {
 		});
 
 		expect(output).toBe(
-			`${createMarker('a', 'first')}\n${createMarker('a', 'two')}\n${createMarker('a', 'third')}`,
+			`${createMarker('a', '\nfirst\n')}\n${createMarker('a', 'two')}\n${createMarker('a', '\nthird\n')}`,
 		);
 	});
 

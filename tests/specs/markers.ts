@@ -78,14 +78,14 @@ describe('marker pairing', () => {
 		const inner = '<!-- b -->inner<!-- /b -->';
 		const output = await commentMark(createMarker('a', 'old'), { a: inner });
 
-		expect(output).toBe(createMarker('a', inner));
+		expect(output).toBe(createMarker('a', `\n${inner}\n`));
 		expect(getCommentMarkAll(output).map(mark => mark.tagName)).toStrictEqual(['a']);
 
 		// `b` sits inside `a`'s content, so it is not a marker to update, while
 		// the outer marker can still be replaced on a later run.
 		await expect(commentMark(output, { b: 'changed' }))
 			.rejects.toThrow('[comment-mark] Selector "b" matched no markers');
-		expect(await commentMark(output, { a: 'new' })).toBe(createMarker('a', 'new'));
+		expect(await commentMark(output, { a: 'new' })).toBe(createMarker('a', '\nnew\n'));
 	});
 
 	test('reads only the outermost pair through several levels', () => {
@@ -125,7 +125,7 @@ describe('marker pairing', () => {
 			},
 		]);
 		expect(await commentMark(content, { c: 'new' })).toBe(
-			'<!-- a --><!-- b -->x<!-- /b --><!-- /a -->\n<!-- c -->new<!-- /c -->',
+			'<!-- a --><!-- b -->x<!-- /b --><!-- /a -->\n<!-- c -->\nnew\n<!-- /c -->',
 		);
 	});
 
@@ -189,7 +189,7 @@ describe('attributes', () => {
 		const output = await commentMark('<!-- comment-mark id = "a" -->x<!-- / comment-mark -->', {
 			"comment-mark[id='a']": 'y',
 		});
-		expect(output).toBe('<!-- comment-mark id = "a" -->y<!-- / comment-mark -->');
+		expect(output).toBe('<!-- comment-mark id = "a" -->\ny\n<!-- / comment-mark -->');
 	});
 
 	test('preserves additional attributes', () => {
