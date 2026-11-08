@@ -112,12 +112,13 @@ export const needsBlockPadding = (content: string) => {
  * on its own line and the closing comment cannot join its last line. Inline
  * content is inserted as written, so a value can sit inside a paragraph.
  */
-export const padContent = (content: string) => {
+export const padContent = (content: string, getLineEnding: () => string) => {
 	if (!needsBlockPadding(content)) {
 		return content;
 	}
 
-	const leading = content.startsWith('\n') ? '' : '\n';
-	const trailing = content.endsWith('\n') ? '' : '\n';
+	const lineEnding = getLineEnding();
+	const leading = content.startsWith('\n') || content.startsWith('\r\n') ? '' : lineEnding;
+	const trailing = content.endsWith('\n') ? '' : lineEnding;
 	return `${leading}${content}${trailing}`;
 };

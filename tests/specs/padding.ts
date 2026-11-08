@@ -37,6 +37,43 @@ describe('content padding', () => {
 
 	test('keeps existing boundary newlines instead of adding more', async () => {
 		expect(await commentMark(createMarker('a'), { a: '\n# Heading\n' })).toBe(createMarker('a', '\n# Heading\n'));
+		expect(await commentMark(createMarker('a'), { a: '\r\n# Heading' })).toBe(createMarker('a', '\r\n# Heading\n'));
+		expect(await commentMark(createMarker('a'), { a: '# Heading\r\n' })).toBe(createMarker('a', '\n# Heading\r\n'));
+	});
+
+	test('uses the document line ending for padding without changing content', async () => {
+		expect(await commentMark('# T\r\n<!-- a --><!-- /a -->\r\n', { a: 'x\r\ny' })).toBe(
+			'# T\r\n<!-- a -->\r\nx\r\ny\r\n<!-- /a -->\r\n',
+		);
+		expect(await commentMark('# T\n<!-- a --><!-- /a -->\n', { a: 'x\ny' })).toBe(
+			'# T\n<!-- a -->\nx\ny\n<!-- /a -->\n',
+		);
+		expect(await commentMark(createMarker('a'), { a: '# Heading' })).toBe(createMarker('a', '\n# Heading\n'));
+		expect(await commentMark('# T\n<!-- a --><!-- /a -->\r\n', { a: { content: 'x\ny' } })).toBe(
+			'# T\n<!-- a -->\nx\ny\n<!-- /a -->\r\n',
+		);
+		expect(await commentMark('# T\r\n<!-- a --><!-- /a -->\n', { a: '# Heading' })).toBe(
+			'# T\r\n<!-- a -->\r\n# Heading\r\n<!-- /a -->\n',
+		);
+	});
+
+	test('uses the document line ending for markers on the last line', async () => {
+		expect(await commentMark('# T\r\n<!-- a --><!-- /a -->', { a: '# Heading' })).toBe(
+			'# T\r\n<!-- a -->\r\n# Heading\r\n<!-- /a -->',
+		);
+		expect(await commentMark('# T\n<!-- a --><!-- /a -->', { a: '# Heading' })).toBe(
+			'# T\n<!-- a -->\n# Heading\n<!-- /a -->',
+		);
+		expect(await commentMark('# T\r\n<!-- a --><!-- /a --><!-- b --><!-- /b -->', {
+			a: '# A',
+			b: '# B',
+		})).toBe(
+			'# T\r\n<!-- a -->\r\n# A\r\n<!-- /a --><!-- b -->\r\n# B\r\n<!-- /b -->',
+		);
+	});
+
+	test('keeps a single inline line with a trailing CRLF as written', async () => {
+		expect(await commentMark(createMarker('a'), { a: 'Jane\r\n' })).toBe(createMarker('a', 'Jane\r\n'));
 	});
 
 	test('leaves escaped block syntax as inline content', async () => {

@@ -295,7 +295,8 @@ Returns a promise that resolves to the updated content as a string. Buffer input
 - A static value whose selector matches no marker rejects, so a typo or a stale selector is not mistaken for a successful no-op. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
 - Rejects an array with more values than matches, a function as an array entry, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
-- Content that needs block layout gets a newline on each side, so it starts on its own line and the closing comment cannot join its last line. Content with a line break, or a heading, list, fenced code block, blockquote, thematic break, table, or indented code on its first line, needs block layout. A single line of inline text is inserted as written, so a value can sit inside a paragraph.
+- Content that needs block layout gets a line break on each side when needed, using the document's line ending (the first line break's ending, or LF when there is none), so it starts on its own line and the closing comment cannot join its last line. Content with a line break, or a heading, list, fenced code block, blockquote, thematic break, table, or indented code on its first line, needs block layout. A single line of inline text is inserted as written, so a value can sit inside a paragraph.
+- Content in a list item or blockquote stays in that container. Reading the content removes its container prefixes.
 - Rejects when a marker is malformed, when a resolver throws or rejects, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
 
 An array updates matches by position, so one call can set repeated sections:

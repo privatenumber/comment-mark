@@ -17,6 +17,7 @@ export type CommentVisitor = (
 	start: number,
 	innerStart: number,
 	innerEnd: number,
+	continuation: string,
 ) => void;
 
 type BacktickRun = {
@@ -132,6 +133,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	const containers: Container[] = [];
 	let fence: Fence | undefined;
 	let commentStart = -1;
+	let commentContinuation = '';
 	let inParagraph = false;
 
 	// One cursor reused across lines. The scan is synchronous, so the cursor
@@ -163,15 +165,22 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			}
 
 			if (line.startsWith(openDelimiter, index)) {
+				const continuation = containers.length === 0
+					? ''
+					: containers.map(container => (
+						container.type === 'blockquote' ? '> ' : ' '.repeat(container.indent)
+					)).join('');
 				const close = line.indexOf(closeDelimiter, index + openDelimiter.length);
 				if (close === -1) {
 					commentStart = lineStart + index;
+					commentContinuation = continuation;
 					return;
 				}
 				visit(
 					lineStart + index,
 					lineStart + index + openDelimiter.length,
 					lineStart + close,
+					continuation,
 				);
 				index = close + closeDelimiter.length;
 				continue;
@@ -193,7 +202,12 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			if (close === -1) {
 				return;
 			}
-			visit(commentStart, commentStart + openDelimiter.length, lineStart + close);
+			visit(
+				commentStart,
+				commentStart + openDelimiter.length,
+				lineStart + close,
+				commentContinuation,
+			);
 			commentStart = -1;
 			scanInline(line, lineStart, close + closeDelimiter.length);
 			return;

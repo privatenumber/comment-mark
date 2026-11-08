@@ -64,9 +64,26 @@ export type CommentDocument = {
 	markers: MarkerState[];
 };
 
-const currentContent = (state: MarkerState) => (
-	state.content ?? state.source.slice(state.node.contentStart, state.node.contentEnd)
-);
+const currentContent = (state: MarkerState) => {
+	if (state.content !== undefined) {
+		return state.content;
+	}
+	const content = state.source.slice(state.node.contentStart, state.node.contentEnd);
+	const { continuation } = state.node;
+	if (!continuation) {
+		return content;
+	}
+	const trimmed = continuation.trimEnd();
+	return content.split('\n').map((line, index) => {
+		if (index === 0) {
+			return line;
+		}
+		if (line.startsWith(continuation)) {
+			return line.slice(continuation.length);
+		}
+		return trimmed && line.startsWith(trimmed) ? line.slice(trimmed.length) : line;
+	}).join('\n');
+};
 
 const currentAttributes = (state: MarkerState) => {
 	const attributes: Array<[string, string]> = [];
@@ -78,8 +95,8 @@ const currentAttributes = (state: MarkerState) => {
 	return Object.fromEntries(attributes);
 };
 
-const setContent = (state: MarkerState, content: string) => {
-	state.content = content;
+const setContent = (state: MarkerState, content: string, getLineEnding: () => string) => {
+	state.content = padContent(content, getLineEnding);
 	state.changed = true;
 };
 
@@ -171,7 +188,17 @@ export const renderDocument = (document: CommentDocument) => {
 
 		output += source.slice(cursor, state.node.openingStart);
 		output += renderOpeningTag(state);
-		output += currentContent(state);
+		if (state.content !== undefined && state.node.continuation) {
+			const { continuation } = state.node;
+			const trimmed = continuation.trimEnd();
+			output += state.content.replaceAll('\n', (lineBreak, offset: number, content: string) => {
+				const next = content[offset + 1];
+				const blank = next === '\n' || (next === '\r' && content[offset + 2] === '\n');
+				return lineBreak + (blank ? trimmed : continuation);
+			});
+		} else {
+			output += state.content ?? source.slice(state.node.contentStart, state.node.contentEnd);
+		}
 		cursor = state.node.contentEnd;
 	}
 
@@ -328,6 +355,14 @@ export const applyReplacements = async (
 	// Apply in document order so the result does not depend on key order.
 	const claims = collectClaims(document, replacements);
 	claims.sort((a, b) => a.state.index - b.state.index);
+	let lineEnding: string | undefined;
+	const getLineEnding = () => {
+		if (lineEnding === undefined) {
+			const lineFeed = document.source.indexOf('\n');
+			lineEnding = lineFeed > 0 && document.source[lineFeed - 1] === '\r' ? '\r\n' : '\n';
+		}
+		return lineEnding;
+	};
 
 	for (const { state, value, index } of claims) {
 		const resolver = typeof value === 'function';
@@ -343,7 +378,7 @@ export const applyReplacements = async (
 		}
 
 		if (typeof updated === 'string') {
-			setContent(state, padContent(updated));
+			setContent(state, updated, getLineEnding);
 			continue;
 		}
 
@@ -355,7 +390,7 @@ export const applyReplacements = async (
 		}
 
 		if (updated.content !== undefined) {
-			setContent(state, padContent(updated.content));
+			setContent(state, updated.content, getLineEnding);
 		}
 	}
 };
