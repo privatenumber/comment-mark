@@ -64,9 +64,26 @@ export type CommentDocument = {
 	markers: MarkerState[];
 };
 
-const currentContent = (state: MarkerState) => (
-	state.content ?? state.source.slice(state.node.contentStart, state.node.contentEnd)
-);
+const currentContent = (state: MarkerState) => {
+	if (state.content !== undefined) {
+		return state.content;
+	}
+	const content = state.source.slice(state.node.contentStart, state.node.contentEnd);
+	const { continuation } = state.node;
+	if (!continuation) {
+		return content;
+	}
+	const trimmed = continuation.trimEnd();
+	return content.split('\n').map((line, index) => {
+		if (index === 0) {
+			return line;
+		}
+		if (line.startsWith(continuation)) {
+			return line.slice(continuation.length);
+		}
+		return trimmed && line.startsWith(trimmed) ? line.slice(trimmed.length) : line;
+	}).join('\n');
+};
 
 const currentAttributes = (state: MarkerState) => {
 	const attributes: Array<[string, string]> = [];
@@ -171,7 +188,17 @@ export const renderDocument = (document: CommentDocument) => {
 
 		output += source.slice(cursor, state.node.openingStart);
 		output += renderOpeningTag(state);
-		output += currentContent(state);
+		if (state.content !== undefined && state.node.continuation) {
+			const { continuation } = state.node;
+			const trimmed = continuation.trimEnd();
+			output += state.content.replaceAll('\n', (lineBreak, offset: number, content: string) => {
+				const next = content[offset + 1];
+				const blank = next === '\n' || (next === '\r' && content[offset + 2] === '\n');
+				return lineBreak + (blank ? trimmed : continuation);
+			});
+		} else {
+			output += state.content ?? source.slice(state.node.contentStart, state.node.contentEnd);
+		}
 		cursor = state.node.contentEnd;
 	}
 

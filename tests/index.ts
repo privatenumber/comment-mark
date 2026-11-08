@@ -6,6 +6,7 @@ describe('comment-mark', () => {
 	import('./specs/replacement.ts');
 	import('./specs/update-objects.ts');
 	import('./specs/padding.ts');
+	import('./specs/containers.ts');
 	import('./specs/resolvers.ts');
 	import('./specs/attribute-updates.ts');
 	import('./specs/markdown.ts');
