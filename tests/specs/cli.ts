@@ -7,6 +7,18 @@ import { createMarker } from '../utils/create-marker.ts';
 import { commentMarkCli } from '../utils/comment-mark-cli.ts';
 
 describe('CLI', () => {
+	test('prints the complete error for a long malformed attribute', async () => {
+		const attribute = 'x'.repeat(300_000);
+		await using fixture = await createFixture({ 'README.md': `<!-- a ${attribute} -->value<!-- /a -->` });
+		const invocation = commentMarkCli(fixture.getPath('README.md'), '--a=new');
+
+		await expect(invocation).rejects.toMatchObject({ exitCode: 1 });
+		const { stderr } = await invocation.catch(error => error);
+		const expected = `Error: [comment-mark] Invalid marker attribute: "${attribute}"`;
+		expect(stderr.length).toBe(expected.length);
+		expect(stderr).toBe(expected);
+	});
+
 	test('runs the source CLI', async () => {
 		const cliPath = fileURLToPath(new URL('../../src/cli.ts', import.meta.url));
 
