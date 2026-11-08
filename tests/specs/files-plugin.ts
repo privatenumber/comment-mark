@@ -4,7 +4,7 @@ import { commentMark } from '#comment-mark';
 import { files } from '#comment-mark/plugins/files';
 
 describe('files plugin', () => {
-	test('inserts the file contents verbatim', async () => {
+	test('inserts the file contents on their own lines', async () => {
 		await using fixture = await createFixture({
 			'hello.txt': 'Hello\nWorld\n',
 		});
@@ -14,7 +14,7 @@ describe('files plugin', () => {
 			files({ baseDirectory: fixture.path }),
 		);
 
-		expect(output).toBe('<!-- file path="./hello.txt" -->Hello\nWorld\n<!-- /file -->');
+		expect(output).toBe('<!-- file path="./hello.txt" -->\nHello\nWorld\n<!-- /file -->');
 	});
 
 	test('fills every matching marker', async () => {

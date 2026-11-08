@@ -71,7 +71,7 @@ Each `file` marker names a file in its `path` attribute: `<!-- file path="./LICE
 
 - `baseDirectory` is required and resolves every `path`; an absolute `path` is used as written.
 - `tagName` changes the marker tag name from the default `file`.
-- The file is read as UTF-8 and inserted verbatim, and is not parsed again, so a marker written inside an included file stays literal text.
+- The file is read as UTF-8 and inserted unchanged, with the same block-layout padding as any other content, and is not parsed again, so a marker written inside an included file stays literal text.
 - A marker without a `path` attribute, or a file that cannot be read, rejects the call.
 - It composes with other replacements: `{ ...files({ baseDirectory }), version: '2.0.0' }`.
 
