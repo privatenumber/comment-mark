@@ -1,10 +1,12 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { cli } from 'cleye';
-import { description, name, version } from '../package.json' with { type: 'json' };
+import packageJson from '../package.json' with { type: 'json' };
 import {
 	commentMark, getCommentMark, getCommentMarkAll,
 } from './index.ts';
 import { encodeAttributeValue, isAttributeName } from './parser/parse-attributes.ts';
+
+const { description, name, version } = packageJson;
 
 // The replacement map the library accepts. A content update uses a plain
 // string; an attribute update uses an update object.
