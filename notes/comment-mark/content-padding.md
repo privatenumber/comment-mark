@@ -67,6 +67,19 @@ An option to skip padding was considered. It is not provided:
 
 Reconsider when a concrete case needs exact bytes. One candidate is a multiline value inside an HTML `<pre>` element, where an extra leading line break is visible.
 
+## Line endings
+
+The added line breaks use the document's line ending: the ending of the first line break in the source, or `\n` when the source has none. The content itself is inserted unchanged, so its own line endings are kept. An existing `\n` or `\r\n` at either end of the content counts as a line break. Shipped in [#36](https://github.com/privatenumber/comment-mark/pull/36); see the line-ending tests in [`tests/specs/padding.ts`](../../tests/specs/padding.ts).
+
+```js
+await commentMark('# T\r\n<!-- a --><!-- /a -->\r\n', { a: 'x\r\ny' })
+// '# T\r\n<!-- a -->\r\nx\r\ny\r\n<!-- /a -->\r\n'
+```
+
+doctoc also detects one line ending per document ([`lib/transform.js#L184-L200`](https://github.com/thlorenz/doctoc/blob/56ec8e078ddb3de2bf7834e129a2448606c56443/lib/transform.js#L183-L200)).
+
+Rejected: the line ending of the opening comment's own line. It is more precise only in documents with mixed line endings, which are rare. When the opening comment is on the last line, it needs a fallback to a whole-document scan. To stay linear across many markers, that fallback needed a cache on the parsed document. The per-document rule needs one `indexOf` per `commentMark` call. That lookup runs only when some content needs padding, so updates with only inline values never scan for it.
+
 ## Performance
 
 Padding runs once per updated marker. Rough timing on Node v24.20.0, Apple M2 Max, 2026-11-08, average of 20 calls to `padContent` with `performance.now()` (not a benchmark harness):
@@ -82,5 +95,4 @@ The cost is linear in the content length and smaller than building the output st
 ## Known limitations
 
 - **Containers.** Inserted lines get no container prefix. Multiline content in a list item or blockquote leaves the container: `- item\n  <!-- a -->\nfoo\nbar\n<!-- /a -->` renders `foo` and `bar` as a paragraph after the list. markdown-magic preserves the opener's indentation for this case (`preserveIndent` in the source linked above). A fix must also strip the prefix when reading content. Otherwise a resolver that returns its input adds a prefix on every run.
-- **Line endings.** Padding inserts `\n` even in a CRLF document: `commentMark('# T\r\n<!-- a --><!-- /a -->\r\n', { a: 'x\r\ny' })` returns `'# T\r\n<!-- a -->\nx\r\ny\n<!-- /a -->\r\n'`.
 - **Inline markup alone on a line.** `<!-- a -->**Jane**<!-- /a -->` on its own line renders the literal `**Jane**`, because the content is inline and the comment starts the line. Plain text such as a date or a version still renders. Padding based on the marker's position would fix markup but rewrite every existing one-line section, such as the Quick start's `lastUpdated` example. This has not been changed.
