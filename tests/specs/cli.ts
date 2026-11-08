@@ -391,7 +391,7 @@ describe('CLI', () => {
 			);
 		});
 
-		test('adds the CLI newline padding to multiline content with an attribute', async () => {
+		test('pads multiline content with an attribute', async () => {
 			await using fixture = await createFixture({ 'README.md': createMarker('item') });
 
 			await commentMarkCli(fixture.getPath('README.md'), '--item=first\nline', '--item.role=note');
@@ -399,6 +399,32 @@ describe('CLI', () => {
 			expect(await fixture.readFile('README.md', 'utf8')).toBe(
 				'<!-- item role="note" -->\nfirst\nline\n<!-- /item -->',
 			);
+		});
+
+		test('uses document line endings around multiline content with an attribute', async () => {
+			await using fixture = await createFixture({ 'README.md': '# T\r\n<!-- a --><!-- /a -->\r\n' });
+
+			await commentMarkCli(fixture.getPath('README.md'), '--a=x\ny', '--a.k=v');
+
+			expect(await fixture.readFile('README.md', 'utf8')).toBe('# T\r\n<!-- a k="v" -->\r\nx\ny\r\n<!-- /a -->\r\n');
+		});
+
+		test('pads content the same way with or without an attribute update', async () => {
+			for (const [content, expected] of [
+				['\nx\ny\n', '\nx\ny\n'],
+				['# Heading', '\n# Heading\n'],
+			]) {
+				await using fixture = await createFixture({
+					'content.md': createMarker('a'),
+					'attribute.md': createMarker('a'),
+				});
+
+				await commentMarkCli(fixture.getPath('content.md'), `--a=${content}`);
+				await commentMarkCli(fixture.getPath('attribute.md'), `--a=${content}`, '--a.k=v');
+
+				expect(await fixture.readFile('content.md', 'utf8')).toBe(`<!-- a -->${expected}<!-- /a -->`);
+				expect(await fixture.readFile('attribute.md', 'utf8')).toBe(`<!-- a k="v" -->${expected}<!-- /a -->`);
+			}
 		});
 
 		test('keeps markers named like control flags attribute-settable', async () => {

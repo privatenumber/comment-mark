@@ -7,7 +7,7 @@ import {
 import { encodeAttributeValue, isAttributeName } from './parser/parse-attributes.ts';
 
 // The replacement map the library accepts. A content update uses a plain
-// string; an attribute update needs a resolver instead.
+// string; an attribute update uses an update object.
 type Replacements = Parameters<typeof commentMark>[1];
 
 // One selector's requested changes. `content` stays undefined when no content
@@ -253,11 +253,8 @@ if (updates.size === 0) {
 // partial edits behind.
 const original = await readFile(filePath, 'utf8');
 
-// A content-only update stays a plain string so the library keeps the CLI's
-// multiline padding. An attribute update becomes an update object: the
-// requested changes over the attributes the marker already had, so the others
-// are preserved. A static value targets only the first match, which is the
-// section the CLI updates.
+// An attribute update merges requested changes over the marker's existing
+// attributes. A static value targets only the first matching marker.
 const buildReplacement = (
 	{ content, attributes }: SelectorUpdate,
 	current: Record<string, string>,
@@ -266,11 +263,6 @@ const buildReplacement = (
 		return content;
 	}
 
-	// An update object's content is inserted verbatim, so the CLI applies its
-	// static multiline padding here instead. `undefined` leaves the content
-	// unchanged.
-	const requestedContent = content !== undefined && content.includes('\n') ? `\n${content}\n` : content;
-
 	// Spread preserves an own `__proto__` data property, so an attribute with
 	// that name survives as data instead of hitting the prototype setter.
 	return {
@@ -278,7 +270,7 @@ const buildReplacement = (
 			...current,
 			...Object.fromEntries(attributes),
 		},
-		content: requestedContent,
+		content,
 	};
 };
 
