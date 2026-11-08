@@ -8,7 +8,7 @@ import {
 	selectMarkers,
 } from './document.ts';
 
-export type { CommentMarkData } from './document.ts';
+export type { CommentMarkData, CommentMarkReplacement } from './document.ts';
 
 /**
  * Replaces marked sections in `input` and returns the updated source.

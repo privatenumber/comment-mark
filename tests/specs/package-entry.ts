@@ -65,4 +65,26 @@ commentMark(${JSON.stringify(marker)}, {
 
 		expect(stdout).toBe(updatedMarker);
 	});
+
+	test('loads the files plugin subpath', async () => {
+		await using fixture = await createFixture({
+			'package.json': JSON.stringify({
+				name: 'consumer',
+				type: 'module',
+			}),
+			'node_modules/comment-mark': ({ symlink }) => symlink(packageRoot),
+			'snippet.txt': 'from a file',
+			'main.js': `import { commentMark } from 'comment-mark';
+import { files } from 'comment-mark/plugins/files';
+
+process.stdout.write(await commentMark('<!-- file path="snippet.txt" --><!-- /file -->', files({
+	baseDirectory: import.meta.dirname,
+})));
+`,
+		});
+
+		const { stdout } = await spawn(process.execPath, ['main.js'], { cwd: fixture.path });
+
+		expect(stdout).toBe('<!-- file path="snippet.txt" -->from a file<!-- /file -->');
+	});
 });
