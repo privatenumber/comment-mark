@@ -52,7 +52,11 @@ describe('CLI', () => {
 
 		const { stdout } = await commentMarkCli(fixture.getPath('README.md'));
 
-		expect(JSON.parse(stdout)[0].content.length).toBe(content.length);
+		expect(JSON.parse(stdout)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content,
+		}]);
 	});
 
 	test('prints an empty JSON array in read mode when no markers exist', async () => {
