@@ -1,7 +1,7 @@
 {
 	"name": "comment-mark",
 	"version": "0.0.0-semantic-release",
-	"description": "Interpolate strings with HTML comment markers",
+	"description": "Read and update sections of Markdown using HTML comment placeholders",
 	"keywords": [
 		"string",
 		"interpolation",
