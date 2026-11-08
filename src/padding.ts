@@ -60,20 +60,14 @@ const lineOpensBlock = (line: string, inParagraph: boolean) => {
  *
  * A comment that starts a line opens a CommonMark HTML block, so text written
  * on the same line is not parsed as Markdown. A single line of inline text
- * reads the same either way, but content on more than one line cannot sit
- * inside a paragraph, and a block only renders when it starts a line.
+ * reads the same either way, but content with a line break cannot sit inside a
+ * paragraph, and a block only renders when it starts a line.
  */
 export const needsBlockPadding = (content: string) => {
-	// A trailing line ending only ends the last line, so it does not make the
-	// content multiline.
-	let end = content.length;
-	while (end > 0 && (content[end - 1] === '\n' || content[end - 1] === '\r')) {
-		end -= 1;
-	}
-	for (let index = 0; index < end; index += 1) {
-		if (content[index] === '\n') {
-			return true;
-		}
+	// A trailing line break moves the closing comment onto its own line, so the
+	// content must also start on its own line to avoid an HTML block.
+	if (content.includes('\n')) {
+		return true;
 	}
 
 	let lineStart = 0;

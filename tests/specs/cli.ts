@@ -413,6 +413,7 @@ describe('CLI', () => {
 			for (const [content, expected] of [
 				['\nx\ny\n', '\nx\ny\n'],
 				['# Heading', '\n# Heading\n'],
+				['**Bold**\n', '\n**Bold**\n'],
 			]) {
 				await using fixture = await createFixture({
 					'content.md': createMarker('a'),
