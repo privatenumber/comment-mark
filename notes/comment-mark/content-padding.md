@@ -80,6 +80,21 @@ doctoc also detects one line ending per document ([`lib/transform.js#L184-L200`]
 
 Rejected: the line ending of the opening comment's own line. It is more precise only in documents with mixed line endings, which are rare. When the opening comment is on the last line, it needs a fallback to a whole-document scan. To stay linear across many markers, that fallback needed a cache on the parsed document. The per-document rule needs one `indexOf` per `commentMark` call. That lookup runs only when some content needs padding, so updates with only inline values never scan for it.
 
+## Containers
+
+Content keeps the container of its opening comment. The scanner records a continuation prefix for each marker from the containers open on the opening comment's line: `> ` for a blockquote, and spaces up to the content column for a list item. For example, `> - <!-- a -->` gets `>   `. Writing adds the prefix after every line break in the content, so the closing comment stays in the container too. A blank line gets the prefix without trailing spaces. Shipped in [#37](https://github.com/privatenumber/comment-mark/pull/37); see [`tests/specs/containers.ts`](../../tests/specs/containers.ts).
+
+```js
+await commentMark('> <!-- a --><!-- /a -->\n', { a: 'foo\nbar' })
+// '> <!-- a -->\n> foo\n> bar\n> <!-- /a -->\n'
+```
+
+Before #37, the inserted lines had no prefix. GitHub then rendered an empty blockquote followed by a separate `foo bar` paragraph. markdown-magic keeps the opener's indentation for the same reason ([`block-transformer/src/index.js#L257-L289`](https://github.com/DavidWells/markdown-magic/blob/f6cd8c042c835176a893decfe42f33223c91704b/packages/block-transformer/src/index.js#L257-L289)).
+
+Reading strips the same prefixes, in resolver `content`, `getCommentMark`, `getCommentMarkAll`, and the CLI's JSON output. Reading and writing must be inverses. Otherwise a resolver that returns its input adds one more prefix on every run. The tests check three reruns for each container form: the same static value, a resolver `({ content }) => content`, and the CLI, which must report `Unchanged`. A continuation line without the prefix, such as lazy blockquote text, is read as written.
+
+Decision: when the closing comment is in a different container than the opening comment, the opening comment's container wins, and a multiline write moves the closing comment into it. comment-mark already replaces everything between the two comments, and the content starts at the opener, so the opener decides how it renders. Rejecting such markers or skipping them would break markers that work today.
+
 ## Performance
 
 Padding runs once per updated marker. Rough timing on Node v24.20.0, Apple M2 Max, 2026-11-08, average of 20 calls to `padContent` with `performance.now()` (not a benchmark harness):
@@ -94,5 +109,4 @@ The cost is linear in the content length and smaller than building the output st
 
 ## Known limitations
 
-- **Containers.** Inserted lines get no container prefix. Multiline content in a list item or blockquote leaves the container: `- item\n  <!-- a -->\nfoo\nbar\n<!-- /a -->` renders `foo` and `bar` as a paragraph after the list. markdown-magic preserves the opener's indentation for this case (`preserveIndent` in the source linked above). A fix must also strip the prefix when reading content. Otherwise a resolver that returns its input adds a prefix on every run.
 - **Inline markup alone on a line.** `<!-- a -->**Jane**<!-- /a -->` on its own line renders the literal `**Jane**`, because the content is inline and the comment starts the line. Plain text such as a date or a version still renders. Padding based on the marker's position would fix markup but rewrite every existing one-line section, such as the Quick start's `lastUpdated` example. This has not been changed.
