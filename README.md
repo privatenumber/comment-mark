@@ -14,7 +14,7 @@ Keep generated content, like contributor lists and benchmark results, alongside 
 - Read marked content as JSON or a JavaScript object, preserving whitespace
 - Supports Markdown and HTML files, including multiline content
 - Ignores markers inside fenced code blocks and single-line inline code, so documentation examples stay literal
-- TypeScript types and an ESM build that CommonJS can load with `require()` on supported Node.js versions
+- TypeScript types and an ESM build that also loads with `require()`
 
 ## Install
 
