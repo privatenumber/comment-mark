@@ -30,7 +30,7 @@ The rows show both sides of the rule:
 
 `needsBlockPadding` returns true when the content has a line break before any trailing line endings, or when its first line opens a block: an ATX heading, thematic break, setext underline, fenced code, blockquote, list item, a table row starting with `|`, or indented code. It reuses the scanner's block matchers from [`src/parser/block-context.ts`](../../src/parser/block-context.ts), so padding and marker scanning agree on what a block is.
 
-`padContent` only adds a line break on a side that lacks one. Running the same update twice produces the same document, which is checked by the idempotency cases below.
+`padContent` only adds a line break on a side that lacks one, so padding itself is idempotent: padding already padded content changes nothing. That does not make every update repeatable. Content that changes the marker structure, such as an unclosed code fence that hides the closing comment, can make the next run fail to find the marker. See the [scanner gaps](./comment-scanning.md#supported-limits-and-observed-gaps).
 
 ## Decision: pad all content, including included files
 
@@ -40,7 +40,7 @@ The project applies one content-based rule for every value kind:
 
 - **Rendering correctness.** Unpadded block content renders incorrectly, as shown above. Included files are usually multiline, so they hit this case most often.
 - **Consistency.** The layout depends on what the content is, not on how the caller passed it.
-- **Verification still works.** A section's content reads back as the padded text, so a check that compares the section with the source file byte for byte fails. The supported check is to run the update again and confirm that nothing changes (the CLI reports `Unchanged`). embedme's `--verify` uses the same model: it reports whether a run would change the document ([README](https://github.com/zakhenry/embedme/blob/3cd8692de2c905cf3c9cbc6d87c1b4220f2e6eeb/README.md)).
+- **Verification still works.** A section's content reads back as the padded text, so a check that compares the section with the source file byte for byte fails. The supported check is to run the update again and confirm that nothing changes (the CLI reports `Unchanged`). That check also surfaces generated content that breaks the marker structure, because the rerun then fails. embedme's `--verify` uses the same model: it reports whether a run would change the document ([README](https://github.com/zakhenry/embedme/blob/3cd8692de2c905cf3c9cbc6d87c1b4220f2e6eeb/README.md)).
 
 ### Precedent
 
@@ -56,7 +56,7 @@ Every inspected generator that writes block content between paired markers puts 
 | mdsh | Copies the bytes, but writes a line break after the opening marker. Nothing is added before the closing marker. | [`src/executor.rs#L208-L212`](https://github.com/zimbatm/mdsh/blob/eca79da623dab29ed132b6c4d26a26795c2499c2/src/executor.rs#L208-L212) |
 | terraform-docs | Its default inject-mode template places generated content on its own line between the comments | [Output configuration](https://github.com/terraform-docs/terraform-docs/blob/b17ec1bebe08758be2110de4894742bdae515e17/docs/user-guide/configuration/output.md#L20-L25) and [default template](https://github.com/terraform-docs/terraform-docs/blob/b17ec1bebe08758be2110de4894742bdae515e17/docs/user-guide/configuration/output.md#L39-L64) |
 
-No inspected tool starts block content on the opening marker's line. mdsh is the only one that preserves bytes, and its bare trailing side is the case that leaves a fence open in the table above. None of these tools keep single-line inline values unpadded; comment-mark does, so a value can sit inside a sentence.
+No inspected tool starts multiline content on the opening marker's line. Single-line block content differs: markdown-magic adds no line breaks when both the original block and the replacement are single-line ([source](https://github.com/DavidWells/markdown-magic/blob/f6cd8c042c835176a893decfe42f33223c91704b/packages/block-transformer/src/index.js#L271-L289)), so a `# Heading` replacement stays on the marker's line and renders as literal text. comment-mark pads that case. mdsh is the only one that preserves bytes, and its bare trailing side is the case that leaves a fence open in the table above. None of these tools keep single-line inline values unpadded; comment-mark does, so a value can sit inside a sentence.
 
 Prettier's [range ignore](https://github.com/prettier/prettier/blob/b09dd90022c875f3089f19f37724da6377e52b7f/docs/ignore.md#L130-L148) is not an injector, but it constrains generated sections: its `<!-- prettier-ignore-start -->` and `<!-- prettier-ignore-end -->` markers work only at the top level, with a blank line before each. A generated section that must stay unformatted needs those markers on their own lines around comment-mark's markers.
 
@@ -72,7 +72,7 @@ Reconsider when a concrete case needs exact bytes. One candidate is a multiline 
 
 ## Line endings
 
-The added line breaks use the document's line ending: the ending of the first line break in the source, or `\n` when the source has none. The content itself is inserted unchanged, so its own line endings are kept. An existing `\n` or `\r\n` at either end of the content counts as a line break. Shipped in [#36](https://github.com/privatenumber/comment-mark/pull/36); see the line-ending tests in [`tests/specs/padding.ts`](../../tests/specs/padding.ts).
+The added line breaks use the document's line ending: the ending of the first line break in the source, or `\n` when the source has none. The content itself is inserted unchanged, so its own line endings are kept. An existing `\n` or `\r\n` at either end of the content counts as a line break. Only `\n` is searched, so a document that uses bare `\r` line endings, which the scanner accepts, still gets `\n` padding. Shipped in [#36](https://github.com/privatenumber/comment-mark/pull/36); see the line-ending tests in [`tests/specs/padding.ts`](../../tests/specs/padding.ts).
 
 ```js
 await commentMark('# T\r\n<!-- a --><!-- /a -->\r\n', { a: 'x\r\ny' })
@@ -108,7 +108,7 @@ Padding runs once per updated marker. Rough timing on Node v24.20.0, Apple M2 Ma
 | 5 MB single line | 11.6 ms |
 | 4 MB single line of words | 9.1 ms |
 
-The cost is linear in the content length and smaller than building the output string.
+The cost is linear in the content length. These timings do not compare padding with the rest of an update, such as building the output string.
 
 ## Known limitations
 

@@ -9,7 +9,7 @@ Sources were checked on 2026-11-08 at the versions or commits named in the linke
 comment-mark combines four properties. No inspected tool has all of them:
 
 - **Content between paired markers.** The section is cached between an opening and a closing comment, so the same file is both the template and the output. See [markers and selectors](./markers-and-selectors.md).
-- **Code examples stay literal.** Markers inside fenced code and inline code spans are ignored. See [comment scanning](./comment-scanning.md).
+- **Code examples stay literal.** Markers inside fenced code and single-line inline code spans are ignored. Indented code and inline spans that wrap across lines are not protected. See [comment scanning](./comment-scanning.md).
 - **Selection by tag name and attributes.** A selector can target one of several markers with the same tag name. See [markers and selectors](./markers-and-selectors.md).
 - **Content-based layout.** Block content gets line breaks and container prefixes, so it renders inside the section. See [content padding](./content-padding.md).
 
@@ -44,8 +44,8 @@ comment-mark scans comments with its own code instead of a dependency. These par
 | Parser | Relation to comment-mark |
 | --- | --- |
 | [htmlparser2](../htmlparser2/README.md) | Fast HTML tokenizer with numeric comment offsets. Rejected because it imposes HTML context rules comment-mark does not want. |
-| [parse5](../parse5/README.md) | Spec-compliant HTML tokenizer and the strongest reference for malformed comments, including `--!>`. Rejected because it tokenizes the whole HTML grammar: in [the #13 measurements](./comment-scanning.md#historical-evaluation-from-pr-13) it was about 12 to 1,700 times slower than the `indexOf` scan, depending on the input. |
-| [micromark](../micromark/README.md) | The CommonMark reference parser. Its comment rules differ between inline and block HTML, so "follow micromark" needs a choice of which semantics to match. mdeval uses it for code ranges. |
+| [parse5](../parse5/README.md) | Spec-compliant HTML tokenizer and the strongest reference for malformed comments, including `--!>`. Rejected because it tokenizes the whole HTML grammar: in [measurements taken while developing #13](./comment-scanning.md#historical-evaluation-from-pr-13) it was about 12 to 1,700 times slower than the `indexOf` scan, depending on the input. Those figures are not published in the PR and cannot be reproduced from the repository. |
+| [micromark](../micromark/README.md) | A CommonMark-compliant parser that follows the behavior of the reference parsers `cmark` and `cmark-gfm` ([README](https://github.com/micromark/micromark/blob/4.0.2/packages/micromark/readme.md)). Its comment rules differ between inline and block HTML, so "follow micromark" needs a choice of which semantics to match. mdeval uses it for code ranges. |
 | [fast-xml-parser](../fast-xml-parser/README.md) | Finds the comment terminator with a literal `indexOf("-->")`, the precedent for comment-mark's `indexOf` scan. |
 
 Other Markdown parsers and small fence extractors are compared in [comment scanning](./comment-scanning.md).

@@ -1,6 +1,6 @@
 # Comment scanning
 
-comment-mark uses an in-house scanner rather than a third-party HTML or Markdown parser. The decision favors marker offsets and the project's Markdown-aware exclusions without imposing a full HTML grammar. [PR #13](https://github.com/privatenumber/comment-mark/pull/13) compared the scanner with regex and parser alternatives; its historical measurements below support the performance tradeoff, not a claim about current timings.
+comment-mark uses an in-house scanner rather than a third-party HTML or Markdown parser. The decision favors marker offsets and the project's Markdown-aware exclusions without imposing a full HTML grammar. The scanner was compared with regex and parser alternatives while [PR #13](https://github.com/privatenumber/comment-mark/pull/13) was developed. The historical measurements below support the performance tradeoff, not a claim about current timings.
 
 Project behavior was checked against develop commit `d41c4a5` on 2026-11-08.
 
@@ -82,7 +82,7 @@ The observed tokens included these fields, with no position fields on the printe
 
 ## Historical evaluation from PR #13
 
-These measurements were recorded during [PR #13](https://github.com/privatenumber/comment-mark/pull/13) on an Apple M2 Max with Node 24.14.1 using `mitata`. They are historical means, not measurements of the current scanner. The original experimental inputs and harness are not available in this repository, so the figures cannot be independently reproduced from these tables alone. The [current benchmark suite](../../bench/) provides a starting point for a new comparison, not the original harness.
+These measurements were taken while [PR #13](https://github.com/privatenumber/comment-mark/pull/13) was developed, on an Apple M2 Max with Node 24.14.1 using `mitata`. They are historical means, not measurements of the current scanner, and they are recorded only here: the PR's description and benchmark table do not include them. The original experimental inputs and harness are not available in this repository, so the figures cannot be independently reproduced from these tables alone. The [current benchmark suite](../../bench/) provides a starting point for a new comparison, not the original harness.
 
 The evaluation compared a lazy comment regex, an `indexOf` scanner, `html-comment-regex@1.1.2`, and `parse5@8.0.1`'s tokenizer. `htmlparser2@12.0.0` was also considered for its low-level tokenizer, but no comparable measurement was recorded. `htmljs-parser@5.15.0` was reported to miss fixed comment cases, and `strip-comments@2.0.1` was excluded on complexity grounds without a performance measurement. The original fixed inputs and source audit are unavailable, so these reports are not independent proof of those alternatives' current behavior.
 

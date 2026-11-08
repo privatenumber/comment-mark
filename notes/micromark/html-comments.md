@@ -8,4 +8,4 @@ The flow HTML tokenizer in [2.0.3](https://unpkg.com/micromark-core-commonmark@2
 
 The [scanner decision](../comment-mark/comment-scanning.md) requires both code awareness and exact marker boundaries. A Markdown parser can provide context, but flow-token boundaries alone do not locate the closer. Its `--!>` treatment differs from [comment-mark's writer](../comment-mark/markers-and-selectors.md).
 
-As a related integration example, [mdeval 2.0.0](https://github.com/privatenumber/mdeval/blob/v2.0.0/src/parse-markdown.ts#L1-L110) collects micromark code ranges and separately scans original source for markers.
+As a related integration example, [mdeval 2.0.0](https://github.com/privatenumber/mdeval/blob/v2.0.0/src/parse-markdown.ts#L56-L127) collects micromark code ranges, and [separately scans the original source for markers](https://github.com/privatenumber/mdeval/blob/v2.0.0/src/parse-markdown.ts#L179-L230), skipping those inside code.
