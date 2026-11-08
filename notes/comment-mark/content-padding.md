@@ -48,14 +48,17 @@ Every inspected generator that writes block content between paired markers puts 
 
 | Tool | Placement | Source |
 | --- | --- | --- |
-| markdown-magic (including its `FILE` transform) | Adds a leading and trailing line break around multiline content | [`block-transformer/src/index.js#L271-L289`](https://github.com/DavidWells/markdown-magic/blob/f6cd8c042c835176a893decfe42f33223c91704b/packages/block-transformer/src/index.js#L271-L289) |
+| markdown-magic (including its `FILE` transform) | Adds line breaks around multiline content under the linked conditions | [Block replacement](../markdown-magic/block-replacement.md) |
 | doctoc | Always wraps the TOC on its own lines, using the document's detected line ending | [`lib/transform.js#L392`](https://github.com/thlorenz/doctoc/blob/56ec8e078ddb3de2bf7834e129a2448606c56443/lib/transform.js#L388-L401) |
 | all-contributors CLI | Adds line breaks after the opening marker and before the closing marker | [`src/generate/index.js#L55-L64`](https://github.com/all-contributors/all-contributors-cli/blob/e53bf5c427dad9f7a5186e07c85e2f7a69274e55/src/generate/index.js#L45-L65) |
 | markdown-toc | Joins the trimmed sections with blank lines | [`lib/insert.js#L22-L53`](https://github.com/jonschlinkert/markdown-toc/blob/386b44747f271bfd56956d3ee7714e190dc7037f/lib/insert.js#L18-L66) |
 | cog | Ensures nonempty output ends with a line break, "or it will be joined to the end-output line, ruining cog's idempotency" | [`cogapp/cogapp.py#L97-L101`](https://github.com/nedbat/cog/blob/892f36c9e7189e61c14e57b153509ded4f1f383d/cogapp/cogapp.py#L95-L103) |
 | mdsh | Copies the bytes, but writes a line break after the opening marker. Nothing is added before the closing marker. | [`src/executor.rs#L208-L212`](https://github.com/zimbatm/mdsh/blob/eca79da623dab29ed132b6c4d26a26795c2499c2/src/executor.rs#L208-L212) |
+| terraform-docs | Its default inject-mode template places generated content on its own line between the comments | [Output configuration](https://github.com/terraform-docs/terraform-docs/blob/b17ec1bebe08758be2110de4894742bdae515e17/docs/user-guide/configuration/output.md#L20-L25) and [default template](https://github.com/terraform-docs/terraform-docs/blob/b17ec1bebe08758be2110de4894742bdae515e17/docs/user-guide/configuration/output.md#L39-L64) |
 
 No inspected tool starts block content on the opening marker's line. mdsh is the only one that preserves bytes, and its bare trailing side is the case that leaves a fence open in the table above. None of these tools keep single-line inline values unpadded; comment-mark does, so a value can sit inside a sentence.
+
+Prettier's [range ignore](https://github.com/prettier/prettier/blob/b09dd90022c875f3089f19f37724da6377e52b7f/docs/ignore.md#L130-L148) is not an injector, but it constrains generated sections: its `<!-- prettier-ignore-start -->` and `<!-- prettier-ignore-end -->` markers work only at the top level, with a blank line before each. A generated section that must stay unformatted needs those markers on their own lines around comment-mark's markers.
 
 ### Rejected: a byte-exact insertion mode
 
@@ -89,7 +92,7 @@ await commentMark('> <!-- a --><!-- /a -->\n', { a: 'foo\nbar' })
 // '> <!-- a -->\n> foo\n> bar\n> <!-- /a -->\n'
 ```
 
-Before #37, the inserted lines had no prefix. GitHub then rendered an empty blockquote followed by a separate `foo bar` paragraph. markdown-magic keeps the opener's indentation for the same reason ([`block-transformer/src/index.js#L257-L289`](https://github.com/DavidWells/markdown-magic/blob/f6cd8c042c835176a893decfe42f33223c91704b/packages/block-transformer/src/index.js#L257-L289)).
+Before #37, the inserted lines had no prefix. GitHub then rendered an empty blockquote followed by a separate `foo bar` paragraph. markdown-magic also preserves indentation in block replacement ([details](../markdown-magic/block-replacement.md)).
 
 Reading strips the same prefixes, in resolver `content`, `getCommentMark`, `getCommentMarkAll`, and the CLI's JSON output. Reading and writing must be inverses. Otherwise a resolver that returns its input adds one more prefix on every run. The tests check three reruns for each container form: the same static value, a resolver `({ content }) => content`, and the CLI, which must report `Unchanged`. A continuation line without the prefix, such as lazy blockquote text, is read as written.
 

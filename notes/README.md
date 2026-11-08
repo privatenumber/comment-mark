@@ -4,18 +4,24 @@ Tracked maintainer references for the decisions and contracts that shape comment
 
 ## Ownership
 
-The comment-mark folder owns project policy, design decisions, and their evidence. Upstream behavior that a decision depends on, such as the CommonMark HTML block rules or another tool's source, is cited inline beside the decision.
+Each upstream folder owns that tool's behavior at the audited version: its implementation, semantics, and limits. The comment-mark folder owns project policy, design decisions, and cross-tool comparison, and links to the upstream notes for evidence. Notes link to each other instead of repeating a claim.
 
 ## Index
 
 | Folder | Owns |
 | --- | --- |
-| [comment-mark/](./comment-mark/README.md) | Design decisions, measured comparisons, and known limitations |
+| [comment-mark/](./comment-mark/README.md) | Design decisions, known gaps, and the [related tools](./comment-mark/related-tools.md) overview |
+| [markdown-magic/](./markdown-magic/README.md) | The `FILE` transform, block replacement layout, and the comment block parser |
+| [vitepress/](./vitepress/README.md) | The `@include` directive |
+| [htmlparser2/](./htmlparser2/README.md) | Comment tokenizing |
+| [parse5/](./parse5/README.md) | Comment tokenizing and its HTML-spec semantics |
+| [micromark/](./micromark/README.md) | Inline and block HTML comment rules in CommonMark |
+| [fast-xml-parser/](./fast-xml-parser/README.md) | Literal comment-terminator search |
 
 ## Evidence
 
-Cite upstream facts beside the claim using primary sources, preferably pinned releases or commits. Ground project behavior in repository source or tests, and label decisions with their rationale. Distinguish documented and observed behavior from inference. Keep executable contracts in the test suite.
+Cite upstream facts beside the claim using primary sources, pinned to a release or commit with line anchors. Ground project behavior in repository source or tests, and label decisions with their rationale. Distinguish documented, observed, and inferred behavior. Keep executable contracts in the test suite.
 
 ## Maintenance
 
-When upstream evidence or project behavior changes, update the affected note and the tests it links to.
+When upstream evidence or project behavior changes, update the affected note and the tests it links to. Re-verify an upstream note against a newer version before reusing its claims.

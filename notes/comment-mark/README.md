@@ -2,6 +2,8 @@
 
 Design decisions for comment-mark, with the evidence behind them and the known gaps.
 
+Start with [related tools](./related-tools.md) for how comment-mark compares with markdown-magic, doctoc, mdeval, and the parsers it was measured against.
+
 ## Document model
 
 - [Markers and selectors](./markers-and-selectors.md): why a marker is a matched comment pair, outermost-pair parsing, the selector grammar, attribute rewriting, and the v2 migration hazard.
