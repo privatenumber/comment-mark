@@ -27,13 +27,12 @@ const exitWithError = (message: string): never => {
 	throw exitSignal;
 };
 
-// Translate a library failure into the CLI's exit, so the error message is the
-// one comment-mark reports rather than a stack trace.
+// Expected library errors use this prefix; unexpected failures keep their stack.
 const fromLibrary = async <T>(call: () => T | Promise<T>): Promise<T> => {
 	try {
 		return await call();
 	} catch (error) {
-		if (error instanceof Error) {
+		if (error instanceof Error && error.message.startsWith('[comment-mark] ')) {
 			exitWithError(error.message);
 		}
 
@@ -356,6 +355,7 @@ try {
 	await main();
 } catch (error) {
 	if (error !== exitSignal) {
-		throw error;
+		console.error(error);
+		process.exitCode = 1;
 	}
 }

@@ -10,6 +10,16 @@ import { createMarker } from '../utils/create-marker.ts';
 import { commentMarkCli } from '../utils/comment-mark-cli.ts';
 
 describe('CLI', () => {
+	test('prints the complete unexpected error for a long file path', async () => {
+		const path = `/${'x'.repeat(70_000)}`;
+		const invocation = commentMarkCli(path);
+
+		await expect(invocation).rejects.toMatchObject({ exitCode: 1 });
+		const { stderr } = await invocation.catch(error => error);
+		expect(stderr).toContain('ENAMETOOLONG');
+		expect(stderr.includes(path)).toBe(true);
+	});
+
 	test('prints the complete error for a long malformed attribute', async () => {
 		const attribute = 'x'.repeat(300_000);
 		await using fixture = await createFixture({ 'README.md': `<!-- a ${attribute} -->value<!-- /a -->` });
