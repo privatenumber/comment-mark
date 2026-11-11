@@ -39,7 +39,7 @@ The rules were compared on 64 cases: 8 marker positions × 8 kinds of content. E
 | --- | --- |
 | A: content-only, `develop` at `d41c4a5` (#33) | 26 |
 | A2: A plus own-line layout for content with a trailing line break (#40, reverted) | 31 |
-| B: keep the section's existing layout, as markdown-magic does | 27 |
+| B: keep the section's existing layout, as markdown-magic does | 26 |
 | C3: marker position (#43) | 49 |
 
 Three of C3's 15 mismatches are list items that differ only in whitespace inside the tag (`<li> Jane </li>` against `<li>Jane</li>`), which renders the same. Counted as equal, C3 matches 52 cases. No layout rule can fix the other 12:
@@ -112,13 +112,14 @@ for (const [position, document, prefix] of positions) {
 console.log(`${matches}/${positions.length * contents.length} render like the content without markers`)
 ````
 
-Observed on 2026-11-11 with Node `v26.13.0`: `49/64` for the #43 head, `31/64` for A2 at `2f947b5` (exported with `git archive 2f947b5 src`), and `26/64` for `develop` at `d41c4a5`. One independent rerun during review scored `develop` at `25/64`; a second run of this script reproduced `26/64`, so the difference may come from a renderer response and is not explained. Rule B is not an implementation in any commit. The module below applies it, using `develop`'s writer only for container prefixes of multiline content, and scored `27/64`. Run it as `DEVELOP_INDEX=<develop checkout>/src/index.ts node render-matrix.mjs rule-b.mjs`. An earlier wrapper passed all content through `develop`'s content-based padding as well, so it also padded one-line block content such as `# H`; that hybrid scored 31 and is not rule B.
+Observed on 2026-11-11 with Node `v26.13.0`: `49/64` for the #43 head, `31/64` for A2 at `2f947b5` (exported with `git archive 2f947b5 src`), and `26/64` for `develop` at `d41c4a5`. One independent rerun during review scored `develop` at `25/64`; a second run of this script reproduced `26/64`, so the difference may come from a renderer response and is not explained. Rule B is not an implementation in any commit. The module below applies it, using `develop`'s writer only for container prefixes of multiline content, and scored `26/64`. Like markdown-magic, it adds a line break on both sides of multiline content even when the content already has one. Skipping the line breaks the content already has scores `27/64`; that variant is not markdown-magic's rule. Run it as `DEVELOP_INDEX=<develop checkout>/src/index.ts node render-matrix.mjs rule-b.mjs`. An earlier wrapper passed all content through `develop`'s content-based padding as well, so it also padded one-line block content such as `# H`; that hybrid scored 31 and is not rule B.
 
 ```js
-// Rule B: add line breaks around content only when it contains a line break,
-// as markdown-magic does for a one-line section. Otherwise insert it as written.
-// Multiline content goes through develop's writer for its container prefixes;
-// develop leaves content that already has both boundary breaks unchanged.
+// Rule B, as markdown-magic applies it to a one-line section: wrap content that
+// contains a line break in one more line break on each side, even if it already
+// has one. Insert other content as written. Multiline content goes through
+// develop's writer only for its container prefixes: develop leaves content that
+// already has both boundary breaks unchanged.
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -129,8 +130,7 @@ export const commentMark = async (document, { a }) => {
     if (!a.includes('\n')) {
         return document.replace(marker, `<!-- a -->${a}<!-- /a -->`)
     }
-    const wrapped = `${a.startsWith('\n') ? '' : '\n'}${a}${a.endsWith('\n') ? '' : '\n'}`
-    return develop.commentMark(document, { a: wrapped })
+    return develop.commentMark(document, { a: `\n${a}\n` })
 }
 ```
 
@@ -138,7 +138,7 @@ export const commentMark = async (document, { a }) => {
 
 - **A: decide from the content (#33).** Content that looked like block Markdown got its own lines; a single inline line was inserted as written. It cannot be right in both positions: `**Jane**` needs its own lines on a marker line and must stay inline mid-sentence. Score 26.
 - **A2: also lay out content with a trailing line break on its own lines (#40).** It fixed `**Bold**\n` on a marker line but split headings such as `# Version <!-- v -->2.0\n<!-- /v -->`. Score 31. Reverted in `479028c` before #40 merged.
-- **B: keep the section's existing layout.** markdown-magic adds line breaks only when the original section or the new content is multiline ([source](https://github.com/DavidWells/markdown-magic/blob/f6cd8c042c835176a893decfe42f33223c91704b/packages/block-transformer/src/index.js#L271-L289); [details](../markdown-magic/block-replacement.md)). A one-line section stays one line, so inline markup on a marker line stays literal. Score 27.
+- **B: keep the section's existing layout.** markdown-magic adds line breaks only when the original section or the new content is multiline ([source](https://github.com/DavidWells/markdown-magic/blob/f6cd8c042c835176a893decfe42f33223c91704b/packages/block-transformer/src/index.js#L271-L289); [details](../markdown-magic/block-replacement.md)). A one-line section stays one line, so inline markup on a marker line stays literal. Score 26.
 - **Byte-exact insertion.** See [below](#rejected-a-byte-exact-insertion-mode).
 
 C3 costs one migration. A one-line section whose marker sits alone on its line, such as `<!-- version -->1.2.3<!-- /version -->`, becomes three lines on its next update. After a blank line, plain text renders the same text, now inside a `<p>` instead of a raw HTML block, so styles that target paragraphs can apply to it. Right after a paragraph line, the value was already outside the paragraph: GitHub renders `Intro\n<!-- v -->1.2.3<!-- /v -->` as `<p>Intro</p>` followed by raw `1.2.3`, and after the update the value becomes its own `<p>`; see [the matrix](#evidence-the-render-matrix). The visible text does not change, and the next release is a major version for other reasons (ESM-only). Reconsider the rule only with a case where a line-start marker needs inline content, or where an inline marker needs block content, that the render matrix can show.
