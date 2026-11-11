@@ -1,5 +1,4 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { isDeepStrictEqual } from 'node:util';
 import { cli } from 'cleye';
 import packageJson from '../package.json' with { type: 'json' };
 import {
@@ -294,11 +293,12 @@ const main = async () => {
 	for (const [selector, index] of matchedIndexes) {
 		const before = originalDocument.markers[index];
 		const after = updatedDocument.markers[index];
-		// Container prefix normalization can change bytes without changing the
-		// content returned by the reader, and still needs to be written.
-		const beforeSource = original.slice(before.node.openingStart, before.node.contentEnd);
-		const afterSource = updatedSource.slice(after.node.openingStart, after.node.contentEnd);
-		if (isDeepStrictEqual(markerData(before), markerData(after)) && beforeSource === afterSource) {
+		// Compare bytes, not reader data: normalizing a container prefix changes
+		// bytes without changing the content the reader returns, and still needs
+		// to be written. Validation keeps each marker's continuation, so equal
+		// bytes also mean equal reader data.
+		if (original.slice(before.node.openingStart, before.node.contentEnd)
+			=== updatedSource.slice(after.node.openingStart, after.node.contentEnd)) {
 			unchanged.push(selector);
 		} else {
 			updated.push(selector);

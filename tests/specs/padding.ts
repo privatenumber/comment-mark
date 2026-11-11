@@ -29,8 +29,8 @@ describe('marker position layout', () => {
 		for (const ending of ['\r', '\n', '\r\n']) {
 			const source = `before${ending}<!-- a --><!-- /a -->`;
 			expect(await commentMark(source, { a: 'value' })).toBe(`before${ending}<!-- a -->${ending}value${ending}<!-- /a -->`);
+			expect(await commentMark(source, { a: `${ending}value${ending}` })).toBe(`before${ending}<!-- a -->${ending}value${ending}<!-- /a -->`);
 		}
-		expect(await commentMark('before\r<!-- a --><!-- /a -->', { a: '\rvalue\r' })).toBe('before\r<!-- a -->\rvalue\r<!-- /a -->');
 		const quote = await commentMark('> <!-- a --><!-- /a -->\r', { a: 'one\rtwo' });
 		expect(quote).toBe('> <!-- a -->\r> one\r> two\r> <!-- /a -->\r');
 		expect(getCommentMark(quote, 'a')?.content).toBe('\rone\rtwo\r');
@@ -179,12 +179,6 @@ describe('marker position layout', () => {
 			});
 		}
 	}
-
-	test('keeps existing boundaries and uses the document line ending', async () => {
-		const input = `before\r\n${createMarker('a')}\r\n`;
-		expect(await commentMark(input, { a: '\r\nvalue\r\n' })).toBe(`before\r\n${createMarker('a', '\r\nvalue\r\n')}\r\n`);
-		expect(await commentMark(input, { a: 'value' })).toBe(`before\r\n${createMarker('a', '\r\nvalue\r\n')}\r\n`);
-	});
 
 	test('uses the start of a multiline opening comment', async () => {
 		expect(await commentMark('<!-- a\n -->old<!-- /a -->', { a: 'value' })).toBe('<!-- a\n -->\nvalue\n<!-- /a -->');

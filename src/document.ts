@@ -431,8 +431,8 @@ export const applyReplacements = async (
 			continue;
 		}
 
+		state.selectorText = selectorText;
 		if (typeof updated === 'string') {
-			state.selectorText = selectorText;
 			setContent(state, updated, getLineEnding);
 			continue;
 		}
@@ -441,12 +441,10 @@ export const applyReplacements = async (
 		// throw, while a content assignment cannot, so a rejected update leaves
 		// the marker untouched.
 		if (updated.attributes !== undefined) {
-			state.selectorText = selectorText;
 			replaceAttributes(state, updated.attributes);
 		}
 
 		if (updated.content !== undefined) {
-			state.selectorText = selectorText;
 			setContent(state, updated.content, getLineEnding);
 		}
 	}
