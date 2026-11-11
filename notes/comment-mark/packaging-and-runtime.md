@@ -8,7 +8,7 @@ comment-mark ships one ESM implementation and declaration for the root entry. Co
 
 [Package-entry tests](../../tests/specs/package-entry.ts) load the built package from a consumer fixture using both `import` and `require`. Keep both tests when changing exports, dependencies, or build settings. TypeScript 5.8 documents `--module nodenext` support for `require(esm)` in its [release notes](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-8.html#support-for-require-of-ecmascript-modules-in---module-nodenext). CommonJS TypeScript consumers need a mode that models this interoperation. Re-evaluate if supported Node or TypeScript versions change.
 
-The [package manifest](../../package.json) declares the root and files-plugin exports and publishes `dist` and `skills`. The README's claim that separate ESM and CommonJS builds ship is stale ([README](../../README.md)); the package description, `Interpolate strings with HTML comment markers`, also understates the reader and Markdown use case.
+The [package manifest](../../package.json) declares the root and files-plugin exports and publishes `dist` and `skills`. At `d41c4a5`, the README still claimed that separate ESM and CommonJS builds ship, and the package description, `Interpolate strings with HTML comment markers`, understated the reader and Markdown use case. [PR #38](https://github.com/privatenumber/comment-mark/pull/38) corrects both; the new description is `Read and update sections of Markdown using HTML comment placeholders`.
 
 ## Node version and CLI test boundary
 
@@ -16,14 +16,7 @@ The package declares Node `>=22.22.2` and builds with `--target=node22.22.2` ([m
 
 CLI integration tests spawn `dist/cli.mjs` using the parent runtime's `process.execPath` ([helper](../../tests/utils/comment-mark-cli.ts)). This checks the built CLI on the selected Node version, but `pnpm dev` still uses the built CLI, so stale `dist` can hide source failures.
 
-The source CLI currently imports named exports from JSON. On Node `v26.13.0`, after building at `d41c4a5`, these commands produced different results:
-
-```sh
-fnm exec --using=26.13.0 node src/cli.ts --version
-fnm exec --using=26.13.0 node dist/cli.mjs --version
-```
-
-The first exited 1 with `SyntaxError: The requested module '../package.json' does not provide an export named 'description'`. The built CLI exited 0 and printed `0.0.0-semantic-release`. A source-CLI smoke test would cover a different boundary from the existing built-package test.
+At `d41c4a5`, the source CLI imported named exports from JSON, which Node does not provide. `node src/cli.ts --version` on Node `v26.13.0` exited 1 with `SyntaxError: The requested module '../package.json' does not provide an export named 'description'`, while the built CLI printed `0.0.0-semantic-release`, because the bundler resolves the import. [PR #41](https://github.com/privatenumber/comment-mark/pull/41) imports the default export (`import packageJson from '../package.json' with { type: 'json' }`) and adds the test `runs the source CLI` in [`tests/specs/cli.ts`](../../tests/specs/cli.ts), which covers this boundary separately from the built-package tests.
 
 ## Agent skills and releases
 

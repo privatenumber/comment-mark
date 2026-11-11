@@ -2,7 +2,7 @@
 
 `commentMark` resolves every selector against the original document before it applies replacements. Static values target the first match, arrays target positions, and resolvers claim every match. Claims are applied in document order, with each resolver awaited before the next. This makes targeting independent of mutations and gives side effects a predictable order.
 
-Project behavior was checked against commit [`d41c4a5`](https://github.com/privatenumber/comment-mark/commit/d41c4a580492741fc09a1c8ef1e14b3882f87ed7) on 2026-11-08. For marker selection, see [markers and selectors](./markers-and-selectors.md). For content layout, see [content padding](./content-padding.md).
+Project behavior was checked against commit [`d41c4a5`](https://github.com/privatenumber/comment-mark/commit/d41c4a580492741fc09a1c8ef1e14b3882f87ed7) on 2026-11-08. For marker selection, see [markers and selectors](./markers-and-selectors.md). For content layout, see [content layout](./content-padding.md).
 
 ## Target claims
 
@@ -28,7 +28,7 @@ An invalid claim fails before any resolver runs. A later resolver rejection caus
 
 [PR #25](https://github.com/privatenumber/comment-mark/pull/25) accepts a direct `{ attributes?, content? }` update, avoiding a function that only returns an already-known object. A resolver can return the same shape. `attributes` is the complete replacement set, not a merge; spread the existing attributes to preserve them. Omitted or explicitly `undefined` fields preserve that part; `content: ''` clears content and `attributes: {}` removes all attributes. Attribute validation happens before mutation. See [`CommentMarkUpdate`](../../src/document.ts#L15-L18), [attribute replacement](../../src/document.ts#L114-L136), and [update object tests](../../tests/specs/update-objects.ts).
 
-Historically, object content was inserted verbatim while some string content was padded. [PR #33](https://github.com/privatenumber/comment-mark/pull/33) superseded that distinction. The current content-based rule is described in [content padding](./content-padding.md).
+Historically, object content was inserted verbatim while some string content was padded. [PR #33](https://github.com/privatenumber/comment-mark/pull/33) superseded that distinction. [#43](https://github.com/privatenumber/comment-mark/pull/43) replaced that rule with one based on the marker's position, described in [content layout](./content-padding.md).
 
 ## Open gap: invalid numeric values
 

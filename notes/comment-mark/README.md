@@ -12,7 +12,7 @@ Start with [related tools](./related-tools.md) for how comment-mark compares wit
 ## Updates
 
 - [Replacements](./replacements.md): which markers each value kind claims, why claims are validated before any resolver runs, sequential async resolvers, and update objects.
-- [Content padding](./content-padding.md): when replacement content gets line breaks around it, the document's line ending, list and blockquote continuation, and the rejected byte-exact mode.
+- [Content layout](./content-padding.md): how the marker's position decides the layout, the render matrix behind that rule, structure validation, the line ending, list and blockquote continuation, and the rejected alternatives.
 - [File inclusion](./file-inclusion.md): the design of the files plugin and how other file-inclusion tools compare.
 
 ## Interfaces and tooling

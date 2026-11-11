@@ -1,6 +1,6 @@
 # CLI argument and update boundaries
 
-The CLI treats flag names as marker selectors, not as a fixed set of options. It must preserve their exact spelling and distinguish control flags from markers with the same names. The contracts below were checked against `d41c4a5` on 2026-11-08.
+The CLI treats flag names as marker selectors, not as a fixed set of options. It must preserve their exact spelling and distinguish control flags from markers with the same names. The contracts below were checked against `d41c4a5` on 2026-11-08, and the output and update-pass sections against the stack head `5140694` on 2026-11-11.
 
 ## Control flags and selectors share a namespace
 
@@ -14,51 +14,31 @@ Arbitrary marker names also include `__proto__`. In type-flag 4.5.0, assigning t
 
 ## First-match ownership and missing selectors
 
-An attribute flag updates only the first marker matching its selector. It builds a direct static update object from that marker's attributes. This claims exactly one marker: using an index-guarded resolver instead would claim every matching marker before the guard ran. That previously caused false conflicts between an attribute flag targeting the first `item` and a second flag targeting another `item` by ID. [PR #29](https://github.com/privatenumber/comment-mark/pull/29) fixed this, and `updates distinct markers through selectors that share a tag name` protects the case in the [CLI tests](../../tests/specs/cli.ts). See [replacement ownership](./replacements.md) for the library rule. The comment at `src/cli.ts:9-10` is stale: attribute updates no longer need a resolver.
+An attribute flag updates only the first marker matching its selector. It builds a direct static update object from that marker's attributes. This claims exactly one marker: using an index-guarded resolver instead would claim every matching marker before the guard ran. That previously caused false conflicts between an attribute flag targeting the first `item` and a second flag targeting another `item` by ID. [PR #29](https://github.com/privatenumber/comment-mark/pull/29) fixed this, and `updates distinct markers through selectors that share a tag name` protects the case in the [CLI tests](../../tests/specs/cli.ts). See [replacement ownership](./replacements.md) for the library rule. [PR #40](https://github.com/privatenumber/comment-mark/pull/40) corrected the source comment that still described a resolver.
 
-The library rejects a missing static selector, but the CLI classifies selectors first and filters missing ones from the combined update. It reports missing selectors and exits 1 while still saving valid updates. This preserves useful partial CLI updates without weakening the library's typo detection ([CLI implementation](../../src/cli.ts), [missing-selector decision](https://github.com/privatenumber/comment-mark/pull/21), [regression tests](../../tests/specs/cli.ts)). Genuine overlapping claims still fail before writing.
+The library rejects a missing static selector, but the CLI classifies selectors first and filters missing ones from the combined update. It reports missing selectors and exits 1 while still saving valid updates. This preserves useful partial CLI updates without weakening the library's typo detection ([CLI implementation](../../src/cli.ts), [missing-selector decision](https://github.com/privatenumber/comment-mark/pull/21), [regression tests](../../tests/specs/cli.ts)). Genuine overlappi## Output, errors, and update passes
 
-## Known limitations
+The gaps below were found at `d41c4a5` and fixed in one stack of pull requests ([#39](https://github.com/privatenumber/comment-mark/pull/39) to [#43](https://github.com/privatenumber/comment-mark/pull/43)). Each fix has a regression test in [`tests/specs/cli.ts`](../../tests/specs/cli.ts).
 
-### Read mode can truncate piped JSON
+### Exit without `process.exit`
 
-Read mode writes JSON and immediately calls `process.exit(0)` ([source](../../src/cli.ts)). On macOS with Node `v26.13.0`, a built CLI at `d41c4a5` emitted 65,536 bytes of an expected 300,064-byte JSON response through a pipe, while both pipeline commands exited 0. The output is incomplete JSON. Reproduce from the repository root in zsh. Each example runs in a subshell, so its cleanup trap removes only its own temporary file:
+Read mode used to write JSON and then call `process.exit(0)`. Through a pipe, that dropped output: on macOS with Node `v26.13.0`, the built CLI emitted 65,536 bytes of an expected 300,064-byte response, and both pipeline commands exited 0. A pipe buffer holds only part of the output, and `process.exit` does not wait for the rest to drain.
 
-```zsh
-(
-	fnm exec --using=26.13.0 pnpm build || exit 1
-	f=$(mktemp "${TMPDIR%/}/comment-mark-cli.XXXXXX")
-	trap 'rm -f "$f"' EXIT
-	fnm exec --using=26.13.0 node -e 'require("node:fs").writeFileSync(process.argv[1], "<!-- a -->" + "x".repeat(300000) + "<!-- /a -->")' "$f"
-	fnm exec --using=26.13.0 node -e 'console.log(Buffer.byteLength(JSON.stringify([{tagName:"a",attributes:{},content:"x".repeat(300000)}], null, "\t") + "\n"))'
-	fnm exec --using=26.13.0 node dist/cli.mjs "$f" | wc -c
-	print -r -- "pipeline statuses: $pipestatus"
-)
-```
+The CLI now never calls `process.exit`. Code that must stop throws an `exitSignal` sentinel, and the top-level handler in [`src/cli.ts`](../../src/cli.ts) sets `process.exitCode` and lets Node exit once stdout drains ([#39](https://github.com/privatenumber/comment-mark/pull/39), [#42](https://github.com/privatenumber/comment-mark/pull/42)). The test `prints complete JSON for large marker content` reads more than one pipe buffer through a subprocess.
 
-Observed output: `300064`, `65536`, and `pipeline statuses: 0 0`. Pipe buffering varies by environment. A fix needs a subprocess regression test larger than the pipe buffer and must let stdout drain before exit.
+- **Early-closing readers.** In read mode, `EPIPE` and `ENOTCONN` on stdout mean that the reader closed early, as with `| head`, so the CLI exits 0 quietly. `ENOTCONN` occurs when a parent process connects stdio with a socket. Its branch has no deterministic test; `EPIPE` and other write errors are tested.
+- **Errors.** The top-level handler prints `Error: <message>` for errors with the `[comment-mark] ` prefix, and the full stack for any other error, in read mode and update mode alike. Before, read-mode parse errors and filesystem errors could print raw stacks or lose output.
 
-### Content with attribute flags bypasses the core padding policy
+### Content with attribute flags uses the core layout
 
-The CLI pre-pads content containing `\n` when the same selector also has an attribute update ([source](../../src/cli.ts)). On a CRLF document this can insert LF boundaries, even though the core would use CRLF. The following was observed with the built CLI and Node `v26.13.0` at `d41c4a5`:
+When a selector had both content and an attribute flag, the CLI used to add LF line breaks around multiline content itself, so a CRLF document got LF boundaries that the core would not write. [#40](https://github.com/privatenumber/comment-mark/pull/40) removed that step: both CLI paths pass the content through, and the core decides the layout and line ending. Taken alone, #40 loses one case that the old step happened to fix (`--a=$'**Bold**\n' --a.k=v` on a marker alone on its line). [#43](https://github.com/privatenumber/comment-mark/pull/43) fixes it in the core, so the stack must merge in order. See [content layout](./content-padding.md).
 
-```zsh
-(
-	fnm exec --using=26.13.0 pnpm build || exit 1
-	f=$(mktemp "${TMPDIR%/}/comment-mark-padding.XXXXXX")
-	trap 'rm -f "$f"' EXIT
-	printf '# T\r\n<!-- a --><!-- /a -->\r\n' > "$f"
-	fnm exec --using=26.13.0 node dist/cli.mjs "$f" $'--a=x\ny' '--a.k=v'
-	fnm exec --using=26.13.0 node --input-type=module -e 'import {readFile} from "node:fs/promises"; import {commentMark} from "./dist/index.mjs"; const input="# T\r\n<!-- a --><!-- /a -->\r\n"; console.log("CLI:",JSON.stringify(await readFile(process.argv[1],"utf8"))); console.log("core:",JSON.stringify(await commentMark(input,{a:{content:"x\ny",attributes:{k:"v"}}})))' "$f"
-)
-```
+### One combined update
 
-The CLI result was `"# T\r\n<!-- a k=\"v\" -->\nx\ny\n<!-- /a -->\r\n"`; the core result was `"# T\r\n<!-- a k=\"v\" -->\r\nx\ny\r\n<!-- /a -->\r\n"`. The input content's own LF is unchanged in both results. See [content padding](./content-padding.md) for the core policy.
+The update path used to call `getCommentMark` and a solo `commentMark` for each matched selector to find its status, then `commentMark` again for the combined result: `2S + M + 1` document parses for `S` matched and `M` missing selectors. The solo calls also became wrong after #43 added output validation, because a solo update can be rejected when the combined update is valid.
 
-### Errors and repeated work
+Since #43, the CLI parses the document once, applies the combined update for all matched selectors once, and reports each selector as updated or unchanged by comparing its marker before and after. The comparison uses the marker's source bytes, not the reader's data: normalizing a container prefix changes bytes that must be saved even when the content read back is the same (test `saves container formatting changes even when read content is unchanged`). Validation keeps each marker's continuation, so equal bytes also mean equal reader data. Missing selectors still exit 1 after the other selectors are saved.
 
-Library errors in the update path pass through `fromLibrary` for a concise message. Read-mode parsing and filesystem failures are outside that wrapper and can expose raw stack traces ([source](../../src/cli.ts)).
-
-For each matched selector the update path calls `getCommentMark` and applies a solo `commentMark` to classify its status, then calls `commentMark` again for the combined result. The status lookup also runs for each missing selector. For `S` matched and `M` missing selectors that is `2S + M + 1` document parses, before accounting for selector scans ([source](../../src/cli.ts)). A parse-once plan is a possible improvement, not a measured requirement; benchmark representative documents before adding an index or changing the boundary.
+g an index or changing the boundary.
 
 Possible CLI extensions include a no-write `--check` mode for generated sections, stdin/stdout support for pipelines, and an explicit all-matches update mode. None is implemented. Revisit these when a concrete workflow needs them; retain the existing partial-update and first-match contracts unless a new mode explicitly changes them.

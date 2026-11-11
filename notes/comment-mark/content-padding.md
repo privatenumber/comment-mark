@@ -1,63 +1,129 @@
-# Content padding
+# Content layout
 
-comment-mark decides the layout of replacement content from the content itself. Content that needs block layout gets a line break after the opening comment and before the closing comment, unless it already has one. A single line of inline text is inserted as written. The same rule applies to static strings, object `content`, resolver results, and the files plugin. There is no option to insert block content byte for byte.
+The marker's position decides how replacement content is laid out. If the opening comment starts its line, the content goes on its own lines: comment-mark adds a line break after the opening comment and before the closing comment, on each side that lacks one. If the opening comment is inside a line, the content is inserted with no added line breaks. Empty content stays empty. The rule is the same for static strings, object `content`, resolver results, and the files plugin.
 
-- Rule: [`src/padding.ts`](../../src/padding.ts) (`needsBlockPadding`, `padContent`), applied in [`src/document.ts`](../../src/document.ts) where content is set.
-- Contract: [`tests/specs/padding.ts`](../../tests/specs/padding.ts) and the first test in [`tests/specs/files-plugin.ts`](../../tests/specs/files-plugin.ts).
-- Shipped in [#33](https://github.com/privatenumber/comment-mark/pull/33). The files plugin ([#30](https://github.com/privatenumber/comment-mark/pull/30)) follows the same rule.
+```md
+<!-- author -->
+**Jane**
+<!-- /author -->
 
-## Why content needs padding
+Written by <!-- author -->Jane<!-- /author -->.
+```
 
-A marker is an HTML comment. In CommonMark, a line that starts with `<!--` (after up to three spaces of indentation) opens an HTML block of type 2. The block ends at the first line that contains `-->`, and that whole line belongs to the block ([CommonMark 0.31.2, section 4.6](https://spec.commonmark.org/0.31.2/#html-blocks); [GFM](https://github.github.com/gfm/#html-blocks) has the same type 2 conditions). Markdown on the same line as an opening comment at the start of a line is therefore passed through as raw HTML and not parsed.
+- Rule: `setContent` in [`src/document.ts`](../../src/document.ts) reads the `startsLine` flag that the scanner records for each marker in [`src/parser/scan-comments.ts`](../../src/parser/scan-comments.ts).
+- Contract: [`tests/specs/padding.ts`](../../tests/specs/padding.ts), and the rejection tests in [`tests/specs/replacement.ts`](../../tests/specs/replacement.ts).
+- Shipped in [#43](https://github.com/privatenumber/comment-mark/pull/43) with a `BREAKING CHANGE:` footer. It replaces the content-based rule of [#33](https://github.com/privatenumber/comment-mark/pull/33); see [rejected alternatives](#rejected-alternatives).
+- Checked against the #43 head `5140694` on 2026-11-11.
 
-Observed with GitHub's renderer (`gh api -X POST /markdown -f mode=gfm -f text=...`, 2026-11-08):
+## Goal: markers render as if absent
 
-| Input | Output |
+A marker should not change how its section renders. The test for every layout rule below is: the output must render the same as the content written in the same place without the markers.
+
+The position matters because of how CommonMark parses comments ([CommonMark 0.31.2, section 4.6](https://spec.commonmark.org/0.31.2/#html-blocks); [GFM](https://github.github.com/gfm/#html-blocks) has the same type 2 conditions):
+
+- **A comment that starts a line opens an HTML block.** After container prefixes and at most three spaces of indentation, a line that starts with `<!--` opens a type 2 HTML block. The block ends on the first line that contains `-->`, and that whole line is raw HTML. Markdown on that line is not parsed, so `<!-- a -->**Jane**<!-- /a -->` on its own line shows the literal text `**Jane**`. The content must start on the next line, and the closing comment must not share the content's last line, or a closing fence such as ```` ```<!-- /a --> ```` stops being a closing fence.
+- **A comment inside a line is inline HTML.** In `Written by <!-- a --><!-- /a -->.`, the comment renders as nothing, so content inserted as written renders as if the markers were absent. A line break there would split the sentence or the heading.
+
+"Starts its line" is the scanner's existing HTML-block test, `startsBlockComment`, so the layout and the scanner agree on what an HTML block is:
+
+- At most three columns of indentation after container prefixes, with tabs expanded. Four or more spaces at the top level are indented code, and in a paragraph they continue the paragraph, so `Before\n    <!-- a -->` stays inline.
+- A line that starts with a comment is raw HTML as a whole, so every marker on it starts its line, including adjacent pairs such as `<!-- a -->x<!-- /a --><!-- b -->y<!-- /b -->` and markers after an ordinary comment.
+- On the line where a multiline comment closes, later markers inherit that comment's block context: `<!-- note\n--> <!-- a -->` starts its line.
+- A leading byte order mark is not text. Markdown parsers drop it, so `﻿<!-- a -->` starts its line.
+
+## Evidence: the render matrix
+
+The rules were compared on 64 cases: 8 marker positions × 8 kinds of content. Each case renders the output with GitHub's GFM renderer (`POST /markdown`, `mode: gfm`, run 2026-11-10 and 2026-11-11) and compares it with the rendered oracle, the content written in place without markers. Comments and whitespace between tags are removed before the comparison.
+
+| Rule | Exact HTML match |
 | --- | --- |
-| `<!-- f --># Title\n\nBody text\n<!-- /f -->` | `# Title` as literal text, then `<p>Body text</p>` |
-| `<!-- f -->\n# Title\n\nBody text\n<!-- /f -->` | `<h1>Title</h1><p>Body text</p>` |
-| `<!-- f -->MIT License\n\nCopyright **x**\n<!-- /f -->` | `MIT License` as raw text, not a paragraph |
-| ``<!-- f -->\n```js\nx()\n```<!-- /f -->\n\n## After`` | The fence never closes. The closing comment and `## After` render as code. |
-| `Written by <!-- a -->**Jane**<!-- /a -->.` | `<p>Written by <strong>Jane</strong>.</p>` |
+| A: content-only, `develop` at `d41c4a5` (#33) | 26 |
+| A2: A plus own-line layout for content with a trailing line break (#40, reverted) | 31 |
+| B: keep the section's existing layout, as markdown-magic does | 31 |
+| C3: marker position (#43) | 49 |
 
-The rows show both sides of the rule:
+Three of C3's 15 mismatches are list items that differ only in whitespace inside the tag (`<li> Jane </li>` against `<li>Jane</li>`), which renders the same. Counted as equal, C3 matches 52 cases. No layout rule can fix the other 12:
 
-- **Leading break:** without it, the first line of block content is swallowed by the comment's HTML block.
-- **Trailing break:** without it, the closing comment joins the last line. A closing fence with trailing text is not a closing fence, so the rest of the document becomes code.
-- **Inline content:** a comment inside a paragraph is inline HTML, so inline content must not be padded there. A line break would change the paragraph.
+- **Line start right after a paragraph line** (5 cases). `Intro\n<!-- a -->` interrupts the paragraph, because a type 2 HTML block can interrupt one. The oracle continues the paragraph.
+- **Inline content that ends with a line break,** such as `2.0\n` mid-sentence or in a table cell (5 cases). The closing comment then starts a line and opens an HTML block, so the text after it renders raw or the row ends.
+- **A fence inside a line** (3 cases, mid-sentence, heading, and table cell). The fence cannot close before the closing comment. Since #43, these updates are rejected; see [structure validation](#structure-validation).
 
-## Limits of a content-only rule
+To rerun the matrix, save this script outside the repository and pass the path of a comment-mark `src/index.ts` or built `dist/index.mjs`. It uses `gh auth token` and sends only the synthetic cases to the GitHub API. It prints each mismatch with both renderings, then the score.
 
-Padding decides from the replacement content alone. It does not see the Markdown around the marker, so it cannot guarantee that the result renders as intended in every context. Known cases:
+````js
+import { execFileSync } from 'node:child_process'
 
-- **Markers inside a paragraph.** A line break before block content does not always start a block. CommonMark lets only some blocks interrupt a paragraph: updating `Intro <!-- a --><!-- /a -->` with `2. item` adds the line break, but an ordered list that starts at 2 cannot interrupt the paragraph, so `2. item` renders as paragraph text.
-- **Bare CR line endings.** The scanner accepts a bare `\r` as a line ending, but padding and container continuation look only for `\n`. Updating `> <!-- a --><!-- /a -->\n` with `foo\rbar` adds no padding or `> ` prefix, and `bar` renders outside the blockquote.
-- **Content that changes marker structure.** Padding cannot stop inserted text from hiding or redirecting the closing comment. See [file inclusion](./file-inclusion.md) and the [scanner gaps](./comment-scanning.md#supported-limits-and-observed-gaps).
+const { commentMark } = await import(process.argv[2])
+const token = execFileSync('gh', ['auth', 'token'], { encoding: 'utf8' }).trim()
 
-The marker's position also matters in the other direction: the same content may need a leading line break when the opening comment starts its line, and must not get one when the marker sits inside a heading or sentence. A position-aware rule is an open design question.
+const render = async (text) => {
+    const response = await fetch('https://api.github.com/markdown', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+            text,
+            mode: 'gfm'
+        })
+    })
+    const html = await response.text()
+    // Drop comments and whitespace between tags, so only rendered structure is compared.
+    return html.replaceAll(/<!--[\s\S]*?-->/g, '').replaceAll(/\s+/g, ' ').replaceAll('> <', '><').trim()
+}
 
-## What counts as block layout
+const marker = '<!-- a --><!-- /a -->'
+// [position, document, container prefix]
+const positions = [
+    ['line start (top)', `${marker}\n`, ''],
+    ['line start after blank', `Intro\n\n${marker}\n`, ''],
+    ['line start after paragraph', `Intro\n${marker}\n`, ''],
+    ['mid paragraph', `Written by ${marker}.\n`, ''],
+    ['in heading', `# Version ${marker}\n`, ''],
+    ['blockquote line start', `> ${marker}\n`, '> '],
+    ['list item', `- ${marker}\n`, '  '],
+    ['table cell', `| a |\n| - |\n| ${marker} |\n`, '']
+]
+const contents = ['Jane', '**Jane**', '2.0\n', 'a\nb', '# H', '- item', '```js\nx\n```', '**Bold**\n']
 
-`needsBlockPadding` returns true when the content has a line break before any trailing line endings, or when its first line opens a block: an ATX heading, thematic break, setext underline, fenced code, blockquote, list item, a table row starting with `|`, or indented code. It reuses the scanner's block matchers from [`src/parser/block-context.ts`](../../src/parser/block-context.ts), so padding and marker scanning agree on what a block is.
+let matches = 0
+for (const [position, document, prefix] of positions) {
+    for (const content of contents) {
+        const expected = await render(document.replace(marker, content.replaceAll(/\n(?=.)/g, `\n${prefix}`)))
+        let actual
+        try {
+            actual = await render(await commentMark(document, { a: content }))
+        } catch (error) {
+            console.log(`rejected | ${position} | ${JSON.stringify(content)} | ${error.message}`)
+            continue
+        }
+        if (actual === expected) {
+            matches += 1
+        } else {
+            console.log(`mismatch | ${position} | ${JSON.stringify(content)}\n  expected ${expected}\n  actual   ${actual}`)
+        }
+    }
+}
+console.log(`${matches}/${positions.length * contents.length} render like the content without markers`)
+````
 
-`padContent` only adds a line break on a side that lacks one, so padding itself is idempotent: padding already padded content changes nothing. That does not make every update repeatable. Content that changes the marker structure, such as an unclosed code fence that hides the closing comment, can make the next run fail to find the marker. See the [scanner gaps](./comment-scanning.md#supported-limits-and-observed-gaps).
+Observed on 2026-11-11 with Node `v26.13.0`: `49/64` for the #43 head and `26/64` for `develop` at `d41c4a5`. Rules A2 and B were scored with an earlier version of the same cases that applied each rule to `develop`'s output.
 
-## Decision: pad all content, including included files
+## Rejected alternatives
 
-Before #33, only static strings containing `\n` were padded. Resolver results and object `content` were inserted as written. That rule was introduced in [#16](https://github.com/privatenumber/comment-mark/pull/16) without a recorded rationale, and both value kinds were added after v2.2.0, so changing them did not break a released contract. The files plugin originally promised to insert file contents "verbatim", which conflicted with #33.
+- **A: decide from the content (#33).** Content that looked like block Markdown got its own lines; a single inline line was inserted as written. It cannot be right in both positions: `**Jane**` needs its own lines on a marker line and must stay inline mid-sentence. Score 26.
+- **A2: also lay out content with a trailing line break on its own lines (#40).** It fixed `**Bold**\n` on a marker line but split headings such as `# Version <!-- v -->2.0\n<!-- /v -->`. Score 31. Reverted in `479028c` before #40 merged.
+- **B: keep the section's existing layout.** markdown-magic adds line breaks only when the original section or the new content is multiline ([source](https://github.com/DavidWells/markdown-magic/blob/f6cd8c042c835176a893decfe42f33223c91704b/packages/block-transformer/src/index.js#L271-L289); [details](../markdown-magic/block-replacement.md)). A one-line section stays one line, so inline markup on a marker line stays literal. Score 31.
+- **Byte-exact insertion.** See [below](#rejected-a-byte-exact-insertion-mode).
 
-The project applies one content-based rule for every value kind:
-
-- **Rendering correctness.** Unpadded block content renders incorrectly, as shown above. Included files are usually multiline, so they hit this case most often.
-- **Consistency.** The layout depends on what the content is, not on how the caller passed it.
-- **Verification still works.** A section's content reads back as the padded text, so a check that compares the section with the source file byte for byte fails. The supported check is to run the update again and confirm that nothing changes (the CLI reports `Unchanged`). That check covers layout, not marker structure. Generated content that contains an unmatched same-name opener can redirect the next run to that inner marker, and the rerun can still report `Unchanged` while the intended marker is no longer updated. See [outermost pairs](./markers-and-selectors.md#outermost-pairs). embedme's `--verify` uses the same model: it reports whether a run would change the document ([README](https://github.com/zakhenry/embedme/blob/3cd8692de2c905cf3c9cbc6d87c1b4220f2e6eeb/README.md)).
+C3 costs one migration. A one-line section whose marker sits alone on its line, such as `<!-- version -->1.2.3<!-- /version -->`, becomes three lines on its next update. The rendering of plain text does not change, and the next release is a major version for other reasons (ESM-only). Reconsider the rule only with a case where a line-start marker needs inline content, or where an inline marker needs block content, that the render matrix can show.
 
 ### Precedent
 
-Most inspected generators that write between paired markers put multiline content on its own lines. The table records where each one differs:
+Tools whose markers sit on their own lines put content on its own lines. Tools with inline markers insert inline values:
 
 | Tool | Placement | Source |
 | --- | --- | --- |
+| mdast-zone | Works on block-level comment nodes in the syntax tree, so its zones are block zones between line-start comments | [6.1.0](https://github.com/syntax-tree/mdast-zone/tree/6.1.0) |
+| mdeval | Inline value markers mid-line; block output (its `block()` helper) on marker lines | [README](https://github.com/privatenumber/mdeval/blob/v2.0.0/README.md) |
 | markdown-magic (including its `FILE` transform) | Adds line breaks around multiline content under the linked conditions | [Block replacement](../markdown-magic/block-replacement.md) |
 | doctoc | Always wraps the TOC on its own lines, using the document's detected line ending | [`lib/transform.js#L392`](https://github.com/thlorenz/doctoc/blob/56ec8e078ddb3de2bf7834e129a2448606c56443/lib/transform.js#L388-L401) |
 | all-contributors CLI | Adds line breaks after the opening marker and before the closing marker | [`src/generate/index.js#L55-L64`](https://github.com/all-contributors/all-contributors-cli/blob/e53bf5c427dad9f7a5186e07c85e2f7a69274e55/src/generate/index.js#L45-L65) |
@@ -66,36 +132,51 @@ Most inspected generators that write between paired markers put multiline conten
 | mdsh | Copies the bytes, but writes a line break after the opening marker. Nothing is added before the closing marker. | [`src/executor.rs#L208-L212`](https://github.com/zimbatm/mdsh/blob/eca79da623dab29ed132b6c4d26a26795c2499c2/src/executor.rs#L208-L212) |
 | terraform-docs | Its default inject-mode template places generated content on its own line between the comments | [Output configuration](https://github.com/terraform-docs/terraform-docs/blob/b17ec1bebe08758be2110de4894742bdae515e17/docs/user-guide/configuration/output.md#L20-L25) and [default template](https://github.com/terraform-docs/terraform-docs/blob/b17ec1bebe08758be2110de4894742bdae515e17/docs/user-guide/configuration/output.md#L39-L64) |
 
-No inspected tool starts multiline content on the opening marker's line. Single-line block content differs: markdown-magic adds no line breaks when both the original block and the replacement are single-line ([source](https://github.com/DavidWells/markdown-magic/blob/f6cd8c042c835176a893decfe42f33223c91704b/packages/block-transformer/src/index.js#L271-L289)), so a `# Heading` replacement stays on the marker's line and renders as literal text. It treats a single-line inline value the same way. comment-mark separates the two: it pads a single-line block, such as a heading, and leaves a single-line inline value as written, so the value can sit inside a sentence. mdsh is the only one that preserves bytes, and its bare trailing side is the case that leaves a fence open in the table above.
+No inspected tool starts multiline content on the line of a line-start opening marker. mdsh is the only one that preserves bytes, and its bare trailing side is the case that leaves a fence open.
 
 Prettier's [range ignore](https://github.com/prettier/prettier/blob/b09dd90022c875f3089f19f37724da6377e52b7f/docs/ignore.md#L130-L148) is not an injector, but it constrains generated sections: its `<!-- prettier-ignore-start -->` and `<!-- prettier-ignore-end -->` markers work only at the top level, with a blank line before each. A generated section that must stay unformatted needs those markers on their own lines around comment-mark's markers.
 
-### Rejected: a byte-exact insertion mode
+## Structure validation
 
-An option to skip padding was considered. It is not provided:
+An update may change markers' content and attributes. It must never change the document's marker structure. Since #43, `commentMark` parses its output again whenever the output differs from the input. It rejects the update with `[comment-mark] Replacement for "<selector>" would change the document's markers` if any marker differs in tag name, opening or closing position, `startsLine`, or container continuation. The error names every selector whose section changed. The CLI writes nothing on rejection. Source: `commentMark` in [`src/index.ts`](../../src/index.ts).
 
-- No use case needs it. The only precedent for byte-exact insertion (mdsh) still pads the leading side.
-- The unpadded trailing side corrupts the rest of the document when content ends with a fence and no line break.
-- It would add an API surface whose main effect is to allow broken output.
+This is the policy the attribute writer already follows: never write something the reader would parse differently. Without it, inserted content could corrupt the document silently:
 
-Reconsider when a concrete case needs exact bytes. One candidate is a multiline value inside an HTML `<pre>` element, where an extra leading line break is visible.
+- `Example: <!-- a --><!-- /a -->` with a fenced block puts the closing comment on the fence's last line, so the fence never closes. The next run finds no markers, and updates to unrelated markers fail as missing.
+- An unclosed fence, an unmatched same-name opener, or an unfinished `<!-- note` hides or captures a closing comment. See the [scanner gaps](./comment-scanning.md#supported-limits-and-observed-gaps) and [file inclusion](./file-inclusion.md).
+- An earlier replacement on the same line can change a later marker's line context or its list context, which would change that marker's layout on the next run.
+
+Rejected: validating only when the content contains a character that can affect the scanner (`<`, a backtick, or `~`). This counterexample has none of them:
+
+```md
+x <!-- a --><!-- /a -->
+2. ~~~
+   <!-- b -->old<!-- /b -->
+   ~~~
+```
+
+Replacing `a` with `\n` moves the closing comment to its own line. The paragraph then ends, `2.` opens a list, and the fence hides `b`. Removing a line break can expose a hidden marker the same way. The structure depends on the content and the surrounding document together, so no character-based gate is sound.
+
+Also rejected: re-parsing only from the first changed marker. A change can affect the parse of everything after it, and resuming mid-document would need snapshots of the scanner's container and fence state at line boundaries.
+
+Validation uses the same scanner as the update, so it cannot catch what the scanner gets wrong. See [limits](#limits).
 
 ## Line endings
 
-The added line breaks use the document's line ending: the ending of the first line break in the source, or `\n` when the source has none. The content itself is inserted unchanged, so its own line endings are kept. An existing `\n` or `\r\n` at either end of the content counts as a line break. Only `\n` is searched, so a document that uses bare `\r` line endings, which the scanner accepts, still gets `\n` padding. Shipped in [#36](https://github.com/privatenumber/comment-mark/pull/36); see the line-ending tests in [`tests/specs/padding.ts`](../../tests/specs/padding.ts).
+Added line breaks use the first line break outside every marker's opening comment and content: CRLF, LF, or a lone CR, matching the scanner's line endings. A document without one gets LF. Replacement content and attribute updates rewrite only those excluded ranges, so they cannot change the choice, and running the same update again gives the same output. The content's own line endings are kept. An existing `\n`, `\r\n`, or lone `\r` at either end of the content counts as a line break.
 
 ```js
 await commentMark('# T\r\n<!-- a --><!-- /a -->\r\n', { a: 'x\r\ny' })
 // '# T\r\n<!-- a -->\r\nx\r\ny\r\n<!-- /a -->\r\n'
 ```
 
-doctoc also detects one line ending per document ([`lib/transform.js#L184-L200`](https://github.com/thlorenz/doctoc/blob/56ec8e078ddb3de2bf7834e129a2448606c56443/lib/transform.js#L183-L200)).
+History: [#36](https://github.com/privatenumber/comment-mark/pull/36) used the first LF in the whole source, so a CR-only document got LF padding, and in #43 review an inserted CRLF changed the choice on the next run. doctoc also detects one line ending per document ([`lib/transform.js#L184-L200`](https://github.com/thlorenz/doctoc/blob/56ec8e078ddb3de2bf7834e129a2448606c56443/lib/transform.js#L183-L200)).
 
-Rejected: the line ending of the opening comment's own line. It is more precise only in documents with mixed line endings, which are rare. When the opening comment is on the last line, it needs a fallback to a whole-document scan. To stay linear across many markers, that fallback needed a cache on the parsed document. The per-document rule needs one `indexOf` per `commentMark` call. That lookup runs only when some content needs padding, so updates with only inline values never scan for it.
+Rejected: the line ending of the opening comment's own line. It is more precise only in documents with mixed line endings, which are rare, and it needs a fallback when the opening comment is on the last line. The search runs lazily, once per `commentMark` call, and only when some content needs line breaks.
 
 ## Containers
 
-Content keeps the container of its opening comment. The scanner records a continuation prefix for each marker from the containers open on the opening comment's line: `> ` for a blockquote, and spaces up to the content column for a list item. For example, `> - <!-- a -->` gets `>   `. Writing adds the prefix after every line break in the content, so the closing comment stays in the container too. A blank line gets the prefix without trailing spaces. Shipped in [#37](https://github.com/privatenumber/comment-mark/pull/37); see [`tests/specs/containers.ts`](../../tests/specs/containers.ts).
+Content keeps the container of its opening comment. The scanner records a continuation prefix for each marker from the containers open on the opening comment's line: `> ` for a blockquote, and spaces up to the content column for a list item. For example, `> - <!-- a -->` gets `>   `. Writing adds the prefix after every line break in the content, for line-start and inline markers alike, so the closing comment stays in the container too. A blank line gets the prefix without trailing spaces. Shipped in [#37](https://github.com/privatenumber/comment-mark/pull/37); see [`tests/specs/containers.ts`](../../tests/specs/containers.ts).
 
 ```js
 await commentMark('> <!-- a --><!-- /a -->\n', { a: 'foo\nbar' })
@@ -108,18 +189,40 @@ Reading strips the same prefixes, in resolver `content`, `getCommentMark`, `getC
 
 Decision: when the closing comment is in a different container than the opening comment, the opening comment's container wins, and a multiline write moves the closing comment into it. comment-mark already replaces everything between the two comments, and the content starts at the opener, so the opener decides how it renders. Rejecting such markers or skipping them would break markers that work today.
 
+## Verification
+
+A section's content reads back with its added line breaks, so a check that compares the section with the source byte for byte fails. The supported check is to run the update again and confirm that nothing changes; the CLI reports `Unchanged`. With structure validation, that check now covers marker structure as well as layout, within the [limits](#limits). embedme's `--verify` uses the same model: it reports whether a run would change the document ([README](https://github.com/zakhenry/embedme/blob/3cd8692de2c905cf3c9cbc6d87c1b4220f2e6eeb/README.md)).
+
+### Rejected: a byte-exact insertion mode
+
+An option to skip the added line breaks was considered. It is not provided:
+
+- No use case needs it. The only precedent for byte-exact insertion (mdsh) still adds the leading line break.
+- Without the trailing line break, content that ends with a fence corrupts the rest of the document. Validation would now reject that update, so the option would mostly add a way to fail.
+- An inline marker already inserts content without added line breaks. A caller who needs exact bytes can put the marker inside a line.
+
+Reconsider when a concrete case needs exact bytes in a line-start marker. One candidate is a multiline value inside an HTML `<pre>` element, where the added line breaks are visible.
+
 ## Performance
 
-Padding runs once per updated marker. Rough timing on Node v24.20.0, Apple M2 Max, 2026-11-08, average of 20 calls to `padContent` with `performance.now()` (not a benchmark harness), measured against the padding code of [#33](https://github.com/privatenumber/comment-mark/pull/33). The inputs were `'MIT License\n'.repeat(200_000)`, `'x'.repeat(5_000_000)`, and `'a '.repeat(2_000_000)`. The code has changed since, so treat the figures as a historical order of magnitude and re-measure before relying on them:
+The layout decision is one flag per marker, taken from a check the scanner already runs on each line, so reads cost the same as before. Structure validation adds one parse to every update that changes the document. Measured on Node `v26.13.0`, Apple M2 Max, 2026-11-11, with medians over 21 runs after 5 warmups, comparing #43 at `4ac6f37` with its base `1ae5a7a`. Later #43 commits did not change the scanner's per-line work or the validation parse. The input was a 4-line prose paragraph repeated, followed by one marker, updated with `{ a: 'new' }`:
 
-| Input | Time per call |
-| --- | --- |
-| 2.4 MB multiline content | 0.015 ms (returns at the first line break) |
-| 5 MB single line | 11.6 ms |
-| 4 MB single line of words | 9.1 ms |
+| Input | Base read | Head read | Base update | Head update |
+| --- | --- | --- | --- | --- |
+| 111 KB prose | 0.631 ms | 0.555 ms | 0.545 ms | 1.294 ms |
+| 1.1 MB prose | 5.310 ms | 5.090 ms | 5.288 ms | 10.059 ms |
 
-The cost is linear in the content length. These timings do not compare padding with the rest of an update, such as building the output string.
+For 4,000 markers updated with `value`, an earlier run during #43 review, with base and branch alternating, measured medians of 2.98 ms at the base and 5.32 ms on the branch. An update that assigns no marker returns before rendering. These are local timings, not a benchmark harness.
 
-## Known limitations
+## Limits
 
-- **Inline markup alone on a line.** `<!-- a -->**Jane**<!-- /a -->` on its own line renders the literal `**Jane**`, because the content is inline and the comment starts the line. Plain text such as a date or a version still renders. Padding based on the marker's position would fix markup but rewrite every existing one-line section, such as the Quick start's `lastUpdated` example. This has not been changed.
+- **Markers on a line right after a paragraph line** interrupt the paragraph. No layout rule avoids this; see [the matrix](#evidence-the-render-matrix).
+- **Inline content that ends with a line break or contains a fence** cannot render as if the markers were absent. A fence is rejected by validation.
+- **Markers in indented code** cannot render as absent. A marker indented four or more spaces gets inline layout.
+- **HTML `<pre>`** shows the added line breaks.
+- **Scanner gaps that validation shares.** Validation re-runs the same scanner, so it accepts what the scanner misreads. Observed at the #43 head, and equally on its base:
+  - A multiline attribute value inside a list is written without the list indentation. `- <!-- a --><!-- /a --><!-- b --><!-- /b -->` with `{ a: { attributes: { note: 'x\ny' } } }` ends the list in GFM, because the scanner does not check containers while a comment is open.
+  - A marker on a lazy continuation line of a blockquote or list gets no container prefix. `> Intro\ntext <!-- a --><!-- /a --> tail` with `first\n# Heading\nlast` renders the heading outside the blockquote.
+  - Backticks on a line that starts with a comment are still scanned as a code span. `<!-- note --> `<!-- a --><!-- /a -->`` finds no marker `a`, though the line is raw HTML.
+
+  These came from the fourth review round of #43. They predate #43, so they were recorded rather than fixed there.
