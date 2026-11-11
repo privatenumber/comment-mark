@@ -33,6 +33,10 @@ describe('input handling', () => {
 });
 
 describe('replacement', () => {
+	test('rejects changes to another marker\'s container continuation', async () => {
+		const input = 'x <!-- a -->\n<!-- /a -->\n2. item\n   <!-- b -->\n   old\n   <!-- /b -->';
+		await expect(commentMark(input, { a: 'text' })).rejects.toThrow('would change the document\'s markers');
+	});
 	test('rejects changes to another marker\'s line context', async () => {
 		await expect(commentMark('x <!-- a --><!-- /a --><!-- b --><!-- /b -->', {
 			a: '\n',
@@ -106,7 +110,7 @@ describe('replacement', () => {
 			a: 'hello world\n\ngoogbye world\nhello again',
 		});
 
-		expect(output).toBe('\n\t\t\t# multiline\n\t\t\t<!-- a -->\nhello world\n\ngoogbye world\nhello again\n<!-- /a -->\n\t\t');
+		expect(output).toBe('\n\t\t\t# multiline\n\t\t\t<!-- a -->hello world\n\ngoogbye world\nhello again<!-- /a -->\n\t\t');
 	});
 
 	test('multiple', async () => {
@@ -120,7 +124,7 @@ describe('replacement', () => {
 			ba: 'something world',
 		});
 
-		expect(output).toBe(`\n\t\t\t${createMarker('a', '\nhello world\n')}\n\t\t\t${createMarker('b', '\ngoodbye world\n')}\n\t\t\t${createMarker('ba', '\nsomething world\n')}\n\t\t`);
+		expect(output).toBe(`\n\t\t\t${createMarker('a', 'hello world')}\n\t\t\t${createMarker('b', 'goodbye world')}\n\t\t\t${createMarker('ba', 'something world')}\n\t\t`);
 	});
 
 	test('updates the first match for a scalar value', async () => {

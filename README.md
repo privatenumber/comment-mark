@@ -171,7 +171,7 @@ Read mode preserves section whitespace and prints `[]` when no markers exist. It
 - Flag names are selectors, matched verbatim with no case or dash conversion: `--lastUpdated` and `--last-updated` are different selectors.
 - Use `--selector=value`, not `--selector value`. Quote values containing spaces or newlines, and quote the selector when it contains brackets.
 - The first `=` outside brackets and quotes separates the flag from its value, so `--"item[kind='fruit']"=pear` passes the selector `item[kind='fruit']`.
-- Use `--selector=` to clear a section. Markers on a comment-started line put nonempty content on its own lines; markers on a line starting with text insert it as written.
+- Use `--selector=` to clear a section. Markers on a comment-started line put nonempty content on its own lines; other markers get no added boundary line breaks.
 - Attributes must be separated by whitespace and appear at most once: `id="a"file="b"` and `id="a" id="b"` are rejected.
 - Only the outermost marker pair is a marker. A pair nested inside another pair is part of the outer marker's content.
 - Each selector can be set once per invocation. Repeated flags, valueless flags, and extra positional arguments are rejected before writing.
@@ -297,8 +297,8 @@ Returns a promise that resolves to the updated content as a string. Buffer input
 - A static value whose selector matches no marker rejects, so a typo or a stale selector is not mistaken for a successful no-op. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
 - Rejects an array with more values than matches, a function as an array entry, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
-- When a line starts with a comment after any list or blockquote prefixes and spaces or tabs, markers on that line put nonempty content on its own lines. Missing boundary breaks use the ending of the first LF line break (CRLF or LF), or LF when there is none. Markers on a line that starts with text insert content as written. This also applies to HTML, where added breaks may be visible inside `<pre>`.
-- Rejects updates that would change marker boundaries or whether a marker is on a comment-started line, such as an unclosed fence hiding a closing comment.
+- When a line starts an HTML comment block after any list or blockquote prefixes and up to three indentation columns, markers on that line put nonempty content on its own lines. Missing boundary breaks use the first line ending outside marker content (CRLF, LF, or CR), or LF when there is none. Other markers get no added boundary line breaks; inside lists and blockquotes, continuation prefixes are still written after content line breaks. This also applies to HTML, where added breaks may be visible inside `<pre>`.
+- Rejects updates that would change marker boundaries, line context, or container continuation, such as an unclosed fence hiding a closing comment.
 - Content in a list item or blockquote stays in that container. Reading the content removes its container prefixes.
 - Rejects when a marker is malformed, when a resolver throws or rejects, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
 

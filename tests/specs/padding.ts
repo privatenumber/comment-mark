@@ -3,6 +3,39 @@ import { commentMark, getCommentMark } from '#comment-mark';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('marker position layout', () => {
+	test('recognizes a tab within blockquote indentation', async () => {
+		expect(await commentMark('> \t<!-- a --><!-- /a -->', { a: '**bold**' })).toBe(
+			'> \t<!-- a -->\n> **bold**\n> <!-- /a -->',
+		);
+	});
+	test('keeps a four-space paragraph continuation inline', async () => {
+		const input = 'Before\n    <!-- a --><!-- /a --> after';
+		expect(await commentMark(input, { a: 'value' })).toBe('Before\n    <!-- a -->value<!-- /a --> after');
+	});
+
+	test('uses external line endings for stable updates', async () => {
+		const input = 'x <!-- a --><!-- /a -->\n<!-- b --><!-- /b -->';
+		const replacements = {
+			a: 'value\r\n',
+			b: 'new',
+		};
+		const output = await commentMark(input, replacements);
+		expect(output).toBe('x <!-- a -->value\r\n<!-- /a -->\n<!-- b -->\nnew\n<!-- /b -->');
+		expect(await commentMark(output, replacements)).toBe(output);
+		const afterContent = '<!-- a -->old\r\ncontent<!-- /a -->\r<!-- b --><!-- /b -->';
+		expect(await commentMark(afterContent, { b: 'new' })).toBe(
+			'<!-- a -->old\r\ncontent<!-- /a -->\r<!-- b -->\rnew\r<!-- /b -->',
+		);
+		for (const ending of ['\r', '\n', '\r\n']) {
+			const source = `before${ending}<!-- a --><!-- /a -->`;
+			expect(await commentMark(source, { a: 'value' })).toBe(`before${ending}<!-- a -->${ending}value${ending}<!-- /a -->`);
+		}
+		expect(await commentMark('before\r<!-- a --><!-- /a -->', { a: '\rvalue\r' })).toBe('before\r<!-- a -->\rvalue\r<!-- /a -->');
+		const quote = await commentMark('> <!-- a --><!-- /a -->\r', { a: 'one\rtwo' });
+		expect(quote).toBe('> <!-- a -->\r> one\r> two\r> <!-- /a -->\r');
+		expect(getCommentMark(quote, 'a')?.content).toBe('\rone\rtwo\r');
+		expect(await commentMark(quote, { a: ({ content }) => content })).toBe(quote);
+	});
 	test('inherits line context after a multiline comment closes', async () => {
 		expect(await commentMark('<!-- note\n--> <!-- a --><!-- /a -->', { a: '**bold**' })).toBe(
 			'<!-- note\n--> <!-- a -->\n**bold**\n<!-- /a -->',
@@ -80,14 +113,14 @@ describe('marker position layout', () => {
 			name: 'four spaces',
 			before: '    ',
 			after: '',
-			lineStart: true,
+			lineStart: false,
 			continuation: '',
 		},
 		{
 			name: 'tab',
 			before: '\t',
 			after: '',
-			lineStart: true,
+			lineStart: false,
 			continuation: '',
 		},
 		{

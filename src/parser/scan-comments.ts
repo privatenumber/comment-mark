@@ -11,6 +11,7 @@ import {
 	matchBlockquote,
 	matchFence,
 	matchListMarker,
+	tabSize,
 } from './block-context.ts';
 
 export type CommentVisitor = (
@@ -39,15 +40,17 @@ const closeDelimiter = '-->';
  * so a following ordered list is recognized and its fenced example stays code.
  */
 const startsBlockComment = (line: string, cursor: Cursor) => {
-	let { index } = cursor;
+	let { index, column } = cursor;
 	let indent = cursor.pending;
 
-	while (indent < 3 && line[index] === ' ') {
+	while (indent <= 3 && (line[index] === ' ' || line[index] === '\t')) {
+		const width = line[index] === ' ' ? 1 : tabSize - (column % tabSize);
+		indent += width;
+		column += width;
 		index += 1;
-		indent += 1;
 	}
 
-	return line.startsWith(openDelimiter, index);
+	return indent <= 3 && line.startsWith(openDelimiter, index);
 };
 
 /**
@@ -308,12 +311,9 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		// A comment that starts a line is an HTML block, not paragraph text. It
 		// interrupts an open paragraph and leaves none open, so a following
 		// ordered list is recognized and its fenced example stays code.
-		inParagraph = !startsBlockComment(line, cursor);
-		let contentStart = cursor.index;
-		while (line[contentStart] === ' ' || line[contentStart] === '\t') {
-			contentStart += 1;
-		}
-		scanInline(line, lineStart, cursor.index, line.startsWith(openDelimiter, contentStart));
+		const blockComment = startsBlockComment(line, cursor);
+		inParagraph = !blockComment;
+		scanInline(line, lineStart, cursor.index, blockComment);
 	};
 
 	// Lines end with LF, CRLF, or CR. Both searches only move forward, and the

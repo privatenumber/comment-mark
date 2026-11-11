@@ -73,15 +73,25 @@ const currentContent = (state: MarkerState) => {
 		return content;
 	}
 	const trimmed = continuation.trimEnd();
-	return content.split('\n').map((line, index) => {
-		if (index === 0) {
-			return line;
+	let result = '';
+	let start = 0;
+	for (let index = 0; index < content.length; index += 1) {
+		if (content[index] !== '\r' && content[index] !== '\n') {
+			continue;
 		}
-		if (line.startsWith(continuation)) {
-			return line.slice(continuation.length);
+		if (content[index] === '\r' && content[index + 1] === '\n') {
+			index += 1;
 		}
-		return trimmed && line.startsWith(trimmed) ? line.slice(trimmed.length) : line;
-	}).join('\n');
+		result += content.slice(start, index + 1);
+		start = index + 1;
+		if (content.startsWith(continuation, start)) {
+			start += continuation.length;
+		} else if (trimmed && content.startsWith(trimmed, start)) {
+			start += trimmed.length;
+		}
+		index = start - 1;
+	}
+	return result + content.slice(start);
 };
 
 const currentAttributes = (state: MarkerState) => {
@@ -97,8 +107,8 @@ const currentAttributes = (state: MarkerState) => {
 const setContent = (state: MarkerState, content: string, getLineEnding: () => string) => {
 	if (state.node.startsLine && content) {
 		const lineEnding = getLineEnding();
-		const leading = content.startsWith('\n') || content.startsWith('\r\n') ? '' : lineEnding;
-		const trailing = content.endsWith('\n') ? '' : lineEnding;
+		const leading = content.startsWith('\n') || content.startsWith('\r') ? '' : lineEnding;
+		const trailing = content.endsWith('\n') || content.endsWith('\r') ? '' : lineEnding;
 		state.content = `${leading}${content}${trailing}`;
 	} else {
 		state.content = content;
@@ -202,11 +212,21 @@ export const renderDocument = (document: CommentDocument, boundaries?: Array<[nu
 		if (state.content !== undefined && state.node.continuation) {
 			const { continuation } = state.node;
 			const trimmed = continuation.trimEnd();
-			output += state.content.replaceAll('\n', (lineBreak, offset: number, content: string) => {
-				const next = content[offset + 1];
-				const blank = next === '\n' || (next === '\r' && content[offset + 2] === '\n');
-				return lineBreak + (blank ? trimmed : continuation);
-			});
+			const { content } = state;
+			let start = 0;
+			for (let index = 0; index < content.length; index += 1) {
+				if (content[index] !== '\r' && content[index] !== '\n') {
+					continue;
+				}
+				if (content[index] === '\r' && content[index + 1] === '\n') {
+					index += 1;
+				}
+				output += content.slice(start, index + 1);
+				const next = content[index + 1];
+				output += next === '\n' || next === '\r' ? trimmed : continuation;
+				start = index + 1;
+			}
+			output += content.slice(start);
 		} else {
 			output += state.content ?? source.slice(state.node.contentStart, state.node.contentEnd);
 		}
@@ -373,8 +393,24 @@ export const applyReplacements = async (
 	let lineEnding: string | undefined;
 	const getLineEnding = () => {
 		if (lineEnding === undefined) {
-			const lineFeed = document.source.indexOf('\n');
-			lineEnding = lineFeed > 0 && document.source[lineFeed - 1] === '\r' ? '\r\n' : '\n';
+			const { source, markers } = document;
+			let lineFeed = source.indexOf('\n');
+			let carriageReturn = source.indexOf('\r');
+			for (const { node } of markers) {
+				if ((lineFeed !== -1 && lineFeed < node.contentStart)
+					|| (carriageReturn !== -1 && carriageReturn < node.contentStart)) {
+					break;
+				}
+				if (lineFeed !== -1 && lineFeed < node.contentEnd) {
+					lineFeed = source.indexOf('\n', node.contentEnd);
+				}
+				if (carriageReturn !== -1 && carriageReturn < node.contentEnd) {
+					carriageReturn = source.indexOf('\r', node.contentEnd);
+				}
+			}
+			lineEnding = carriageReturn !== -1 && (lineFeed === -1 || carriageReturn < lineFeed)
+				? (source[carriageReturn + 1] === '\n' ? '\r\n' : '\r')
+				: '\n';
 		}
 		return lineEnding;
 	};

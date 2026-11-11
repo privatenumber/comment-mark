@@ -49,6 +49,7 @@ export const commentMark = async (
 		valid = markers.length === document.markers.length && markers.every((marker, index) => (
 			marker.tagName === document.markers[index].node.tagName
 			&& marker.startsLine === document.markers[index].node.startsLine
+			&& marker.continuation === document.markers[index].node.continuation
 			&& marker.openingStart === boundaries[index][0]
 			&& marker.contentEnd === boundaries[index][1]
 		));

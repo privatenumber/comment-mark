@@ -384,7 +384,7 @@ describe('line endings', () => {
 			},
 		]);
 		expect(await commentMark(content, { x: 'NEW' })).toBe(
-			['~~~', 'code', '~~~', createMarker('x', '\nNEW\n')].join('\r'),
+			['~~~', 'code', '~~~', createMarker('x', '\rNEW\r')].join('\r'),
 		);
 	});
 
