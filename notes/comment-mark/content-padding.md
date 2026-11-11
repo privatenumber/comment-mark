@@ -45,15 +45,17 @@ The rules were compared on 64 cases: 8 marker positions × 8 kinds of content. E
 Three of C3's 15 mismatches are list items that differ only in whitespace inside the tag (`<li> Jane </li>` against `<li>Jane</li>`), which renders the same. Counted as equal, C3 matches 52 cases. No layout rule can fix the other 12:
 
 - **Line start right after a paragraph line** (5 cases). `Intro\n<!-- a -->` interrupts the paragraph, because a type 2 HTML block can interrupt one. The oracle continues the paragraph.
-- **Inline content that ends with a line break,** such as `2.0\n` mid-sentence or in a table cell (5 cases). The closing comment then starts a line and opens an HTML block, so the text after it renders raw or the row ends.
-- **A fence inside a line** (3 cases, mid-sentence, heading, and table cell). The fence cannot close before the closing comment. Since #43, these updates are rejected; see [structure validation](#structure-validation).
+- **Inline content that ends with a line break,** `2.0\n` and `**Bold**\n` mid-sentence and in a table cell (4 cases). The closing comment then starts a line and opens an HTML block, so the text after it renders raw or the row ends.
+- **A fence inside a line whose closing fence ends the content** (3 cases, mid-sentence, heading, and table cell). The closing fence shares its line with the closing comment, so it cannot close. Since #43, these updates are rejected. Content such as `\n```js\nx\n```\n`, with the fence on lines of its own, is accepted; see [structure validation](#structure-validation).
 
-To rerun the matrix, save this script outside the repository and pass the path of a comment-mark `src/index.ts` or built `dist/index.mjs`. It uses `gh auth token` and sends only the synthetic cases to the GitHub API. It prints each mismatch with both renderings, then the score.
+To rerun the matrix, save this script outside the repository and pass the path of a comment-mark `src/index.ts` or built `dist/index.mjs`, absolute or relative to the working directory. It uses `gh auth token` and sends only the synthetic cases to the GitHub API. It stops on any HTTP error from the renderer, prints each mismatch and each rejected update with both renderings or the error, then the score. The normalizer collapses all whitespace, including inside code blocks and between inline elements; none of these cases depends on such whitespace.
 
 ````js
 import { execFileSync } from 'node:child_process'
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
-const { commentMark } = await import(process.argv[2])
+const { commentMark } = await import(pathToFileURL(path.resolve(process.argv[2])).href)
 const token = execFileSync('gh', ['auth', 'token'], { encoding: 'utf8' }).trim()
 
 const render = async (text) => {
@@ -65,8 +67,12 @@ const render = async (text) => {
             mode: 'gfm'
         })
     })
+    if (!response.ok) {
+        throw new Error(`GitHub /markdown returned ${response.status}`)
+    }
     const html = await response.text()
-    // Drop comments and whitespace between tags, so only rendered structure is compared.
+    // Drop comments and collapse whitespace. This also collapses whitespace inside
+    // code blocks and between inline elements, which none of these cases depend on.
     return html.replaceAll(/<!--[\s\S]*?-->/g, '').replaceAll(/\s+/g, ' ').replaceAll('> <', '><').trim()
 }
 
@@ -88,13 +94,14 @@ let matches = 0
 for (const [position, document, prefix] of positions) {
     for (const content of contents) {
         const expected = await render(document.replace(marker, content.replaceAll(/\n(?=.)/g, `\n${prefix}`)))
-        let actual
+        let output
         try {
-            actual = await render(await commentMark(document, { a: content }))
+            output = await commentMark(document, { a: content })
         } catch (error) {
             console.log(`rejected | ${position} | ${JSON.stringify(content)} | ${error.message}`)
             continue
         }
+        const actual = await render(output)
         if (actual === expected) {
             matches += 1
         } else {
@@ -105,7 +112,7 @@ for (const [position, document, prefix] of positions) {
 console.log(`${matches}/${positions.length * contents.length} render like the content without markers`)
 ````
 
-Observed on 2026-11-11 with Node `v26.13.0`: `49/64` for the #43 head and `26/64` for `develop` at `d41c4a5`. Rules A2 and B were scored with an earlier version of the same cases that applied each rule to `develop`'s output.
+Observed on 2026-11-11 with Node `v26.13.0`: `49/64` for the #43 head, `31/64` for A2 at `2f947b5` (exported with `git archive 2f947b5 src`), and `26/64` for `develop` at `d41c4a5`. One independent rerun during review scored `develop` at `25/64`; a second run of this script reproduced `26/64`, so the difference may come from a renderer response and is not explained. Rule B is not an implementation in any commit: an earlier version of the same cases applied it to `develop`'s output by adding line breaks around any content containing `\n`. Its score is historical and needs that wrapper to reproduce.
 
 ## Rejected alternatives
 
@@ -114,7 +121,7 @@ Observed on 2026-11-11 with Node `v26.13.0`: `49/64` for the #43 head and `26/64
 - **B: keep the section's existing layout.** markdown-magic adds line breaks only when the original section or the new content is multiline ([source](https://github.com/DavidWells/markdown-magic/blob/f6cd8c042c835176a893decfe42f33223c91704b/packages/block-transformer/src/index.js#L271-L289); [details](../markdown-magic/block-replacement.md)). A one-line section stays one line, so inline markup on a marker line stays literal. Score 31.
 - **Byte-exact insertion.** See [below](#rejected-a-byte-exact-insertion-mode).
 
-C3 costs one migration. A one-line section whose marker sits alone on its line, such as `<!-- version -->1.2.3<!-- /version -->`, becomes three lines on its next update. The rendering of plain text does not change, and the next release is a major version for other reasons (ESM-only). Reconsider the rule only with a case where a line-start marker needs inline content, or where an inline marker needs block content, that the render matrix can show.
+C3 costs one migration. A one-line section whose marker sits alone on its line, such as `<!-- version -->1.2.3<!-- /version -->`, becomes three lines on its next update. After a blank line, plain text renders the same text, now inside a `<p>` instead of a raw HTML block, so styles that target paragraphs can apply to it. Right after a paragraph line, the value also moves out of that paragraph's HTML into its own paragraph; see [the matrix](#evidence-the-render-matrix). The visible text does not change, and the next release is a major version for other reasons (ESM-only). Reconsider the rule only with a case where a line-start marker needs inline content, or where an inline marker needs block content, that the render matrix can show.
 
 ### Precedent
 
@@ -142,7 +149,7 @@ An update may change markers' content and attributes. It must never change the d
 
 This is the policy the attribute writer already follows: never write something the reader would parse differently. Without it, inserted content could corrupt the document silently:
 
-- `Example: <!-- a --><!-- /a -->` with a fenced block puts the closing comment on the fence's last line, so the fence never closes. The next run finds no markers, and updates to unrelated markers fail as missing.
+- `Example: <!-- a --><!-- /a -->` with a fenced block that ends at the end of the content puts the closing comment on the closing fence's line, so the fence never closes. The next run finds no markers, and updates to unrelated markers fail as missing.
 - An unclosed fence, an unmatched same-name opener, or an unfinished `<!-- note` hides or captures a closing comment. See the [scanner gaps](./comment-scanning.md#supported-limits-and-observed-gaps) and [file inclusion](./file-inclusion.md).
 - An earlier replacement on the same line can change a later marker's line context or its list context, which would change that marker's layout on the next run.
 
@@ -163,7 +170,7 @@ Validation uses the same scanner as the update, so it cannot catch what the scan
 
 ## Line endings
 
-Added line breaks use the first line break outside every marker's opening comment and content: CRLF, LF, or a lone CR, matching the scanner's line endings. A document without one gets LF. Replacement content and attribute updates rewrite only those excluded ranges, so they cannot change the choice, and running the same update again gives the same output. The content's own line endings are kept. An existing `\n`, `\r\n`, or lone `\r` at either end of the content counts as a line break.
+Added line breaks use the first line break outside every marker's opening comment and content: CRLF, LF, or a lone CR, matching the scanner's line endings. A document without one gets LF. Replacement content and attribute updates rewrite only those excluded ranges, so a rerun picks the same line ending. A rerun of static content, or of a resolver that returns its input, then leaves the document unchanged. Other updates can still differ on a rerun: a resolver that increments a counter, or a static update that changes an attribute its own selector matches, such as `a[id=old]` setting `id=new`, which finds no marker on the second run. The content's own line endings are kept. An existing `\n`, `\r\n`, or lone `\r` at either end of the content counts as a line break.
 
 ```js
 await commentMark('# T\r\n<!-- a --><!-- /a -->\r\n', { a: 'x\r\ny' })
@@ -172,7 +179,7 @@ await commentMark('# T\r\n<!-- a --><!-- /a -->\r\n', { a: 'x\r\ny' })
 
 History: [#36](https://github.com/privatenumber/comment-mark/pull/36) used the first LF in the whole source, so a CR-only document got LF padding, and in #43 review an inserted CRLF changed the choice on the next run. doctoc also detects one line ending per document ([`lib/transform.js#L184-L200`](https://github.com/thlorenz/doctoc/blob/56ec8e078ddb3de2bf7834e129a2448606c56443/lib/transform.js#L183-L200)).
 
-Rejected: the line ending of the opening comment's own line. It is more precise only in documents with mixed line endings, which are rare, and it needs a fallback when the opening comment is on the last line. The search runs lazily, once per `commentMark` call, and only when some content needs line breaks.
+Rejected: the line ending of the opening comment's own line. It is more precise only in documents with mixed line endings, which are rare, and it needs a fallback when the opening comment is on the last line. The search runs lazily, at most once per `commentMark` call, when the first nonempty line-start replacement is set, even if that content already has both boundary line breaks.
 
 ## Containers
 
@@ -191,7 +198,7 @@ Decision: when the closing comment is in a different container than the opening 
 
 ## Verification
 
-A section's content reads back with its added line breaks, so a check that compares the section with the source byte for byte fails. The supported check is to run the update again and confirm that nothing changes; the CLI reports `Unchanged`. With structure validation, that check now covers marker structure as well as layout, within the [limits](#limits). embedme's `--verify` uses the same model: it reports whether a run would change the document ([README](https://github.com/zakhenry/embedme/blob/3cd8692de2c905cf3c9cbc6d87c1b4220f2e6eeb/README.md)).
+A section's content reads back with its added line breaks, so a check that compares the section with the source byte for byte fails. The supported check is to run the update again and confirm that nothing changes; the CLI reports `Unchanged`. Structure validation makes sure an update does not change the structure the scanner already recognizes. It cannot tell whether that structure is the one the author intended: in `<!-- a -->outer<!-- a -->\ninner\n<!-- /a -->`, the reader pairs the inner opener, so `{ a: 'inner' }` returns the source unchanged and a rerun reports success. Such a document is already wrong before the update; see [outermost pairs](./markers-and-selectors.md#outermost-pairs). embedme's `--verify` uses the same model: it reports whether a run would change the document ([README](https://github.com/zakhenry/embedme/blob/3cd8692de2c905cf3c9cbc6d87c1b4220f2e6eeb/README.md)).
 
 ### Rejected: a byte-exact insertion mode
 
@@ -199,30 +206,91 @@ An option to skip the added line breaks was considered. It is not provided:
 
 - No use case needs it. The only precedent for byte-exact insertion (mdsh) still adds the leading line break.
 - Without the trailing line break, content that ends with a fence corrupts the rest of the document. Validation would now reject that update, so the option would mostly add a way to fail.
-- An inline marker already inserts content without added line breaks. A caller who needs exact bytes can put the marker inside a line.
+- An inline marker already inserts content without added boundary line breaks, which covers most needs for exact bytes. It is still not byte-exact: inside a list or blockquote, the container prefix is written after each line break in the content, and validation can reject the update.
 
 Reconsider when a concrete case needs exact bytes in a line-start marker. One candidate is a multiline value inside an HTML `<pre>` element, where the added line breaks are visible.
 
 ## Performance
 
-The layout decision is one flag per marker, taken from a check the scanner already runs on each line, so reads cost the same as before. Structure validation adds one parse to every update that changes the document. Measured on Node `v26.13.0`, Apple M2 Max, 2026-11-11, with medians over 21 runs after 5 warmups, comparing #43 at `4ac6f37` with its base `1ae5a7a`. Later #43 commits did not change the scanner's per-line work or the validation parse. The input was a 4-line prose paragraph repeated, followed by one marker, updated with `{ a: 'new' }`:
+The layout decision is one flag per marker, taken from a check the scanner already runs on each line, so reads cost the same as before. Structure validation adds one parse to every update that changes the document. An update that assigns no marker returns before rendering.
+
+Measured on Node `v26.13.0`, Apple M2 Max, 2026-11-11, comparing #43 at `4ac6f37` with its base `1ae5a7a`. Later #43 commits did not change the scanner's per-line work or the validation parse. Each value is the median of 21 calls; reads had 5 warmup calls first, updates had none. These are local timings, not the benchmark suite. Run as `node bench.mjs <base>/src/index.ts <head>/src/index.ts` with absolute paths:
+
+```js
+const [basePath, headPath] = process.argv.slice(2)
+const libs = {
+    base: await import(basePath),
+    head: await import(headPath)
+}
+const paragraph = `${'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod.\n'.repeat(4)}\n`
+const median = times => times.sort((a, b) => a - b)[10].toFixed(3)
+
+// Reads: 5 warmup calls, then the median of 21.
+const timeRead = (f) => {
+    for (let index = 0; index < 5; index += 1) {
+        f()
+    }
+    const times = []
+    for (let index = 0; index < 21; index += 1) {
+        const start = performance.now()
+        f()
+        times.push(performance.now() - start)
+    }
+    return median(times)
+}
+
+// Updates: no warmup, the median of 21.
+const timeUpdate = async (f) => {
+    const times = []
+    for (let index = 0; index < 21; index += 1) {
+        const start = performance.now()
+        await f()
+        times.push(performance.now() - start)
+    }
+    return median(times)
+}
+
+for (const count of [380, 3800]) {
+    const document = `${paragraph.repeat(count)}<!-- a -->old<!-- /a -->\n`
+    const row = { bytes: document.length }
+    for (const [name, library] of Object.entries(libs)) {
+        row[`${name} read`] = timeRead(() => library.getCommentMarkAll(document))
+        row[`${name} update`] = await timeUpdate(() => library.commentMark(document, { a: 'new' }))
+    }
+    console.log(JSON.stringify(row))
+}
+```
 
 | Input | Base read | Head read | Base update | Head update |
 | --- | --- | --- | --- | --- |
 | 111 KB prose | 0.631 ms | 0.555 ms | 0.545 ms | 1.294 ms |
 | 1.1 MB prose | 5.310 ms | 5.090 ms | 5.288 ms | 10.059 ms |
 
-For 4,000 markers updated with `value`, an earlier run during #43 review, with base and branch alternating, measured medians of 2.98 ms at the base and 5.32 ms on the branch. An update that assigns no marker returns before rendering. These are local timings, not a benchmark harness.
-
 ## Limits
 
 - **Markers on a line right after a paragraph line** interrupt the paragraph. No layout rule avoids this; see [the matrix](#evidence-the-render-matrix).
-- **Inline content that ends with a line break or contains a fence** cannot render as if the markers were absent. A fence is rejected by validation.
+- **Inline content that ends with a line break,** mid-sentence or in a table cell, cannot render as if the markers were absent; in a heading it does. Inline content that ends with a closing fence is rejected by validation.
 - **Markers in indented code** cannot render as absent. A marker indented four or more spaces gets inline layout.
 - **HTML `<pre>`** shows the added line breaks.
 - **Scanner gaps that validation shares.** Validation re-runs the same scanner, so it accepts what the scanner misreads. Observed at the #43 head, and equally on its base:
-  - A multiline attribute value inside a list is written without the list indentation. `- <!-- a --><!-- /a --><!-- b --><!-- /b -->` with `{ a: { attributes: { note: 'x\ny' } } }` ends the list in GFM, because the scanner does not check containers while a comment is open.
-  - A marker on a lazy continuation line of a blockquote or list gets no container prefix. `> Intro\ntext <!-- a --><!-- /a --> tail` with `first\n# Heading\nlast` renders the heading outside the blockquote.
-  - Backticks on a line that starts with a comment are still scanned as a code span. `<!-- note --> `<!-- a --><!-- /a -->`` finds no marker `a`, though the line is raw HTML.
+
+  - **A multiline attribute value inside a list** is written without the list indentation, which ends the list in GFM. The scanner does not check containers while a comment is open.
+  - **A marker on a lazy continuation line** of a blockquote or list gets no container prefix, so a heading in the content renders outside the blockquote.
+  - **Backticks on a line that starts with a comment** are still scanned as a code span, so the marker is not found, though the line is raw HTML.
+
+  Reproduce from a checkout, with output observed at the #43 head `1e3009d` and identically at its base `1ae5a7a`:
+
+  ```js
+  import { commentMark } from './src/index.ts'
+
+  await commentMark('- <!-- a --><!-- /a --><!-- b --><!-- /b -->', { a: { attributes: { note: 'x\ny' } } })
+  // '- <!-- a note="x\ny" --><!-- /a --><!-- b --><!-- /b -->'
+
+  await commentMark('> Intro\ntext <!-- a --><!-- /a --> tail', { a: 'first\n# Heading\nlast' })
+  // '> Intro\ntext <!-- a -->first\n# Heading\nlast<!-- /a --> tail'
+
+  await commentMark('<!-- note --> `<!-- a --><!-- /a -->`', { a: 'value' })
+  // rejects: [comment-mark] Selector "a" matched no markers
+  ```
 
   These came from the fourth review round of #43. They predate #43, so they were recorded rather than fixed there.
