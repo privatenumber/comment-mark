@@ -320,7 +320,9 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	// one that was consumed is refreshed, so locating line boundaries stays
 	// linear without a pattern. Every position is local to this invocation, so a
 	// resolver that reenters the parser cannot disturb the outer scan.
-	let lineStart = 0;
+	// Markdown parsers drop a leading byte order mark, so a comment after it
+	// still starts the first line.
+	let lineStart = source.startsWith('﻿') ? 1 : 0;
 	let lineFeed = source.indexOf('\n', lineStart);
 	let carriageReturn = source.indexOf('\r', lineStart);
 

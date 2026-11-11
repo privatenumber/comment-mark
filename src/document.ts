@@ -397,8 +397,9 @@ export const applyReplacements = async (
 			let lineFeed = source.indexOf('\n');
 			let carriageReturn = source.indexOf('\r');
 			for (const { node } of markers) {
-				if ((lineFeed !== -1 && lineFeed < node.contentStart)
-					|| (carriageReturn !== -1 && carriageReturn < node.contentStart)) {
+				// Skip the opening comment too: attribute updates rewrite it.
+				if ((lineFeed !== -1 && lineFeed < node.openingStart)
+					|| (carriageReturn !== -1 && carriageReturn < node.openingStart)) {
 					break;
 				}
 				if (lineFeed !== -1 && lineFeed < node.contentEnd) {

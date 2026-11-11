@@ -36,6 +36,21 @@ describe('marker position layout', () => {
 		expect(getCommentMark(quote, 'a')?.content).toBe('\rone\rtwo\r');
 		expect(await commentMark(quote, { a: ({ content }) => content })).toBe(quote);
 	});
+	test('ignores line breaks in an opening comment that an update rewrites', async () => {
+		const input = '<!-- a\n  id="foo" --><!-- /a -->\r\n';
+		const replacement = {
+			a: {
+				attributes: {},
+				content: 'value',
+			},
+		};
+		const output = await commentMark(input, replacement);
+		expect(output).toBe('<!-- a -->\r\nvalue\r\n<!-- /a -->\r\n');
+		expect(await commentMark(output, replacement)).toBe(output);
+	});
+	test('treats a comment after a leading byte order mark as starting its line', async () => {
+		expect(await commentMark('\uFEFF<!-- a --><!-- /a -->', { a: '# H' })).toBe('\uFEFF<!-- a -->\n# H\n<!-- /a -->');
+	});
 	test('inherits line context after a multiline comment closes', async () => {
 		expect(await commentMark('<!-- note\n--> <!-- a --><!-- /a -->', { a: '**bold**' })).toBe(
 			'<!-- note\n--> <!-- a -->\n**bold**\n<!-- /a -->',
