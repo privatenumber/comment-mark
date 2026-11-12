@@ -22,9 +22,10 @@ export type Attribute = {
 	valueEnd: number;
 };
 
-// The attribute as written, for error messages. It stops at whitespace or the
-// end of the opening comment, so the message never quotes the text after it.
-const readWrittenAttribute = (source: string, index: number, end: number) => {
+// The text from an invalid attribute to the next whitespace, for error
+// messages. It stops at the end of the opening comment, so the message never
+// quotes the text after it.
+const readInvalidText = (source: string, index: number, end: number) => {
 	let writtenEnd = index;
 	while (writtenEnd < end && !isWhitespace(source[writtenEnd])) {
 		writtenEnd += 1;
@@ -45,7 +46,7 @@ const readAttribute = (source: string, index: number, end: number): Attribute | 
 
 	const start = index;
 	if (!isNameStart(source[index])) {
-		const attribute = readWrittenAttribute(source, start, end);
+		const attribute = readInvalidText(source, start, end);
 		throw new Error(`[comment-mark] Invalid marker attribute: ${JSON.stringify(attribute)}`);
 	}
 	index += 1;
@@ -56,7 +57,7 @@ const readAttribute = (source: string, index: number, end: number): Attribute | 
 
 	index = skipWhitespace(source, index, end);
 	if (source[index] !== '=') {
-		const attribute = readWrittenAttribute(source, start, end);
+		const attribute = readInvalidText(source, start, end);
 		throw new Error(`[comment-mark] Invalid marker attribute: ${JSON.stringify(attribute)}`);
 	}
 	index += 1;
