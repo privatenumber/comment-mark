@@ -42,7 +42,7 @@ A comment is a marker only when a later comment closes the same tag name. Every 
 | `<!-- ns:a -->`, `<!-- a.b -->` | `:` and `.` are not allowed in tag names |
 | `<!-- /a extra -->` | A closing comment holds only the tag name |
 
-A comment that looks like a marker but breaks the attribute rules is an error once a closing comment pairs with it, unless the pair is nested inside another marker, whose content is not checked. For example, `<!-- a /-->` followed later by `<!-- /a -->` is an error, and so is `<!-- a ns:k="1" -->` with its closing comment.
+A comment that looks like a marker but breaks the attribute rules is an error once a closing comment pairs with it, unless the pair is nested inside another marker. The attributes of a nested pair are not checked. For example, `<!-- a /-->` followed later by `<!-- /a -->` is an error, and so is `<!-- a ns:k="1" -->` with its closing comment.
 
 ### Nested markers
 
