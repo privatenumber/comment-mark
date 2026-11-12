@@ -6,7 +6,7 @@ import spawn from 'nano-spawn';
 const packageRoot = path.resolve(import.meta.dirname, '../..');
 
 const marker = '<!-- item kind="fruit" -->apple<!-- /item -->';
-const updatedMarker = '<!-- item kind="vegetable" -->carrot<!-- /item -->';
+const updatedMarker = '<!-- item kind="vegetable" -->\ncarrot\n<!-- /item -->';
 
 describe('package entry', () => {
 	test('loads the package through import', async () => {
@@ -85,6 +85,6 @@ process.stdout.write(await commentMark('<!-- file path="snippet.txt" --><!-- /fi
 
 		const { stdout } = await spawn(process.execPath, ['main.js'], { cwd: fixture.path });
 
-		expect(stdout).toBe('<!-- file path="snippet.txt" -->from a file<!-- /file -->');
+		expect(stdout).toBe('<!-- file path="snippet.txt" -->\nfrom a file\n<!-- /file -->');
 	});
 });

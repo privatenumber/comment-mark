@@ -14,6 +14,7 @@ export type MarkerNode = {
 	contentStart: number;
 	contentEnd: number;
 	continuation: string;
+	startsLine: boolean;
 	// Where the attributes begin, so a rewrite can insert new ones after the
 	// tag name and drop the whitespace a removed attribute was written with.
 	attributesStart: number;
@@ -80,6 +81,7 @@ type Opener = {
 	openingStart: number;
 	openingEnd: number;
 	continuation: string;
+	startsLine: boolean;
 	closerStart: number;
 	matched: boolean;
 	// The opener below this one in the open stack, and the nearest earlier
@@ -111,7 +113,7 @@ export const parseDocument = (source: string): MarkerNode[] => {
 	const topByTag = new Map<string, Opener | undefined>();
 	let openTop: Opener | undefined;
 
-	scanComments(source, (start, innerStart, innerEnd, continuation) => {
+	scanComments(source, (start, innerStart, innerEnd, continuation, startsLine) => {
 		const kind = classifyComment(source, innerStart, innerEnd);
 
 		if (kind.type === 'closer') {
@@ -142,6 +144,7 @@ export const parseDocument = (source: string): MarkerNode[] => {
 				openingStart: start,
 				openingEnd: innerEnd,
 				continuation,
+				startsLine,
 				closerStart: -1,
 				matched: false,
 				previousOpen: openTop,
@@ -179,6 +182,7 @@ export const parseDocument = (source: string): MarkerNode[] => {
 			contentStart: opener.openingEnd + closeDelimiter.length,
 			contentEnd: opener.closerStart,
 			continuation: opener.continuation,
+			startsLine: opener.startsLine,
 			attributesStart: opener.kind.attributesStart,
 		});
 	}

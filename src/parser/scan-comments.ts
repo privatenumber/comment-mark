@@ -11,6 +11,7 @@ import {
 	matchBlockquote,
 	matchFence,
 	matchListMarker,
+	tabSize,
 } from './block-context.ts';
 
 export type CommentVisitor = (
@@ -18,6 +19,7 @@ export type CommentVisitor = (
 	innerStart: number,
 	innerEnd: number,
 	continuation: string,
+	startsLine: boolean,
 ) => void;
 
 type BacktickRun = {
@@ -38,15 +40,17 @@ const closeDelimiter = '-->';
  * so a following ordered list is recognized and its fenced example stays code.
  */
 const startsBlockComment = (line: string, cursor: Cursor) => {
-	let { index } = cursor;
+	let { index, column } = cursor;
 	let indent = cursor.pending;
 
-	while (indent < 3 && line[index] === ' ') {
+	while (indent <= 3 && (line[index] === ' ' || line[index] === '\t')) {
+		const width = line[index] === ' ' ? 1 : tabSize - (column % tabSize);
+		indent += width;
+		column += width;
 		index += 1;
-		indent += 1;
 	}
 
-	return line.startsWith(openDelimiter, index);
+	return indent <= 3 && line.startsWith(openDelimiter, index);
 };
 
 /**
@@ -134,6 +138,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	let fence: Fence | undefined;
 	let commentStart = -1;
 	let commentContinuation = '';
+	let commentStartsLine = false;
 	let inParagraph = false;
 
 	// One cursor reused across lines. The scan is synchronous, so the cursor
@@ -144,7 +149,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		pending: 0,
 	};
 
-	const scanInline = (line: string, lineStart: number, start: number) => {
+	const scanInline = (line: string, lineStart: number, start: number, startsLine: boolean) => {
 		const runs = line.includes('`', start) ? findBacktickRuns(line, start) : undefined;
 		let index = start;
 
@@ -174,6 +179,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				if (close === -1) {
 					commentStart = lineStart + index;
 					commentContinuation = continuation;
+					commentStartsLine = startsLine;
 					return;
 				}
 				visit(
@@ -181,6 +187,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 					lineStart + index + openDelimiter.length,
 					lineStart + close,
 					continuation,
+					startsLine,
 				);
 				index = close + closeDelimiter.length;
 				continue;
@@ -207,9 +214,10 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				commentStart + openDelimiter.length,
 				lineStart + close,
 				commentContinuation,
+				commentStartsLine,
 			);
 			commentStart = -1;
-			scanInline(line, lineStart, close + closeDelimiter.length);
+			scanInline(line, lineStart, close + closeDelimiter.length, commentStartsLine);
 			return;
 		}
 
@@ -285,7 +293,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		const headingContent = matchAtxHeading(line, cursor);
 		if (headingContent !== undefined) {
 			inParagraph = false;
-			scanInline(line, lineStart, headingContent);
+			scanInline(line, lineStart, headingContent, false);
 			return;
 		}
 
@@ -303,15 +311,18 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		// A comment that starts a line is an HTML block, not paragraph text. It
 		// interrupts an open paragraph and leaves none open, so a following
 		// ordered list is recognized and its fenced example stays code.
-		inParagraph = !startsBlockComment(line, cursor);
-		scanInline(line, lineStart, cursor.index);
+		const blockComment = startsBlockComment(line, cursor);
+		inParagraph = !blockComment;
+		scanInline(line, lineStart, cursor.index, blockComment);
 	};
 
 	// Lines end with LF, CRLF, or CR. Both searches only move forward, and the
 	// one that was consumed is refreshed, so locating line boundaries stays
 	// linear without a pattern. Every position is local to this invocation, so a
 	// resolver that reenters the parser cannot disturb the outer scan.
-	let lineStart = 0;
+	// Markdown parsers drop a leading byte order mark, so a comment after it
+	// still starts the first line.
+	let lineStart = source.startsWith('﻿') ? 1 : 0;
 	let lineFeed = source.indexOf('\n', lineStart);
 	let carriageReturn = source.indexOf('\r', lineStart);
 

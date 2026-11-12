@@ -146,7 +146,7 @@ describe('CLI', () => {
 		await commentMarkCli(fixture.getPath('README.md'), '--help=docs', '--version=2.0.0');
 
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(
-			`${createMarker('help', 'docs')}\n${createMarker('version', '2.0.0')}\n`,
+			`${createMarker('help', '\ndocs\n')}\n${createMarker('version', '\n2.0.0\n')}\n`,
 		);
 	});
 
@@ -158,8 +158,28 @@ describe('CLI', () => {
 		await commentMarkCli(fixture.getPath('README.md'), '--contributors=Jane Doe');
 
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(
-			`## Contributors\n${createMarker('contributors', 'Jane Doe')}\n`,
+			`## Contributors\n${createMarker('contributors', '\nJane Doe\n')}\n`,
 		);
+	});
+
+	test('reports changed selectors when their combined replacement hides markers', async () => {
+		const input = 'Example: <!-- a --><!-- /a -->\n\n<!-- b -->old<!-- /b -->';
+		await using fixture = await createFixture({ 'README.md': input });
+		await expect(commentMarkCli(fixture.getPath('README.md'), '--a=```js\nx\n```', '--b=new')).rejects.toMatchObject({
+			exitCode: 1,
+			stderr: expect.stringContaining('Replacement for "a", "b" would change the document\'s markers'),
+		});
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(input);
+	});
+
+	test('rejects a combined update that changes a marker line context', async () => {
+		const input = 'x <!-- a --><!-- /a --><!-- b --><!-- /b -->\n2. ~~~\n   <!-- c -->old<!-- /c -->\n   ~~~';
+		await using fixture = await createFixture({ 'README.md': input });
+		await expect(commentMarkCli(fixture.getPath('README.md'), '--a=\n', '--b=\ntext')).rejects.toMatchObject({
+			exitCode: 1,
+			stderr: expect.stringContaining('would change the document\'s markers'),
+		});
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(input);
 	});
 
 	test('selects a marker by attribute', async () => {
@@ -170,7 +190,7 @@ describe('CLI', () => {
 		await commentMarkCli(fixture.getPath('README.md'), "--item[kind='fruit']=pear");
 
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(
-			'<!-- item kind="fruit" -->pear<!-- /item -->\n',
+			'<!-- item kind="fruit" -->\npear\n<!-- /item -->\n',
 		);
 	});
 
@@ -182,13 +202,24 @@ describe('CLI', () => {
 		await commentMarkCli(fixture.getPath('README.md'), '--a=first', '--b=second\nline');
 
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(
-			`${createMarker('a', 'first')}\n<!-- b -->\nsecond\nline\n<!-- /b -->\n`,
+			`${createMarker('a', '\nfirst\n')}\n<!-- b -->\nsecond\nline\n<!-- /b -->\n`,
 		);
+	});
+
+	test('pads a trailing-newline value with or without an attribute update', async () => {
+		await using contentOnly = await createFixture({ 'README.md': `${createMarker('a')}\n` });
+		await using withAttribute = await createFixture({ 'README.md': `${createMarker('a')}\n` });
+
+		await commentMarkCli(contentOnly.getPath('README.md'), '--a=**Bold**\n');
+		await commentMarkCli(withAttribute.getPath('README.md'), '--a=**Bold**\n', '--a.k=v');
+
+		expect(await contentOnly.readFile('README.md', 'utf8')).toBe('<!-- a -->\n**Bold**\n<!-- /a -->\n');
+		expect(await withAttribute.readFile('README.md', 'utf8')).toBe('<!-- a k="v" -->\n**Bold**\n<!-- /a -->\n');
 	});
 
 	test('reports per-selector outcomes and exits non-zero when markers are missing', async () => {
 		await using fixture = await createFixture({
-			'README.md': `${createMarker('a', 'stale')}\n${createMarker('b', 'same')}\n`,
+			'README.md': `${createMarker('a', 'stale')}\n${createMarker('b', '\nsame\n')}\n`,
 		});
 
 		const invocation = commentMarkCli(fixture.getPath('README.md'), '--a=fresh', '--b=same', '--nope=x');
@@ -203,17 +234,34 @@ describe('CLI', () => {
 
 		// Valid updates are still saved when other selectors are missing.
 		expect(await fixture.readFile('README.md', 'utf8')).toBe(
-			`${createMarker('a', 'fresh')}\n${createMarker('b', 'same')}\n`,
+			`${createMarker('a', '\nfresh\n')}\n${createMarker('b', '\nsame\n')}\n`,
 		);
 	});
 
 	test('exits successfully when all requested values already match', async () => {
-		await using fixture = await createFixture({ 'README.md': createMarker('a', 'same') });
+		await using fixture = await createFixture({ 'README.md': createMarker('a', '\nsame\n') });
 
 		const { stderr } = await commentMarkCli(fixture.getPath('README.md'), '--a=same');
 
 		expect(stderr).toContain('is unchanged. All 1 requested selectors already match.');
-		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a', 'same'));
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a', '\nsame\n'));
+	});
+
+	test('repeating a line-start update leaves the file unchanged', async () => {
+		await using fixture = await createFixture({ 'README.md': createMarker('a') });
+		await commentMarkCli(fixture.getPath('README.md'), '--a=same');
+		const firstResult = await fixture.readFile('README.md', 'utf8');
+		const { stderr } = await commentMarkCli(fixture.getPath('README.md'), '--a=same');
+		expect(firstResult).toBe(createMarker('a', '\nsame\n'));
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(firstResult);
+		expect(stderr).toContain('is unchanged. All 1 requested selectors already match.');
+	});
+
+	test('saves container formatting changes even when read content is unchanged', async () => {
+		await using fixture = await createFixture({ 'README.md': '> <!-- a -->\n>x\n><!-- /a -->' });
+		const { stderr } = await commentMarkCli(fixture.getPath('README.md'), '--a=\nx\n');
+		expect(stderr).toContain('Updated: a');
+		expect(await fixture.readFile('README.md', 'utf8')).toBe('> <!-- a -->\n> x\n> <!-- /a -->');
 	});
 
 	test('exits non-zero without writing when every requested marker is missing', async () => {
@@ -318,13 +366,13 @@ describe('CLI', () => {
 	});
 
 	test('reports missing selectors when the remaining requested values already match', async () => {
-		await using fixture = await createFixture({ 'README.md': createMarker('a', 'same') });
+		await using fixture = await createFixture({ 'README.md': createMarker('a', '\nsame\n') });
 
 		await expect(commentMarkCli(fixture.getPath('README.md'), '--a=same', '--nope=x')).rejects.toMatchObject({
 			exitCode: 1,
 			stderr: expect.stringMatching(/Unchanged: a[\s\S]*Missing: nope/),
 		});
-		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a', 'same'));
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('a', '\nsame\n'));
 	});
 
 	test('updates a marker named like an Object prototype property', async () => {
@@ -332,7 +380,7 @@ describe('CLI', () => {
 
 		await commentMarkCli(fixture.getPath('README.md'), '--__proto__=NEW');
 
-		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('__proto__', 'NEW'));
+		expect(await fixture.readFile('README.md', 'utf8')).toBe(createMarker('__proto__', '\nNEW\n'));
 	});
 
 	test('exits non-zero when a reserved marker name is passed multiple times', async () => {
@@ -384,7 +432,7 @@ describe('CLI', () => {
 
 		test('updates content and attributes together, independent of flag order', async () => {
 			const content = '<!-- item kind="fruit" -->apple<!-- /item -->\n';
-			const expected = '<!-- item kind="vegetable" -->pear<!-- /item -->\n';
+			const expected = '<!-- item kind="vegetable" -->\npear\n<!-- /item -->\n';
 
 			await using first = await createFixture({ 'README.md': content });
 			await commentMarkCli(first.getPath('README.md'), '--item=pear', '--item.kind=vegetable');
@@ -446,7 +494,7 @@ describe('CLI', () => {
 			);
 
 			expect(await fixture.readFile('README.md', 'utf8')).toBe(
-				'<!-- item id="one" role="first" -->one<!-- /item -->\n<!-- item id="two" -->new<!-- /item -->\n',
+				'<!-- item id="one" role="first" -->one<!-- /item -->\n<!-- item id="two" -->\nnew\n<!-- /item -->\n',
 			);
 		});
 
@@ -655,7 +703,7 @@ describe('CLI', () => {
 			// match the second flag. Because selection uses the document as read,
 			// the second flag still targets marker two.
 			expect(await fixture.readFile('README.md', 'utf8')).toBe(
-				'<!-- item kind="b" -->one<!-- /item -->\n<!-- item kind="b" -->new<!-- /item -->\n',
+				'<!-- item kind="b" -->one<!-- /item -->\n<!-- item kind="b" -->\nnew\n<!-- /item -->\n',
 			);
 		});
 

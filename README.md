@@ -57,7 +57,9 @@ await fs.writeFile('README.md', updated)
 
 ```md
 ## Last updated
-<!-- lastUpdated -->2026-09-07<!-- /lastUpdated -->
+<!-- lastUpdated -->
+2026-09-07
+<!-- /lastUpdated -->
 ```
 
 Run the script again with a new value to replace the section. The surrounding document and marker comments stay intact. For a live timestamp, use `new Date().toISOString()` as the value.
@@ -151,7 +153,7 @@ For the quick-start result:
     {
         "tagName": "lastUpdated",
         "attributes": {},
-        "content": "2026-09-07"
+        "content": "\n2026-09-07\n"
     }
 ]
 ```
@@ -169,7 +171,7 @@ Read mode preserves section whitespace and prints `[]` when no markers exist. It
 - Flag names are selectors, matched verbatim with no case or dash conversion: `--lastUpdated` and `--last-updated` are different selectors.
 - Use `--selector=value`, not `--selector value`. Quote values containing spaces or newlines, and quote the selector when it contains brackets.
 - The first `=` outside brackets and quotes separates the flag from its value, so `--"item[kind='fruit']"=pear` passes the selector `item[kind='fruit']`.
-- Use `--selector=` to clear a section. Multiline values get a newline before and after the supplied content.
+- Use `--selector=` to clear a section. Markers on a comment-started line put nonempty content on its own lines; other markers get no added boundary line breaks.
 - Attributes must be separated by whitespace and appear at most once: `id="a"file="b"` and `id="a" id="b"` are rejected.
 - Only the outermost marker pair is a marker. A pair nested inside another pair is part of the outer marker's content.
 - Each selector can be set once per invocation. Repeated flags, valueless flags, and extra positional arguments are rejected before writing.
@@ -236,18 +238,18 @@ console.log(updated)
 A value can also be a function that computes the replacement from the marker it targets:
 
 ```js
-const updated = await commentMark('<!-- views -->40<!-- /views -->', {
+const updated = await commentMark('Views: <!-- views -->40<!-- /views -->', {
     views: ({ content }) => String(Number(content) + 1)
 })
 
 console.log(updated)
-// <!-- views -->41<!-- /views -->
+// Views: <!-- views -->41<!-- /views -->
 ```
 
 To update the marker's attributes, its content, or both, pass an object. This works when the replacement is already known:
 
 ```js
-const updated = await commentMark('<!-- item kind="fruit" -->apple<!-- /item -->', {
+const updated = await commentMark('Item: <!-- item kind="fruit" -->apple<!-- /item -->', {
     item: {
         attributes: {
             kind: 'vegetable',
@@ -258,7 +260,7 @@ const updated = await commentMark('<!-- item kind="fruit" -->apple<!-- /item -->
 })
 
 console.log(updated)
-// <!-- item kind="vegetable" size="small" -->carrot<!-- /item -->
+// Item: <!-- item kind="vegetable" size="small" -->carrot<!-- /item -->
 ```
 
 `attributes` is the marker's complete attribute set, so that object drops anything the marker had besides `kind` and `size`. When the new value depends on the marker's current attributes, use a function instead and spread what it receives:
@@ -295,29 +297,30 @@ Returns a promise that resolves to the updated content as a string. Buffer input
 - A static value whose selector matches no marker rejects, so a typo or a stale selector is not mistaken for a successful no-op. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
 - Rejects an array with more values than matches, a function as an array entry, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
-- Content that needs block layout gets a line break on each side when needed, using the document's line ending (the first line break's ending, or LF when there is none), so it starts on its own line and the closing comment cannot join its last line. Content with a line break, or a heading, list, fenced code block, blockquote, thematic break, table, or indented code on its first line, needs block layout. A single line of inline text is inserted as written, so a value can sit inside a paragraph.
+- When a line starts an HTML comment block after any list or blockquote prefixes and up to three indentation columns, markers on that line put nonempty content on its own lines. Missing boundary breaks use the first line ending outside every marker's opening comment and content (CRLF, LF, or CR), or LF when there is none. Other markers get no added boundary line breaks; inside lists and blockquotes, continuation prefixes are still written after content line breaks. This also applies to HTML, where added breaks may be visible inside `<pre>`.
+- Rejects updates that would change marker boundaries, line context, or container continuation, such as an unclosed fence hiding a closing comment.
 - Content in a list item or blockquote stays in that container. Reading the content removes its container prefixes.
 - Rejects when a marker is malformed, when a resolver throws or rejects, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
 
 An array updates matches by position, so one call can set repeated sections:
 
 ```js
-await commentMark('<!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', {
+await commentMark('Items: <!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', {
     item: ['orange', 'grape']
 })
-// <!-- item -->orange<!-- /item --><!-- item -->grape<!-- /item -->
+// Items: <!-- item -->orange<!-- /item --><!-- item -->grape<!-- /item -->
 ```
 
 A function runs for every match, so one call can compute each section from its own data:
 
 ```js
-await commentMark('<!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', {
+await commentMark('Items: <!-- item -->apple<!-- /item --><!-- item -->pear<!-- /item -->', {
     item: ({ content }, index) => `${index + 1}. ${content}`
 })
-// <!-- item -->1. apple<!-- /item --><!-- item -->2. pear<!-- /item -->
+// Items: <!-- item -->1. apple<!-- /item --><!-- item -->2. pear<!-- /item -->
 ```
 
-Indented code blocks and code spans that wrap across lines are not detected as code, so a marker placed there is treated as real. Put active markers in prose, and put literal examples inside fenced code or single-line inline code.
+Indented code blocks and code spans that wrap across lines are not detected as code, so a marker placed there is treated as real. A marker inside indented code cannot render as if absent. Put active markers in prose, and put literal examples inside fenced code or single-line inline code.
 
 ### `getCommentMark(input, selector)`
 
@@ -369,7 +372,7 @@ Each marker names a file in its `path` attribute:
 <!-- /file -->
 ```
 
-The file is read as UTF-8 and inserted unchanged. Like any other content, text that needs block layout gets a newline on each side when it does not already have one, so a multiline file starts on the line after the opening comment. The inserted text is not parsed again, so a marker written inside an included file stays part of the section's content.
+The file is read as UTF-8. Like any other content, it gets missing boundary line breaks when its marker is on a comment-started line. A balanced marker written inside an included file stays part of the section's content.
 
 - `baseDirectory` (`string`, required): every `path` is resolved against this directory. An absolute `path` is used as written.
 - `tagName` (`string`): the tag name of the markers to fill. Defaults to `file`.
@@ -410,7 +413,7 @@ For a repository with two contributors, the result looks like:
 <!-- /contributors -->
 ```
 
-Shell command substitution removes trailing newlines. For multiline values, comment-mark adds a newline at each end so the content sits between the marker lines.
+Shell command substitution removes trailing newlines. Because the marker starts a line, comment-mark adds missing boundary newlines so the content sits between the marker lines.
 
 ### Real-world examples
 
@@ -433,7 +436,7 @@ The opening and closing comments delimit the content to replace. Both stay in th
 
 ### How are code examples ignored?
 
-Fenced code blocks (backtick or tilde, including blockquote prefixes) and single-line inline code spans are skipped, so a marker shown as an example is not treated as real. Indented code blocks and code spans that wrap across lines are not detected, so a marker there is treated as real.
+Fenced code blocks (backtick or tilde, including blockquote prefixes) and single-line inline code spans are skipped, so a marker shown as an example is not treated as real. Indented code blocks and code spans that wrap across lines are not detected, so a marker there is treated as real. A marker inside indented code cannot render as if absent.
 
 ### What happens to a marker inside another marker?
 

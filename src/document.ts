@@ -4,7 +4,6 @@ import {
 } from './parser/parse-attributes.ts';
 import { type MarkerNode, parseDocument } from './parser/parse-document.ts';
 import { type Selector, parseSelector } from './parser/parse-selector.ts';
-import { padContent } from './padding.ts';
 
 export type CommentMarkData = {
 	tagName: string;
@@ -51,13 +50,13 @@ export type MarkerState = {
 	// The replacement content, or `undefined` while the marker is untouched.
 	content: string | undefined;
 	changed: boolean;
+	selectorText: string | undefined;
 };
 
 /**
  * The result of parsing `input`: the source text plus one state per marker, in
  * document order. Applying replacements records them on the states, and
- * rendering reads the source back around the recorded spans, so a document is
- * parsed once and never re-read.
+ * rendering reads the source back around the recorded spans.
  */
 export type CommentDocument = {
 	source: string;
@@ -74,15 +73,25 @@ const currentContent = (state: MarkerState) => {
 		return content;
 	}
 	const trimmed = continuation.trimEnd();
-	return content.split('\n').map((line, index) => {
-		if (index === 0) {
-			return line;
+	let result = '';
+	let start = 0;
+	for (let index = 0; index < content.length; index += 1) {
+		if (content[index] !== '\r' && content[index] !== '\n') {
+			continue;
 		}
-		if (line.startsWith(continuation)) {
-			return line.slice(continuation.length);
+		if (content[index] === '\r' && content[index + 1] === '\n') {
+			index += 1;
 		}
-		return trimmed && line.startsWith(trimmed) ? line.slice(trimmed.length) : line;
-	}).join('\n');
+		result += content.slice(start, index + 1);
+		start = index + 1;
+		if (content.startsWith(continuation, start)) {
+			start += continuation.length;
+		} else if (trimmed && content.startsWith(trimmed, start)) {
+			start += trimmed.length;
+		}
+		index = start - 1;
+	}
+	return result + content.slice(start);
 };
 
 const currentAttributes = (state: MarkerState) => {
@@ -96,7 +105,14 @@ const currentAttributes = (state: MarkerState) => {
 };
 
 const setContent = (state: MarkerState, content: string, getLineEnding: () => string) => {
-	state.content = padContent(content, getLineEnding);
+	if (state.node.startsLine && content) {
+		const lineEnding = getLineEnding();
+		const leading = content.startsWith('\n') || content.startsWith('\r') ? '' : lineEnding;
+		const trailing = content.endsWith('\n') || content.endsWith('\r') ? '' : lineEnding;
+		state.content = `${leading}${content}${trailing}`;
+	} else {
+		state.content = content;
+	}
 	state.changed = true;
 };
 
@@ -176,29 +192,45 @@ const renderOpeningTag = (state: MarkerState) => {
 	return parts.join('');
 };
 
-export const renderDocument = (document: CommentDocument) => {
+export const renderDocument = (document: CommentDocument, boundaries?: Array<[number, number]>) => {
 	const { source } = document;
 	let output = '';
 	let cursor = 0;
 
 	for (const state of document.markers) {
 		if (!state.changed) {
+			boundaries?.push([
+				output.length + state.node.openingStart - cursor,
+				output.length + state.node.contentEnd - cursor,
+			]);
 			continue;
 		}
 
 		output += source.slice(cursor, state.node.openingStart);
+		const openingStart = output.length;
 		output += renderOpeningTag(state);
 		if (state.content !== undefined && state.node.continuation) {
 			const { continuation } = state.node;
 			const trimmed = continuation.trimEnd();
-			output += state.content.replaceAll('\n', (lineBreak, offset: number, content: string) => {
-				const next = content[offset + 1];
-				const blank = next === '\n' || (next === '\r' && content[offset + 2] === '\n');
-				return lineBreak + (blank ? trimmed : continuation);
-			});
+			const { content } = state;
+			let start = 0;
+			for (let index = 0; index < content.length; index += 1) {
+				if (content[index] !== '\r' && content[index] !== '\n') {
+					continue;
+				}
+				if (content[index] === '\r' && content[index + 1] === '\n') {
+					index += 1;
+				}
+				output += content.slice(start, index + 1);
+				const next = content[index + 1];
+				output += next === '\n' || next === '\r' ? trimmed : continuation;
+				start = index + 1;
+			}
+			output += content.slice(start);
 		} else {
 			output += state.content ?? source.slice(state.node.contentStart, state.node.contentEnd);
 		}
+		boundaries?.push([openingStart, output.length]);
 		cursor = state.node.contentEnd;
 	}
 
@@ -247,6 +279,7 @@ export const createDocument = (input: string | Buffer): CommentDocument => {
 			))),
 			content: undefined,
 			changed: false,
+			selectorText: undefined,
 		})),
 	};
 };
@@ -264,7 +297,8 @@ const collectClaims = (
 ) => {
 	const claims: Array<{ state: MarkerState;
 		value: CommentMarkStatic | CommentMarkResolver;
-		index: number; }> = [];
+		index: number;
+		selectorText: string; }> = [];
 	const claimed = new Map<MarkerState, string>();
 
 	for (const [selectorText, replacement] of Object.entries(replacements)) {
@@ -332,6 +366,7 @@ const collectClaims = (
 				state,
 				value,
 				index,
+				selectorText,
 			});
 		}
 	}
@@ -358,13 +393,32 @@ export const applyReplacements = async (
 	let lineEnding: string | undefined;
 	const getLineEnding = () => {
 		if (lineEnding === undefined) {
-			const lineFeed = document.source.indexOf('\n');
-			lineEnding = lineFeed > 0 && document.source[lineFeed - 1] === '\r' ? '\r\n' : '\n';
+			const { source, markers } = document;
+			let lineFeed = source.indexOf('\n');
+			let carriageReturn = source.indexOf('\r');
+			for (const { node } of markers) {
+				// Skip the opening comment too: attribute updates rewrite it.
+				if ((lineFeed !== -1 && lineFeed < node.openingStart)
+					|| (carriageReturn !== -1 && carriageReturn < node.openingStart)) {
+					break;
+				}
+				if (lineFeed !== -1 && lineFeed < node.contentEnd) {
+					lineFeed = source.indexOf('\n', node.contentEnd);
+				}
+				if (carriageReturn !== -1 && carriageReturn < node.contentEnd) {
+					carriageReturn = source.indexOf('\r', node.contentEnd);
+				}
+			}
+			lineEnding = carriageReturn !== -1 && (lineFeed === -1 || carriageReturn < lineFeed)
+				? (source[carriageReturn + 1] === '\n' ? '\r\n' : '\r')
+				: '\n';
 		}
 		return lineEnding;
 	};
 
-	for (const { state, value, index } of claims) {
+	for (const {
+		state, value, index, selectorText,
+	} of claims) {
 		const resolver = typeof value === 'function';
 		// A resolver computes its own replacement from the marker it targets;
 		// each occurrence gets its own call with its position. Awaiting each
@@ -377,6 +431,7 @@ export const applyReplacements = async (
 			continue;
 		}
 
+		state.selectorText = selectorText;
 		if (typeof updated === 'string') {
 			setContent(state, updated, getLineEnding);
 			continue;

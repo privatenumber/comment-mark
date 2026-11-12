@@ -33,18 +33,66 @@ describe('input handling', () => {
 });
 
 describe('replacement', () => {
+	test('rejects changes to another marker\'s container continuation', async () => {
+		const input = 'x <!-- a -->\n<!-- /a -->\n2. item\n   <!-- b -->\n   old\n   <!-- /b -->';
+		await expect(commentMark(input, { a: 'text' })).rejects.toThrow('would change the document\'s markers');
+	});
+	test('rejects changes to another marker\'s line context', async () => {
+		await expect(commentMark('x <!-- a --><!-- /a --><!-- b --><!-- /b -->', {
+			a: '\n',
+			b: '**bold**',
+		})).rejects.toThrow('would change the document\'s markers');
+		await expect(commentMark('x <!-- a -->\n<!-- /a --><!-- b --><!-- /b -->', {
+			a: 'text',
+		})).rejects.toThrow('would change the document\'s markers');
+		expect(await commentMark('x <!-- a --><!-- /a --><!-- b --><!-- /b -->', {
+			a: 'first',
+			b: 'second',
+		})).toBe('x <!-- a -->first<!-- /a --><!-- b -->second<!-- /b -->');
+	});
+	test('rejects adding or removing a newline that changes later marker discovery', async () => {
+		const tail = '\n2. ~~~\n   <!-- b -->old<!-- /b -->\n   ~~~';
+		await expect(commentMark(`x <!-- a --><!-- /a -->${tail}`, { a: '\n' }))
+			.rejects.toThrow('[comment-mark] Replacement for "a" would change the document\'s markers');
+		await expect(commentMark(`x <!-- a -->\n<!-- /a -->${tail}`, { a: '' }))
+			.rejects.toThrow('[comment-mark] Replacement for "a" would change the document\'s markers');
+	});
+
+	test('reports changed selectors but excludes no-op updates', async () => {
+		const input = 'Example: <!-- a --><!-- /a -->\n\n<!-- b -->\nsame\n<!-- /b -->\n<!-- c -->old<!-- /c -->';
+		await expect(commentMark(input, {
+			a: '\n```js\nx',
+			b: 'same',
+			c: 'new',
+		}))
+			.rejects.toThrow('[comment-mark] Replacement for "a", "c" would change the document\'s markers');
+	});
+	test('rejects content that changes marker boundaries', async () => {
+		const input = 'Example: <!-- a --><!-- /a -->\n\n<!-- b -->old<!-- /b -->';
+		for (const content of ['```js\nx\n```', '\n```js\nx', '<!-- a -->', '<!-- note']) {
+			await expect(commentMark(input, { a: content })).rejects.toThrow('[comment-mark] Replacement for "a" would change the document\'s markers');
+		}
+		expect(await commentMark(input, { b: 'new' })).toBe('Example: <!-- a --><!-- /a -->\n\n<!-- b -->\nnew\n<!-- /b -->');
+	});
+
+	test('accepts scanner-sensitive content that preserves marker boundaries', async () => {
+		const input = 'Example: <!-- a --><!-- /a -->';
+		for (const content of ['<br>', '`code`', '<!-- b -->inner<!-- /b -->']) {
+			expect(await commentMark(input, { a: content })).toBe(`Example: <!-- a -->${content}<!-- /a -->`);
+		}
+	});
 	test('returns a string for valid input', async () => {
 		// The annotation is the contract: the resolved value is a string for
 		// every supported call, not a document or a buffer.
 		const output: string = await commentMark(createMarker('a', 'old'), { a: 'new' });
-		expect(output).toBe(createMarker('a', 'new'));
+		expect(output).toBe(createMarker('a', '\nnew\n'));
 	});
 
 	test('basic', async () => {
 		const output = await commentMark(createMarker('a'), {
 			a: 'hello world',
 		});
-		expect(output).toBe(createMarker('a', 'hello world'));
+		expect(output).toBe(createMarker('a', '\nhello world\n'));
 	});
 
 	test('skip nullish properties', async () => {
@@ -62,7 +110,7 @@ describe('replacement', () => {
 			a: 'hello world\n\ngoogbye world\nhello again',
 		});
 
-		expect(output).toBe('\n\t\t\t# multiline\n\t\t\t<!-- a -->\nhello world\n\ngoogbye world\nhello again\n<!-- /a -->\n\t\t');
+		expect(output).toBe('\n\t\t\t# multiline\n\t\t\t<!-- a -->hello world\n\ngoogbye world\nhello again<!-- /a -->\n\t\t');
 	});
 
 	test('multiple', async () => {
@@ -83,28 +131,28 @@ describe('replacement', () => {
 		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
 			a: 'hello world',
 		});
-		expect(output).toBe(`${createMarker('a', 'hello world')}\n${createMarker('a', 'two')}`);
+		expect(output).toBe(`${createMarker('a', '\nhello world\n')}\n${createMarker('a', 'two')}`);
 	});
 
 	test('updates matches by position for an array value', async () => {
 		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
 			a: ['first', 'second'],
 		});
-		expect(output).toBe(`${createMarker('a', 'first')}\n${createMarker('a', 'second')}`);
+		expect(output).toBe(`${createMarker('a', '\nfirst\n')}\n${createMarker('a', '\nsecond\n')}`);
 	});
 
 	test('leaves matches beyond the array untouched', async () => {
 		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
 			a: ['first'],
 		});
-		expect(output).toBe(`${createMarker('a', 'first')}\n${createMarker('a', 'two')}`);
+		expect(output).toBe(`${createMarker('a', '\nfirst\n')}\n${createMarker('a', 'two')}`);
 	});
 
 	test('lets a nullish entry skip a match', async () => {
 		const output = await commentMark(`${createMarker('a', 'one')}\n${createMarker('a', 'two')}`, {
 			a: [null, 'second'],
 		});
-		expect(output).toBe(`${createMarker('a', 'one')}\n${createMarker('a', 'second')}`);
+		expect(output).toBe(`${createMarker('a', 'one')}\n${createMarker('a', '\nsecond\n')}`);
 	});
 
 	test('an empty array changes nothing', async () => {
@@ -174,6 +222,6 @@ describe('replacement', () => {
 		const output = await commentMark(Buffer.from(createMarker('a')), {
 			a: 'hello world',
 		});
-		expect(output).toBe(createMarker('a', 'hello world'));
+		expect(output).toBe(createMarker('a', '\nhello world\n'));
 	});
 });

@@ -37,7 +37,7 @@ describe('attribute updates', () => {
 		const content = '<!-- item\n\tkind = "fruit"   size=\'small\'\n-->apple<!-- /item -->';
 
 		expect(await commentMark(content, { item: 'pear' })).toBe(
-			'<!-- item\n\tkind = "fruit"   size=\'small\'\n-->pear<!-- /item -->',
+			'<!-- item\n\tkind = "fruit"   size=\'small\'\n-->\npear\n<!-- /item -->',
 		);
 	});
 
@@ -162,6 +162,6 @@ describe('attribute updates', () => {
 			a: '1',
 			b: '2',
 		});
-		expect(await commentMark(content, { item: 'y' })).toBe('<!-- item a="1" b="2" -->y<!-- /item -->');
+		expect(await commentMark(content, { item: 'y' })).toBe('<!-- item a="1" b="2" -->\ny\n<!-- /item -->');
 	});
 });

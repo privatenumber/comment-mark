@@ -14,7 +14,7 @@ describe('resolvers', () => {
 			views: ({ content }) => String(Number(content) + 1),
 		});
 
-		expect(output).toBe('<!-- views source="analytics" -->41<!-- /views -->');
+		expect(output).toBe('<!-- views source="analytics" -->\n41\n<!-- /views -->');
 	});
 
 	test('receives every attribute and the current content', async () => {
@@ -72,9 +72,9 @@ describe('resolvers', () => {
 	});
 
 	test('inserts an inline resolver string as written', async () => {
-		expect(await commentMark(createMarker('a', 'old'), {
+		expect(await commentMark(`Version: ${createMarker('a', 'old')}`, {
 			a: () => 'value',
-		})).toBe(createMarker('a', 'value'));
+		})).toBe(`Version: ${createMarker('a', 'value')}`);
 	});
 
 	test('a nullish resolver result preserves the section', async () => {
@@ -102,7 +102,7 @@ describe('resolvers', () => {
 			}),
 		});
 
-		expect(output).toBe('<!-- item kind="vegetable" -->carrot<!-- /item -->');
+		expect(output).toBe('<!-- item kind="vegetable" -->\ncarrot\n<!-- /item -->');
 	});
 
 	test('resolves selectors against the state at the start of the call', async () => {
@@ -129,7 +129,7 @@ describe('resolver targeting', () => {
 		});
 
 		expect(calls).toStrictEqual(['one', 'two']);
-		expect(output).toBe(`${createMarker('a', 'ONE')}\n${createMarker('a', 'TWO')}`);
+		expect(output).toBe(`${createMarker('a', '\nONE\n')}\n${createMarker('a', '\nTWO\n')}`);
 	});
 
 	test('claims every match, so another selector cannot target one', async () => {
@@ -176,7 +176,7 @@ describe('async resolvers', () => {
 			},
 		});
 
-		expect(output).toBe(createMarker('a', 'new'));
+		expect(output).toBe(createMarker('a', '\nnew\n'));
 	});
 
 	test('awaits a promise resolving to an update object', async () => {
@@ -190,7 +190,7 @@ describe('async resolvers', () => {
 			}),
 		});
 
-		expect(output).toBe('<!-- item kind="vegetable" -->carrot<!-- /item -->');
+		expect(output).toBe('<!-- item kind="vegetable" -->\ncarrot\n<!-- /item -->');
 	});
 
 	test('propagates a rejection from a resolver', async () => {
@@ -225,7 +225,7 @@ describe('resolver reentrancy', () => {
 			a: () => getCommentMarkAll(createMarker('b', 'nested')).map(mark => mark.content).join(''),
 		});
 
-		expect(output).toBe(createMarker('a', 'nested'));
+		expect(output).toBe(createMarker('a', '\nnested\n'));
 	});
 
 	test('a resolver can update another document', async () => {
@@ -235,7 +235,7 @@ describe('resolver reentrancy', () => {
 			a: async () => getCommentMark(await commentMark(inner, { b: 'new' }), 'b')?.content ?? '',
 		});
 
-		expect(output).toBe(createMarker('a', 'new'));
+		expect(output).toBe(createMarker('a', '\nnew\n'));
 	});
 
 	test('a resolver can catch an error from a nested parse', async () => {
@@ -250,6 +250,6 @@ describe('resolver reentrancy', () => {
 			},
 		});
 
-		expect(output).toBe(createMarker('a', 'recovered'));
+		expect(output).toBe(createMarker('a', '\nrecovered\n'));
 	});
 });

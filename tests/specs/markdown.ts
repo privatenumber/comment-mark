@@ -18,7 +18,7 @@ describe('comment and code boundaries', () => {
 			},
 		]);
 		expect(await commentMark(content, { x: 'NEW' })).toBe(
-			['```html', '<!--', '```', createMarker('x', 'NEW')].join('\n'),
+			['```html', '<!--', '```', createMarker('x', '\nNEW\n')].join('\n'),
 		);
 	});
 
@@ -58,7 +58,7 @@ describe('comment and code boundaries', () => {
 			},
 		]);
 		expect(await commentMark(content, { x: 'NEW' })).toBe(
-			['<!--', '```', '-->', createMarker('x', 'NEW')].join('\n'),
+			['<!--', '```', '-->', createMarker('x', '\nNEW\n')].join('\n'),
 		);
 	});
 });
@@ -129,7 +129,7 @@ describe('fenced code blocks', () => {
 				content: '\n```md\n<!-- /a -->\n```\nKEEP\n',
 			},
 		]);
-		expect(await commentMark(content, { a: 'NEW' })).toBe('<!-- a -->NEW<!-- /a -->');
+		expect(await commentMark(content, { a: 'NEW' })).toBe('<!-- a -->\nNEW\n<!-- /a -->');
 	});
 
 	test('a closing fence with trailing text does not close the fence', () => {
@@ -302,7 +302,7 @@ describe('paragraph interruption', () => {
 			},
 		]);
 		expect(await commentMark(content, { x: 'NEW' })).toBe(
-			['paragraph', '2. ~~~', `   ${createMarker('x', 'NEW')}`, '   ~~~'].join('\n'),
+			['paragraph', '2. ~~~', `   ${createMarker('x', '\nNEW\n')}`, '   ~~~'].join('\n'),
 		);
 	});
 
@@ -384,7 +384,7 @@ describe('line endings', () => {
 			},
 		]);
 		expect(await commentMark(content, { x: 'NEW' })).toBe(
-			['~~~', 'code', '~~~', createMarker('x', 'NEW')].join('\r'),
+			['~~~', 'code', '~~~', createMarker('x', '\rNEW\r')].join('\r'),
 		);
 	});
 
@@ -402,7 +402,7 @@ describe('line endings', () => {
 	test('preserves the line endings around a replaced section', async () => {
 		const content = ['before', '<!-- a -->old<!-- /a -->', 'after'].join('\r\n');
 		expect(await commentMark(content, { a: 'new' })).toBe(
-			['before', '<!-- a -->new<!-- /a -->', 'after'].join('\r\n'),
+			['before', '<!-- a -->\r\nnew\r\n<!-- /a -->', 'after'].join('\r\n'),
 		);
 	});
 });
