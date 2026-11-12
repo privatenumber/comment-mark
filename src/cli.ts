@@ -234,7 +234,17 @@ if (argv._.length > 1) {
 // Read mode: no selector flags prints every detected marker as JSON.
 if (updates.size === 0) {
 	const content = await readFile(filePath, 'utf8');
-	process.stdout.write(`${JSON.stringify(getCommentMarkAll(content), null, '\t')}\n`);
+	// Exiting while a large write is still queued truncates piped output, so
+	// wait for the write to flush. The write callback receives any error; the
+	// listener only keeps the matching 'error' event from crashing the process.
+	// A reader that closes early (EPIPE, as with `| head`) is a normal exit.
+	process.stdout.once('error', () => {});
+	const error = await new Promise<NodeJS.ErrnoException | null | undefined>((resolve) => {
+		process.stdout.write(`${JSON.stringify(getCommentMarkAll(content), null, '\t')}\n`, resolve);
+	});
+	if (error && error.code !== 'EPIPE') {
+		exitWithError(error.message);
+	}
 	process.exit(0);
 }
 
