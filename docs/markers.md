@@ -42,7 +42,7 @@ A comment is a marker only when a later comment closes the same tag name. Every 
 | `<!-- ns:a -->`, `<!-- a.b -->` | `:` and `.` are not allowed in tag names |
 | `<!-- /a extra -->` | A closing comment holds only the tag name |
 
-A comment that looks like a marker but breaks the attribute rules is an error once a closing comment pairs with it. For example, `<!-- a /-->` followed later by `<!-- /a -->` is an error, and so is `<!-- a ns:k="1" -->` with its closing comment.
+A comment that looks like a marker but breaks the attribute rules is an error once a closing comment pairs with it, unless the pair is nested inside another marker, whose content is not checked. For example, `<!-- a /-->` followed later by `<!-- /a -->` is an error, and so is `<!-- a ns:k="1" -->` with its closing comment.
 
 ### Nested markers
 
@@ -66,7 +66,7 @@ Markers shown as examples in code are skipped, so a document can show marker syn
 - **Not skipped:** indented code blocks, and inline code spans that wrap across lines. A marker there is treated as real.
 - **Not skipped:** in a GFM table row, an unmatched backtick in one cell can pair with the opening backtick of a code span in a later cell. A marker inside that code span is treated as real.
 
-To keep an example literal, put it in a fenced code block or in inline code on one line.
+To keep an example literal, put it in a fenced code block. Inline code on one line also works outside tables.
 
 ### Compared with HTML and XML
 
@@ -76,7 +76,7 @@ To keep an example literal, put it in a fenced code block or in inline code on o
 | Unquoted attribute values | Allowed | Not allowed | Allowed |
 | Attributes without a value, such as `hidden` | Allowed | Not allowed | Not allowed |
 | Repeated attribute | First one is used | Error | Error |
-| Self-closing tags | Only on void elements, such as `<br />` | Allowed | Not allowed |
+| Self-closing tags | Only on SVG and MathML elements | Allowed | Not allowed |
 | Entities such as `&amp;` | Decoded | Decoded | Not decoded |
 | Nested elements | Form a tree | Form a tree | Part of the outer marker's content |
 | Mismatched or unclosed tags | Repaired by the parser | Error | Ordinary comments |
