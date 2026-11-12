@@ -76,7 +76,7 @@ Written by <!-- author -->Jane<!-- /author -->.
 
 The rule is the same for CLI values, static values, resolver results, and the files plugin.
 
-The reason is how Markdown renders comments. A line that starts with `<!--` begins an HTML block, and Markdown on that line is not rendered, so `<!-- a -->**Jane**<!-- /a -->` on its own line shows `**Jane**` as literal text. A comment inside a line renders as nothing, so content inserted there renders as if the markers were absent, unless the content ends with a line break (see below).
+The reason is how Markdown renders comments. A line that starts with `<!--` begins an HTML block, and Markdown on that line is not rendered, so `<!-- a -->**Jane**<!-- /a -->` on its own line shows `**Jane**` as literal text. A comment inside a line renders as nothing, so content inserted there usually renders as if the markers were absent. The main exception is content that ends with a line break (see below).
 
 Details:
 
@@ -85,7 +85,7 @@ Details:
 - **Added line breaks match the document.** comment-mark uses the first line break outside the markers' opening comments and content: CRLF, LF, or CR. A document without one gets LF.
 - **Lists and blockquotes:** each line break in the content is followed by the container's prefix, so the content and the closing comment stay in the container. This also applies to markers inside a line. A marker on a lazy continuation line, such as unprefixed text that continues a `>` paragraph, is not recognized as inside the blockquote, so its content gets no prefix and can end up outside the quote.
 - **In HTML,** added line breaks can be visible, for example inside `<pre>`.
-- **Reading a section** returns the added line breaks as part of its content. Running an update again with the same static content, or with a resolver that returns its input, leaves the document unchanged, and the CLI reports `Unchanged`.
+- **Reading a section** returns the added line breaks as part of its content. Running an update again with the same static content, or with a resolver that returns its input, leaves the document unchanged, and the CLI reports `Unchanged`. This needs the selector to still match, so an update should not change an attribute its own selector tests.
 - **Inside a line, avoid content that ends with a line break.** The closing comment then starts a line and begins an HTML block, so the rest of that line is not rendered as Markdown.
 - **An update that would change the document's markers is rejected.** For example, a fenced code block inside a line would put its closing fence on the same line as the closing comment, so the fence could not close. Give the fence lines of its own, as in `\n```js\nx\n```\n`.
 
