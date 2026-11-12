@@ -43,7 +43,7 @@ Where markers differ:
 - **Every marker needs a closing comment.** There are no self-closing or void markers. `<!-- a /-->` on its own is an ordinary comment, and it is an error when a later `<!-- /a -->` closes it.
 - **Names are limited.** A tag name or attribute name starts with an ASCII letter or `_`, followed by ASCII letters, digits, `_`, or `-`. A comment with a namespaced or dotted tag name, such as `<!-- ns:a -->` or `<!-- a.b -->`, is an ordinary comment. The same characters in an attribute name, as in `ns:k="1"`, are an error.
 - **Attribute values are literal text.** Surrounding quotes are removed, HTML entities such as `&amp;` are not decoded, and a value cannot contain `-->`, because that would end the comment.
-- **Content is text, not a tree.** Tags and entities between the comments are returned exactly as written. A marker pair nested inside another marker is part of the outer marker's content, not a child marker.
+- **Content is text, not a tree.** Tags and entities between the comments are not parsed, so `<b>` and `&amp;` come back as they were written. A marker pair nested inside another marker is part of the outer marker's content, not a child marker.
 - **Mismatched comments are ordinary comments, not errors.** An opening comment that is never closed, or a closing comment with attributes, is left as an ordinary comment. In `<!-- a --><!-- b -->x<!-- /a -->`, the closing comment ends `a`, and `<!-- b -->` becomes part of its content. XML would reject this document.
 
 ## Selectors
