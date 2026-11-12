@@ -79,7 +79,8 @@ const planUpdate = async (
  * Updates the file and reports each selector on stderr. Classifying every
  * selector before writing means the report and the exit code reflect each one,
  * and a malformed marker never leaves partial edits behind. Returns the exit
- * code: 1 when any selector matched no marker.
+ * code: 1 when some selectors matched no marker. Throws `CliError` when none
+ * matched, since there is nothing to save.
  */
 export const updateMarkers = async (
 	filePath: string,
