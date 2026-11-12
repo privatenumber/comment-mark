@@ -29,7 +29,7 @@ The tag name names the section, and the optional attributes describe it. When th
 
 There are two ways to write a marker:
 
-- **Block marker:** the opening and closing comments each go on their own line. Use it for block content, such as a heading, list, table, or code block.
+- **Block marker:** the opening comment starts a line. Write the opening and closing comments each on their own line. Use it for block content, such as a heading, list, table, or code block.
 - **Inline marker:** both comments go inside a line of text. Use it for inline content, such as a version, date, or link. The content stays part of the sentence.
 
 ```md
@@ -63,7 +63,7 @@ How the rule applies:
 Pitfalls:
 
 - **Inline content that ends with a line break.** The closing comment then starts a line and begins an HTML block, so the rest of that line is not rendered as Markdown. This is the main case where an inline marker does not render as if it were absent.
-- **A code block in an inline marker.** Its closing fence would share a line with the closing comment and could not close, so the update is rejected. Give the fence lines of its own, as in `\n```js\nx\n```\n`. Any update that would change the document's markers is rejected the same way.
+- **A code block in an inline marker.** If the content ends with the closing fence, the fence shares a line with the closing comment and cannot close, so the update is rejected. Content that ends with a line break after the fence, as in `\n```js\nx\n```\n`, is accepted, but a block marker is simpler. Any update that would change the document's markers is rejected the same way.
 - **Lazy blockquote lines.** A marker on unprefixed text that continues a `>` paragraph is not recognized as inside the blockquote. Its content gets no prefix and can end up outside the quote.
 - **HTML.** Added line breaks can be visible, for example inside `<pre>`.
 
