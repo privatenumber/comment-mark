@@ -10,8 +10,6 @@ Keep generated content, like contributor lists and benchmark results, alongside 
 pnpm add comment-mark
 ```
 
-Requires Node.js 22.22.2 or newer. Includes TypeScript types, and the ESM build also loads with `require()`.
-
 ## How it works
 
 Wrap a section in a pair of HTML comments. They are hidden when the Markdown is rendered:
