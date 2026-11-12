@@ -22,6 +22,16 @@ export type Attribute = {
 	valueEnd: number;
 };
 
+// The attribute as written, for error messages. It stops at whitespace or the
+// end of the opening comment, so the message never quotes the text after it.
+const readWrittenAttribute = (source: string, index: number, end: number) => {
+	let writtenEnd = index;
+	while (writtenEnd < end && !isWhitespace(source[writtenEnd])) {
+		writtenEnd += 1;
+	}
+	return source.slice(index, writtenEnd);
+};
+
 /**
  * Reads one attribute starting at or after `index`, or undefined once the
  * attributes end. The grammar lives here so that reading attributes and
@@ -35,7 +45,7 @@ const readAttribute = (source: string, index: number, end: number): Attribute | 
 
 	const start = index;
 	if (!isNameStart(source[index])) {
-		const attribute = source.slice(index, index + 16);
+		const attribute = readWrittenAttribute(source, start, end);
 		throw new Error(`[comment-mark] Invalid marker attribute: ${JSON.stringify(attribute)}`);
 	}
 	index += 1;
@@ -46,7 +56,8 @@ const readAttribute = (source: string, index: number, end: number): Attribute | 
 
 	index = skipWhitespace(source, index, end);
 	if (source[index] !== '=') {
-		throw new Error(`[comment-mark] Invalid marker attribute: ${JSON.stringify(name)}`);
+		const attribute = readWrittenAttribute(source, start, end);
+		throw new Error(`[comment-mark] Invalid marker attribute: ${JSON.stringify(attribute)}`);
 	}
 	index += 1;
 	index = skipWhitespace(source, index, end);
