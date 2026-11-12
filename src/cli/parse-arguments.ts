@@ -83,8 +83,9 @@ const findSeparator = (text: string, delimiter: string) => {
 };
 
 /**
- * Turns the CLI arguments into the command to run. Throws `CliError` for
- * arguments that do not form a valid command, before any file is read.
+ * Turns the CLI arguments into the command to run. Throws `CliError` for flag
+ * syntax that does not form a command. Selector syntax is checked later by the
+ * library, and an unwritable attribute value throws the library's own error.
  */
 export const parseArguments = (argv: string[]): Command => {
 	const parsed = cli({

@@ -8,27 +8,6 @@ import type { SelectorUpdate } from './parse-arguments.ts';
 // string; an attribute update uses an update object.
 type Replacements = Parameters<typeof commentMark>[1];
 
-// An attribute update merges requested changes over the marker's existing
-// attributes. A static value targets only the first matching marker.
-const buildReplacement = (
-	{ content, attributes }: SelectorUpdate,
-	current: Record<string, string>,
-) => {
-	if (attributes.size === 0) {
-		return content;
-	}
-
-	// Spread preserves an own `__proto__` data property, so an attribute with
-	// that name survives as data instead of hitting the prototype setter.
-	return {
-		attributes: {
-			...current,
-			...Object.fromEntries(attributes),
-		},
-		content,
-	};
-};
-
 /**
  * Applies the updates to `original` and classifies each selector. The library
  * rejects a selector that matches nothing, so only matched selectors are passed
@@ -54,7 +33,20 @@ const planUpdate = async (
 			continue;
 		}
 
-		matched[selector] = buildReplacement(update, markerData(state).attributes);
+		// An attribute update merges requested changes over the marker's existing
+		// attributes. A static value targets only the first matching marker.
+		const current = markerData(state).attributes;
+		matched[selector] = update.attributes.size === 0
+			? update.content
+			: {
+				// Spread preserves an own `__proto__` data property, so an attribute
+				// with that name survives as data instead of hitting the prototype setter.
+				attributes: {
+					...current,
+					...Object.fromEntries(update.attributes),
+				},
+				content: update.content,
+			};
 		matchedIndexes.set(selector, state.index);
 	}
 
