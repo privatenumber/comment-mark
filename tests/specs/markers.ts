@@ -244,6 +244,18 @@ describe('attributes', () => {
 		);
 	});
 
+	test('quotes only the invalid attribute in the error', () => {
+		expect(() => getCommentMarkAll('<!-- a /-->x<!-- /a -->')).toThrow(
+			/^\[comment-mark\] Invalid marker attribute: "\/"$/,
+		);
+		expect(() => getCommentMarkAll('<!-- a id="1" 1="x" -->x<!-- /a -->')).toThrow(
+			/^\[comment-mark\] Invalid marker attribute: "1=\\"x\\""$/,
+		);
+		expect(() => getCommentMarkAll('<!-- a ns:k="1" -->x<!-- /a -->')).toThrow(
+			/^\[comment-mark\] Invalid marker attribute: "ns:k=\\"1\\""$/,
+		);
+	});
+
 	test('requires whitespace between attributes', () => {
 		expect(() => getCommentMarkAll('<!-- a id="a"file="./b.md" -->x<!-- /a -->')).toThrow(
 			'[comment-mark] Expected whitespace between attributes',
