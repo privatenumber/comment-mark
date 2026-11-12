@@ -4,6 +4,14 @@ Read and update sections of Markdown using HTML comment placeholders.
 
 Keep generated content, like contributor lists and benchmark results, alongside handwritten documentation. The placeholders stay in the file after each update, so the same Markdown serves as both the template and the output.
 
+## Install
+
+```sh
+pnpm add comment-mark
+```
+
+Requires Node.js 22.22.2 or newer. Includes TypeScript types, and the ESM build also loads with `require()`.
+
 ## How it works
 
 Wrap a section in a pair of HTML comments. They are hidden when the Markdown is rendered:
@@ -97,14 +105,6 @@ npx comment-mark README.md | jq -r '.[] | select(.tagName == "contributors") | .
 - **Mistakes fail loudly.** The CLI reports each selector that matches no section and exits with code `1`, after saving the sections that matched. In JavaScript, a static value whose selector matches nothing rejects instead of being skipped.
 - **Structure is checked before writing.** A malformed marker, or an update that would move a section's boundaries, stops the update and leaves the file as it was.
 - **Works with Markdown and HTML,** including multiline content inside lists and blockquotes.
-
-## Install
-
-```sh
-pnpm add comment-mark
-```
-
-Requires Node.js 22.22.2 or newer. Includes TypeScript types, and the ESM build also loads with `require()`.
 
 ## Documentation
 
