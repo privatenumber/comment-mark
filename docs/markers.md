@@ -49,13 +49,13 @@ The wrong form breaks the rendering:
 | A table | Plain text with the pipes showing | A table |
 | `**2.0**` | Bold text inside the sentence | A separate paragraph that splits the sentence |
 
-comment-mark decides by the opening comment alone. When it is the first thing on its line, comment-mark puts the content on its own lines, adding a line break after the opening comment and before the closing comment where one is missing. So `<!-- a --><!-- /a -->` alone on a line also works as a block marker. Otherwise, the content is inserted as given. Empty content stays empty, so clearing a section leaves `<!-- a --><!-- /a -->`. The rule is the same for CLI values, static values, resolver results, and the files plugin.
+comment-mark decides by the opening comment alone. When it is the first thing on its line, or follows a comment that begins the line, comment-mark puts the content on its own lines, adding a line break after the opening comment and before the closing comment where one is missing. So `<!-- a --><!-- /a -->` alone on a line also works as a block marker. Otherwise, the content is inserted as given. Empty content stays empty, so clearing a section leaves `<!-- a --><!-- /a -->`. The rule is the same for CLI values, static values, resolver results, and the files plugin.
 
 The line breaks are needed because a line that starts with `<!--` begins an HTML block, and Markdown on that line is not rendered. Without them, `<!-- changelog -->## Changelog<!-- /changelog -->` would show `## Changelog` as literal text.
 
 How the rule applies:
 
-- **First thing on its line** ignores any list or blockquote prefix and up to three spaces of indentation. With four or more spaces, the line is indented code or continues the paragraph above it, so the marker is inline. A marker later on a line that begins with a comment, such as `<!-- note --> text <!-- a -->`, also counts as a block marker, because the whole line is an HTML block.
+- **First thing on its line** ignores any list or blockquote prefix and up to three columns of indentation, where a tab advances to the next multiple of four. With four or more columns, the line is indented code or continues the paragraph above it, so the marker is inline. A marker after a comment that begins the line, such as `a` in `<!-- note --> text <!-- a -->`, counts as a block marker because the whole line is an HTML block.
 - **Added line breaks match the document:** the first line break outside the markers' opening comments and content, CRLF, LF, or CR. A document without one gets LF.
 - **In lists and blockquotes,** each line break in the content is followed by the container's prefix, so the content and the closing comment stay in the container. This applies to inline markers too.
 - **Reading a section** returns the added line breaks as part of its content. Rerunning an update with the same static content, or with a resolver that returns its input, leaves the document unchanged, and the CLI reports `Unchanged`, as long as the update does not change an attribute that its own selector tests.
