@@ -7,7 +7,7 @@ Decision: the [README](../../README.md) is a short showcase for people who find 
 - **README:** the problem, one before-and-after example, one short example per capability, the safety guarantees, install, and links to the docs. Each example must produce the output it shows when run against the built package.
 - **[`docs/cli.md`](../../docs/cli.md):** CLI usage, update and read modes, exit codes, and argument validation.
 - **[`docs/node.md`](../../docs/node.md):** `commentMark`, `getCommentMark`, `getCommentMarkAll`, and the files plugin.
-- **[`docs/markers.md`](../../docs/markers.md):** the marker and selector grammar, and the questions about how markers are detected. The CLI and the API both use selectors, so this file owns the grammar and the other two link to it instead of repeating it.
+- **[`docs/markers.md`](../../docs/markers.md):** the marker syntax, which comments count as markers, nesting, markers in code examples, a comparison with HTML and XML, and the selector syntax. The CLI and the API both use selectors, so this file owns the grammar and the other two link to it instead of repeating it.
 
 The split follows the maintainer's convention for their packages: the README explains the tool briefly with short runnable examples and links to the details, and has no badges or license section. No sibling package had plain `docs/*.md` files to copy when this was decided (Thu Nov 12): cleye, manten, fs-fixture, pkgroll, and get-tsconfig have no `docs/` directory on their default branches, and tsx uses a VitePress site.
 

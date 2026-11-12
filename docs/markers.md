@@ -1,54 +1,89 @@
 # Markers and selectors
 
-## Markers
-
-A marker is a matching pair of HTML comments. The tag name names the section:
-
-```md
-<!-- contributors -->Jane<!-- /contributors -->
-```
-
-Attributes are optional and carry metadata for the section. They are written after the tag name:
-
-```md
-<!-- contributors role="maintainer" -->Jane<!-- /contributors -->
-```
-
-- The closing comment repeats the tag name, so `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
-- Whitespace inside the comments is padding: `<!-- contributors -->` and `<!--contributors-->` are equivalent.
-- The content between the comments is replaced; the comment pair stays in the output so later updates can find the section.
-- Attributes are caller-defined. comment-mark stores and matches on them; it does not interpret them.
-
-### Compared with HTML and XML tags
-
-Markers are modeled on HTML and XML elements. An opening comment works like a start tag, and a closing comment works like an end tag:
+A marker is written like an HTML element, with each tag inside an HTML comment. The comments are hidden when the Markdown is rendered:
 
 ```md
 <contributors role="maintainer">Jane</contributors>
 <!-- contributors role="maintainer" -->Jane<!-- /contributors -->
 ```
 
-Wrapping the tags in comments is what hides them when the Markdown is rendered.
+The tag name names the section, and the optional attributes describe it. When the section is updated, the content between the comments is replaced and both comments stay, so later updates can find the same section.
 
-Where markers follow HTML and XML:
+## Markers
 
-- Attributes follow the tag name as `name="value"`, separated by whitespace. Values can use double quotes, single quotes, or no quotes, as in HTML.
-- Tag names and attribute names are case-sensitive, as in XML. `<!-- a -->` is not closed by `<!-- /A -->`.
-- A repeated attribute is an error, as in XML.
-- Selectors use the syntax of CSS attribute selectors, such as `contributors[role='maintainer']`.
+### Syntax
 
-Where markers differ:
+```md
+<!-- contributors role="maintainer" lang=en -->Jane<!-- /contributors -->
+```
 
-- **Every attribute needs a value.** HTML allows boolean attributes such as `hidden`; a marker rejects them, so write `hidden=""`.
-- **Every marker needs a closing comment.** There are no self-closing or void markers. `<!-- a /-->` on its own is an ordinary comment, and it is an error when a later `<!-- /a -->` closes it.
-- **Names are limited.** A tag name or attribute name starts with an ASCII letter or `_`, followed by ASCII letters, digits, `_`, or `-`. A comment with a namespaced or dotted tag name, such as `<!-- ns:a -->` or `<!-- a.b -->`, is an ordinary comment. The same characters in an attribute name, as in `ns:k="1"`, are an error.
+- **Tag names** start with an ASCII letter or `_`, followed by ASCII letters, digits, `_`, or `-`.
+- **Attributes** follow the tag name as `name="value"`. Attribute names follow the same rules as tag names.
+	- Values can use double quotes, single quotes, or no quotes.
+	- Attributes are separated by whitespace: `a="1"b="2"` is an error.
+	- Every attribute needs a value. Write `hidden=""`, not `hidden`.
+	- Each attribute can appear once. A repeated name is an error.
 - **Attribute values are literal text.** Surrounding quotes are removed, HTML entities such as `&amp;` are not decoded, and a value cannot contain `-->`, because that would end the comment.
-- **Content is text, not a tree.** Tags and entities between the comments are not parsed, so `<b>` and `&amp;` come back as they were written. A marker pair nested inside another marker is part of the outer marker's content, not a child marker.
-- **Mismatched comments are ordinary comments, not errors.** An opening comment that is never closed, or a closing comment with attributes, is left as an ordinary comment. In `<!-- a --><!-- b -->x<!-- /a -->`, the closing comment ends `a`, and `<!-- b -->` becomes part of its content. XML would reject this document.
+- **Attributes are caller-defined.** comment-mark stores and matches them; it does not interpret them.
+- **Names are case-sensitive.** `<!-- a -->` is not closed by `<!-- /A -->`.
+- **Whitespace inside the comments is padding.** `<!-- contributors -->` and `<!--contributors-->` are equivalent.
+- **Content is text.** Tags and entities between the comments are not parsed, so `<b>` and `&amp;` come back as they were written.
+
+### What counts as a marker
+
+A comment is a marker only when a later comment closes the same tag name. Every other comment stays ordinary text and is never an error:
+
+| Comment | Why it is ordinary |
+| --- | --- |
+| `<!-- TODO -->` | No `<!-- /TODO -->` follows it |
+| `<!-- TODO: fix this -->` | The tag name is followed by `:` instead of whitespace or the end of the comment |
+| `<!-- 1 + 1 -->` | A tag name cannot start with a digit |
+| `<!-- a /-->` | There are no self-closing markers |
+| `<!-- ns:a -->`, `<!-- a.b -->` | `:` and `.` are not allowed in tag names |
+| `<!-- /a extra -->` | A closing comment holds only the tag name |
+
+A comment that looks like a marker but breaks the attribute rules is an error once a closing comment pairs with it. For example, `<!-- a /-->` followed later by `<!-- /a -->` is an error, and so is `<!-- a ns:k="1" -->` with its closing comment.
+
+### Nested markers
+
+Only the outermost pair is a marker. A pair inside another marker is part of the outer marker's content:
+
+```md
+<!-- a --><!-- b -->x<!-- /b --><!-- /a -->
+```
+
+Here `a` is the only marker, and its content is `<!-- b -->x<!-- /b -->`. `getCommentMark` and `getCommentMarkAll` do not return `b`, and no selector matches it. This means a replacement can contain its own marker pairs without adding markers to the document.
+
+A closing comment closes the nearest open comment with the same tag name, and skips openers in between. In `<!-- a --><!-- b -->x<!-- /a -->`, the closing comment ends `a`, and `<!-- b -->` becomes part of its content.
+
+An unclosed opening comment with the section's own tag name changes the section. In `<!-- a -->outer <!-- a -->inner<!-- /a -->`, the closing comment pairs with the second opener, so the section's content is `inner`. An update whose content would cause this is rejected.
+
+### Markers in code examples
+
+Markers shown as examples in code are skipped, so a document can show marker syntax without updating it.
+
+- **Skipped:** fenced code blocks, with backticks or tildes, including fences inside lists and blockquotes, and inline code spans on one line.
+- **Not skipped:** indented code blocks, and inline code spans that wrap across lines. A marker there is treated as real.
+- **Not skipped:** in a GFM table row, an unmatched backtick in one cell can pair with the opening backtick of a code span in a later cell. A marker inside that code span is treated as real.
+
+To keep an example literal, put it in a fenced code block or in inline code on one line.
+
+### Compared with HTML and XML
+
+| | HTML | XML | Markers |
+| --- | --- | --- | --- |
+| Case of names | Insensitive | Sensitive | Sensitive |
+| Unquoted attribute values | Allowed | Not allowed | Allowed |
+| Attributes without a value, such as `hidden` | Allowed | Not allowed | Not allowed |
+| Repeated attribute | First one is used | Error | Error |
+| Self-closing tags | Only on void elements, such as `<br />` | Allowed | Not allowed |
+| Entities such as `&amp;` | Decoded | Decoded | Not decoded |
+| Nested elements | Form a tree | Form a tree | Part of the outer marker's content |
+| Mismatched or unclosed tags | Repaired by the parser | Error | Ordinary comments |
 
 ## Selectors
 
-A selector is a tag name followed by optional attribute predicates:
+A selector is a tag name followed by optional attribute predicates, as in CSS attribute selectors:
 
 | Selector | Matches |
 | --- | --- |
@@ -57,28 +92,7 @@ A selector is a tag name followed by optional attribute predicates:
 | `contributors[role='maintainer']` | Markers whose `role` is `maintainer` |
 | `contributors[role='maintainer'][lang='en']` | Markers that satisfy every predicate |
 
-- A tag name on its own is usually enough. Give each section you update from the CLI its own tag name so the flag needs no quoting.
-- When several sections share a tag name, a predicate narrows them. Testing that an attribute exists (`contributors[role]`) is simpler than comparing its value.
-- Attribute values compare as literal text, so `[role='maintainer']` matches `role=maintainer` however the source quoted it.
-- Single quotes, double quotes, and unquoted values all work in a selector.
-- Combinators, selector lists, pseudo-classes, and operators other than `=` are rejected instead of quietly matching nothing.
-
-## FAQ
-
-### How does comment-mark tell a marker from an ordinary comment?
-
-A comment is a marker only when a later comment closes the same tag name, as `<!-- contributors -->` is closed by `<!-- /contributors -->`. Every other comment stays ordinary text, so `<!-- TODO -->`, `<!-- TODO: fix this -->`, and `<!-- 1 + 1 -->` are left alone.
-
-### How are code examples ignored?
-
-Fenced code blocks (backtick or tilde, including blockquote prefixes) and single-line inline code spans are skipped, so a marker shown as an example is not treated as real. Indented code blocks and code spans that wrap across lines are not detected, so a marker there is treated as real. A marker inside indented code cannot render as if absent. In a GFM table row, an unmatched backtick in one cell can pair with the opening backtick of a code span in a later cell, so a marker inside that code span is treated as real.
-
-### What happens to a marker inside another marker?
-
-Only the outermost pair is a marker. A balanced pair nested inside another pair stays part of the outer marker's content, so `getCommentMark` and `getCommentMarkAll` do not return it and no selector matches it. Replacing the outer section replaces that content, so a replacement can insert its own marker pairs without adding markers to the document.
-
-Pairing still reads the whole text, so an unbalanced comment inside a section takes part in pairing. An opening comment there that is never closed can consume the section's closing comment, which moves the section boundary on the next run.
-
-### Why does a marker have a tag name and attributes?
-
-The tag name names the section, and attributes describe it. Together they form a selector, so a document can hold several sections of the same kind and each one can be addressed by what distinguishes it. A unique tag name per section is usually simplest, especially for CLI updates; attributes are for when sections of the same kind need to be told apart.
+- **Prefer a unique tag name for each section.** A tag name on its own is the simplest selector, and a CLI flag such as `--contributors=...` needs no quoting.
+- **Use predicates when sections share a tag name.** Testing that an attribute exists, as in `contributors[role]`, is simpler than comparing its value.
+- **Values compare as literal text.** Single quotes, double quotes, or no quotes work in a selector, and `[role='maintainer']` matches `role=maintainer` however the marker quotes it.
+- **Unsupported syntax is an error.** Combinators, selector lists, pseudo-classes, and operators other than `=` are rejected instead of matching nothing.
