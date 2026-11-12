@@ -17,11 +17,34 @@ Attributes are optional and carry metadata for the section. They are written aft
 - The closing comment repeats the tag name, so `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
 - Whitespace inside the comments is padding: `<!-- contributors -->` and `<!--contributors-->` are equivalent.
 - The content between the comments is replaced; the comment pair stays in the output so later updates can find the section.
-- Only the outermost pair is a marker. A balanced pair nested inside another pair stays part of the outer marker's content.
-- A tag name starts with a letter or `_`, then letters, digits, `_`, or `-`.
-- Tag names and attribute names are case-sensitive and matched verbatim.
-- Attribute values are literal text: surrounding quotes are removed and HTML entities are not decoded.
 - Attributes are caller-defined. comment-mark stores and matches on them; it does not interpret them.
+
+### Compared with HTML and XML tags
+
+Markers are modeled on HTML and XML elements. An opening comment works like a start tag, and a closing comment works like an end tag:
+
+```md
+<contributors role="maintainer">Jane</contributors>
+<!-- contributors role="maintainer" -->Jane<!-- /contributors -->
+```
+
+Wrapping the tags in comments is what hides them when the Markdown is rendered.
+
+Where markers follow HTML and XML:
+
+- Attributes follow the tag name as `name="value"`, separated by whitespace. Values can use double quotes, single quotes, or no quotes, as in HTML.
+- Tag names and attribute names are case-sensitive, as in XML. `<!-- a -->` is not closed by `<!-- /A -->`.
+- A repeated attribute is an error, as in XML.
+- Selectors use the syntax of CSS attribute selectors, such as `contributors[role='maintainer']`.
+
+Where markers differ:
+
+- **Every attribute needs a value.** HTML allows boolean attributes such as `hidden`; a marker rejects them, so write `hidden=""`.
+- **Every marker needs a closing comment.** There are no self-closing or void markers. `<!-- a /-->` on its own is an ordinary comment, and it is an error when a later `<!-- /a -->` closes it.
+- **Names are limited.** A tag name or attribute name starts with an ASCII letter or `_`, followed by ASCII letters, digits, `_`, or `-`. A comment with a namespaced or dotted tag name, such as `<!-- ns:a -->` or `<!-- a.b -->`, is an ordinary comment. The same characters in an attribute name, as in `ns:k="1"`, are an error.
+- **Attribute values are literal text.** Surrounding quotes are removed, HTML entities such as `&amp;` are not decoded, and a value cannot contain `-->`, because that would end the comment.
+- **Content is text, not a tree.** Tags and entities between the comments are returned exactly as written. A marker pair nested inside another marker is part of the outer marker's content, not a child marker.
+- **Mismatched comments are ordinary comments, not errors.** An opening comment that is never closed, or a closing comment with attributes, is left as an ordinary comment. In `<!-- a --><!-- b -->x<!-- /a -->`, the closing comment ends `a`, and `<!-- b -->` becomes part of its content. XML would reject this document.
 
 ## Selectors
 

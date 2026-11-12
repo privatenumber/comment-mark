@@ -42,10 +42,11 @@ map: marker
 
 The writer replaces changed value tokens in place, preserving surrounding whitespace and reusing the original quote when the new value fits. It validates names and values against the reader's grammar before mutation, so it does not write attributes that its own reader rejects. [PR #16](https://github.com/privatenumber/comment-mark/pull/16) introduced the update path. [PR #31](https://github.com/privatenumber/comment-mark/pull/31), commit `e8d45a6`, removed the original quote from validation because writability does not depend on the preferred quote; rendering still reuses it. See [`parse-attributes.ts`](../../src/parser/parse-attributes.ts#L136-L181), [`document.ts`](../../src/document.ts#L119-L193), and the [attribute update tests](../../tests/specs/attribute-updates.ts).
 
-Two boundaries remain open:
+The name grammar accepts only ASCII letters and `_` as the first character ([`isNameStart`](../../src/parser/characters.ts#L16-L20)), and the [markers doc](../../docs/markers.md#compared-with-html-and-xml-tags) now says "ASCII letter". Earlier README wording said "letter", which could be read as including non-ASCII letters. Change the grammar if non-ASCII names become a requirement.
+
+One boundary remains open:
 
 - The writer rejects `-->` but accepts `--!>`. The [WHATWG HTML tokenizer's comment end bang state](https://html.spec.whatwg.org/multipage/parsing.html#comment-end-bang-state) emits the comment on `>` with an incorrectly-closed-comment parse error. Thus comment-mark's own round-trip check does not establish the same comment boundary for HTML parsing. The living standard was checked on 2026-11-08. The Node 26.13.0 command below shows the writer's actual output; it does not test a browser.
-- The [markers doc](../../docs/markers.md#markers) says a tag name starts with a "letter" or `_`, but [`isNameStart`](../../src/parser/characters.ts#L16-L20) accepts only ASCII letters and `_`. Clarify the wording or change the grammar if non-ASCII names become a requirement.
 
 ```sh
 fnm exec --using=26.13.0 node --input-type=module-typescript -e 'import { commentMark } from "./src/index.ts"; console.log(await commentMark("<!-- a --><!-- /a -->", { a: { attributes: { x: "--!>" } } }));'
