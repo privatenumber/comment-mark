@@ -1,3 +1,6 @@
+import { spawn as spawnChild } from 'node:child_process';
+import { once } from 'node:events';
+import { open } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createFixture } from 'fs-fixture';
 import { describe, test, expect } from 'manten';
@@ -7,6 +10,40 @@ import { createMarker } from '../utils/create-marker.ts';
 import { commentMarkCli } from '../utils/comment-mark-cli.ts';
 
 describe('CLI', () => {
+	test('prints the complete unexpected error for a long file path', async () => {
+		const path = `/${'x'.repeat(70_000)}`;
+		const invocation = commentMarkCli(path);
+
+		await expect(invocation).rejects.toMatchObject({ exitCode: 1 });
+		const { stderr } = await invocation.catch(error => error);
+		expect(stderr).toContain('ENAMETOOLONG');
+		expect(stderr.includes(path)).toBe(true);
+	});
+
+	test('prints the complete error for a long malformed attribute', async () => {
+		const attribute = 'x'.repeat(300_000);
+		await using fixture = await createFixture({ 'README.md': `<!-- a ${attribute} -->value<!-- /a -->` });
+		const invocation = commentMarkCli(fixture.getPath('README.md'), '--a=new');
+
+		await expect(invocation).rejects.toMatchObject({ exitCode: 1 });
+		const { stderr } = await invocation.catch(error => error);
+		const expected = `Error: [comment-mark] Invalid marker attribute: "${attribute}"`;
+		expect(stderr.length).toBe(expected.length);
+		expect(stderr).toBe(expected);
+	});
+
+	test('prints the complete malformed attribute error in read mode', async () => {
+		const attribute = 'x'.repeat(300_000);
+		await using fixture = await createFixture({ 'README.md': `<!-- a ${attribute} -->value<!-- /a -->` });
+		const invocation = commentMarkCli(fixture.getPath('README.md'));
+
+		await expect(invocation).rejects.toMatchObject({ exitCode: 1 });
+		const { stderr } = await invocation.catch(error => error);
+		const expected = `Error: [comment-mark] Invalid marker attribute: "${attribute}"`;
+		expect(stderr.length).toBe(expected.length);
+		expect(stderr).toBe(expected);
+	});
+
 	test('runs the source CLI', async () => {
 		const cliPath = fileURLToPath(new URL('../../src/cli.ts', import.meta.url));
 
@@ -59,6 +96,38 @@ describe('CLI', () => {
 			attributes: {},
 			content,
 		}]);
+	});
+
+	test('exits quietly when the read-mode output reader closes early', async () => {
+		await using fixture = await createFixture({ 'README.md': createMarker('a', 'x'.repeat(1024 * 1024)) });
+		const cliPath = fileURLToPath(new URL('../../dist/cli.mjs', import.meta.url));
+		const child = spawnChild(process.execPath, [cliPath, fixture.getPath('README.md')], { timeout: 5000 });
+		let stderr = '';
+		child.stderr.setEncoding('utf8').on('data', (chunk) => {
+			stderr += chunk;
+		});
+		child.stdout.once('data', () => child.stdout.destroy());
+
+		const [code, signal] = await once(child, 'close');
+		expect([code, signal, stderr]).toStrictEqual([0, null, '']);
+	});
+
+	test('reports read-mode stdout write errors other than EPIPE', async () => {
+		await using fixture = await createFixture({ 'README.md': createMarker('a', 'value') });
+		await using file = await open(fixture.getPath('README.md'), 'r');
+		const cliPath = fileURLToPath(new URL('../../dist/cli.mjs', import.meta.url));
+		const child = spawnChild(process.execPath, [cliPath, fixture.getPath('README.md')], {
+			stdio: ['ignore', file.fd, 'pipe'],
+			timeout: 5000,
+		});
+		let stderr = '';
+		child.stderr!.setEncoding('utf8').on('data', (chunk) => {
+			stderr += chunk;
+		});
+
+		const [code, signal] = await once(child, 'close');
+		expect([code, signal]).toStrictEqual([1, null]);
+		expect(stderr).toMatch(/^Error: .*EBADF/);
 	});
 
 	test('prints an empty JSON array in read mode when no markers exist', async () => {
