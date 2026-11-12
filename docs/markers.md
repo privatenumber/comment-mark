@@ -50,7 +50,7 @@ A comment is a marker only when a later comment closes the same tag name, as `<!
 
 ### How are code examples ignored?
 
-Fenced code blocks (backtick or tilde, including blockquote prefixes) and single-line inline code spans are skipped, so a marker shown as an example is not treated as real. Indented code blocks and code spans that wrap across lines are not detected, so a marker there is treated as real. A marker inside indented code cannot render as if absent.
+Fenced code blocks (backtick or tilde, including blockquote prefixes) and single-line inline code spans are skipped, so a marker shown as an example is not treated as real. Indented code blocks and code spans that wrap across lines are not detected, so a marker there is treated as real. A marker inside indented code cannot render as if absent. In a GFM table row, an unmatched backtick in one cell can pair with the opening backtick of a code span in a later cell, so a marker inside that code span is treated as real.
 
 ### What happens to a marker inside another marker?
 

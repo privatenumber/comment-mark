@@ -1,6 +1,6 @@
 # Documentation layout
 
-Decision: the [README](../../README.md) is a short showcase for people who find the project, and the reference documentation lives in [`docs/`](../../docs). Before this split the README was 462 lines and covered every CLI flag rule, every replacement rule, and the marker grammar, so a first-time reader had to scroll past reference material to learn what the tool does.
+Decision: the [README](../../README.md) is a short showcase for people who find the project, and the reference documentation lives in [`docs/`](../../docs). Before this split the README was 462 lines. Its opening paragraphs and feature list explained the tool, but they were followed by every CLI flag rule, every replacement rule, and the marker grammar, so the README read as reference documentation rather than an introduction.
 
 ## What goes where
 
@@ -13,7 +13,7 @@ The split follows the maintainer's convention for their packages: the README exp
 
 ## Links and publishing
 
-The README links to the docs with relative paths, such as `./docs/cli.md`. The [package manifest](../../package.json) `files` list publishes only `dist` and `skills`, so `docs/` is not in the npm tarball, and npm readers reach the docs on GitHub.
+The README links to the docs with relative paths, such as `./docs/cli.md`. The [package manifest](../../package.json) `files` list publishes only `dist` and `skills`, so `docs/` is not in the npm tarball. The README links assume that npm readers can follow them to GitHub; see the evidence gap below.
 
 Rejected: absolute links to the `master` branch, which is the release branch. The repository's default branch is `develop` (`gh api repos/privatenumber/comment-mark --jq .default_branch`), and `docs/` reaches `master` only with the next release, so absolute `master` links would return 404 on GitHub until then.
 

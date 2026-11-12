@@ -26,7 +26,7 @@ The previously reported quadratic search for distinct unmatched backtick runs ha
 
 ## Supported limits and observed gaps
 
-Fenced code blocks, including fences in list and blockquote contexts, and single-line inline code spans are protected, except some code spans in GFM table cells (see below). Ordinary indented code blocks and inline code spans that wrap across lines are not detected as code. Markers there can be treated as active. The [README](../../README.md) documents this boundary. Revisit the scanner or a parser dependency if full CommonMark protection becomes a requirement or further block-context bugs make the bounded scanner too costly to maintain. Re-measure alternatives against current offset and throughput requirements before changing the implementation.
+Fenced code blocks, including fences in list and blockquote contexts, and single-line inline code spans are protected, except some code spans in GFM table cells (see below). Ordinary indented code blocks and inline code spans that wrap across lines are not detected as code. Markers there can be treated as active. The [markers doc](../../docs/markers.md#how-are-code-examples-ignored) documents this boundary. Revisit the scanner or a parser dependency if full CommonMark protection becomes a requirement or further block-context bugs make the bounded scanner too costly to maintain. Re-measure alternatives against current offset and throughput requirements before changing the implementation.
 
 The following observations are not claims of full Markdown or HTML parsing. They were re-established against `d41c4a5` with Node 26.13.0 on 2026-11-08. Run this command from the repository root:
 
