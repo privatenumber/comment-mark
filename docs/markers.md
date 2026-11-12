@@ -3,8 +3,8 @@
 A marker is written like an HTML element, with each tag inside an HTML comment. The comments are hidden when the Markdown is rendered:
 
 ```md
-<contributors role="maintainer" lang=en>Jane</contributors>
-<!-- contributors role="maintainer" lang=en -->Jane<!-- /contributors -->
+<contributors role="maintainer">Jane</contributors>
+<!-- contributors role="maintainer" -->Jane<!-- /contributors -->
 ```
 
 The tag name names the section, and the optional attributes describe it. When the section is updated, the content between the comments is replaced and both comments stay, so later updates can find the same section.
