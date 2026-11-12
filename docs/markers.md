@@ -3,8 +3,8 @@
 A marker is written like an HTML element, with each tag inside an HTML comment. The comments are hidden when the Markdown is rendered:
 
 ```md
-<contributors role="maintainer">Jane</contributors>
-<!-- contributors role="maintainer" -->Jane<!-- /contributors -->
+<contributors role="maintainer" lang=en>Jane</contributors>
+<!-- contributors role="maintainer" lang=en -->Jane<!-- /contributors -->
 ```
 
 The tag name names the section, and the optional attributes describe it. When the section is updated, the content between the comments is replaced and both comments stay, so later updates can find the same section.
@@ -12,10 +12,6 @@ The tag name names the section, and the optional attributes describe it. When th
 ## Markers
 
 ### Syntax
-
-```md
-<!-- contributors role="maintainer" lang=en -->Jane<!-- /contributors -->
-```
 
 - **Tag names** start with an ASCII letter or `_`, followed by ASCII letters, digits, `_`, or `-`.
 - **Attributes** follow the tag name as `name="value"`. Attribute names follow the same rules as tag names.
@@ -28,6 +24,48 @@ The tag name names the section, and the optional attributes describe it. When th
 - **Names are case-sensitive.** `<!-- a -->` is not closed by `<!-- /A -->`.
 - **Whitespace inside the comments is padding.** `<!-- contributors -->` and `<!--contributors-->` are equivalent.
 - **Content is text.** Tags and entities between the comments are not parsed, so `<b>` and `&amp;` come back as they were written.
+
+### Content layout
+
+There are two ways to write a marker:
+
+- **Block marker:** the opening and closing comments each go on their own line. Use it for block content, such as a heading, list, table, or code block.
+- **Inline marker:** both comments go inside a line of text. Use it for inline content, such as a version, date, or link. The content stays part of the sentence.
+
+```md
+<!-- changelog -->
+## Changelog
+<!-- /changelog -->
+
+Version <!-- version -->2.0<!-- /version --> is out.
+```
+
+The wrong form breaks the rendering:
+
+| Content | In an inline marker | In a block marker |
+| --- | --- | --- |
+| `## Changelog` | Plain text: `See ## Changelog below` | A heading |
+| `- one` and `- two` | Plain text `Items: - one`, then a list with only `two` | A list |
+| A table | Plain text with the pipes showing | A table |
+| `**2.0**` | Bold text inside the sentence | A separate paragraph that splits the sentence |
+
+comment-mark decides by the opening comment alone. When the opening comment starts a line, comment-mark puts the content on its own lines, adding a line break after the opening comment and before the closing comment where one is missing. So `<!-- a --><!-- /a -->` alone on a line also works as a block marker. Otherwise, the content is inserted as given. Empty content stays empty, so clearing a section leaves `<!-- a --><!-- /a -->`. The rule is the same for CLI values, static values, resolver results, and the files plugin.
+
+The line breaks are needed because a line that starts with `<!--` begins an HTML block, and Markdown on that line is not rendered. Without them, `<!-- changelog -->## Changelog<!-- /changelog -->` would show `## Changelog` as literal text.
+
+How the rule applies:
+
+- **Starting a line** allows up to three columns of indentation after any list or blockquote prefix. With four or more, the line is indented code or continues the paragraph above it, so the marker is inline. Every marker on a line that starts with a comment counts as starting its line, including a marker right after another one.
+- **Added line breaks match the document:** the first line break outside the markers' opening comments and content, CRLF, LF, or CR. A document without one gets LF.
+- **In lists and blockquotes,** each line break in the content is followed by the container's prefix, so the content and the closing comment stay in the container. This applies to inline markers too.
+- **Reading a section** returns the added line breaks as part of its content. Rerunning an update with the same static content, or with a resolver that returns its input, leaves the document unchanged, and the CLI reports `Unchanged`, as long as the update does not change an attribute that its own selector tests.
+
+Pitfalls:
+
+- **Inline content that ends with a line break.** The closing comment then starts a line and begins an HTML block, so the rest of that line is not rendered as Markdown. This is the main case where an inline marker does not render as if it were absent.
+- **A code block in an inline marker.** Its closing fence would share a line with the closing comment and could not close, so the update is rejected. Give the fence lines of its own, as in `\n```js\nx\n```\n`. Any update that would change the document's markers is rejected the same way.
+- **Lazy blockquote lines.** A marker on unprefixed text that continues a `>` paragraph is not recognized as inside the blockquote. Its content gets no prefix and can end up outside the quote.
+- **HTML.** Added line breaks can be visible, for example inside `<pre>`.
 
 ### What counts as a marker
 
@@ -42,7 +80,7 @@ A comment is a marker only when a later comment closes the same tag name. Every 
 | `<!-- ns:a -->`, `<!-- a.b -->` | `:` and `.` are not allowed in tag names |
 | `<!-- /a extra -->` | A closing comment holds only the tag name |
 
-A comment that looks like a marker but breaks the attribute rules is an error once a closing comment pairs with it, unless the pair is nested inside another marker. The attributes of a nested pair are not checked. For example, `<!-- a /-->` followed later by `<!-- /a -->` is an error, and so is `<!-- a ns:k="1" -->` with its closing comment.
+Once a closing comment pairs with an opening comment, the opening comment's attributes must be valid. For example, `<!-- a /-->` followed later by `<!-- /a -->` is an error, and so is `<!-- a ns:k="1" -->` with its closing comment. The attributes of a pair nested inside another marker are not checked.
 
 ### Nested markers
 
@@ -58,52 +96,14 @@ A closing comment closes the nearest open comment with the same tag name, and sk
 
 An unclosed opening comment with the section's own tag name changes the section. In `<!-- a -->outer <!-- a -->inner<!-- /a -->`, the closing comment pairs with the second opener, so the section's content is `inner`. An update whose content would cause this is rejected.
 
-### Content layout
-
-Where a marker sits decides how its content is laid out, so choose the position by what the content is:
-
-- **Block content, such as a heading, list, table, or code block:** put the marker at the start of its own line. comment-mark puts the content on its own lines, adding a line break after the opening comment and before the closing comment where one is missing.
-- **Inline content, such as a version, date, or link:** put the marker inside a line. comment-mark inserts the content as given, so it stays part of the sentence.
-
-```md
-<!-- changelog -->
-## Changelog
-<!-- /changelog -->
-
-Version <!-- version -->2.0<!-- /version --> is out.
-```
-
-The wrong position breaks the rendering:
-
-| Content | Marker inside a line | Marker at the start of a line |
-| --- | --- | --- |
-| `## Changelog` | Plain text: `See ## Changelog below` | A heading |
-| `- one` and `- two` | Plain text `Items: - one`, then a list with only `two` | A list |
-| A table | Plain text with the pipes showing | A table |
-| `**2.0**` | Bold text inside the sentence | A separate paragraph that splits the sentence |
-
-The line breaks come from how Markdown renders comments. A line that starts with `<!--` begins an HTML block, and Markdown on that line is not rendered. Without the added line breaks, `<!-- changelog -->## Changelog<!-- /changelog -->` would show `## Changelog` as literal text. A comment inside a line renders as nothing, so inline content usually renders as if the markers were absent. The main exception is content that ends with a line break (see below).
-
-Empty content stays empty in both positions, so clearing a section leaves `<!-- a --><!-- /a -->`. The rule is the same for CLI values, static values, resolver results, and the files plugin.
-
-Details:
-
-- **Start of a line** allows up to three columns of indentation after any list or blockquote prefix. With four or more, the line is indented code or continues the paragraph above it, so the marker counts as inside a line.
-- **Every marker on a line that starts with a comment** counts as starting its line, including a marker right after another one.
-- **Added line breaks match the document.** comment-mark uses the first line break outside the markers' opening comments and content: CRLF, LF, or CR. A document without one gets LF.
-- **Lists and blockquotes:** each line break in the content is followed by the container's prefix, so the content and the closing comment stay in the container. This also applies to markers inside a line. A marker on a lazy continuation line, such as unprefixed text that continues a `>` paragraph, is not recognized as inside the blockquote, so its content gets no prefix and can end up outside the quote.
-- **In HTML,** added line breaks can be visible, for example inside `<pre>`.
-- **Reading a section** returns the added line breaks as part of its content. Running an update again with the same static content, or with a resolver that returns its input, leaves the document unchanged, and the CLI reports `Unchanged`. This holds as long as the update does not change an attribute that its own selector tests.
-- **Inside a line, avoid content that ends with a line break.** The closing comment then starts a line and begins an HTML block, so the rest of that line is not rendered as Markdown.
-- **An update that would change the document's markers is rejected.** For example, a fenced code block inside a line would put its closing fence on the same line as the closing comment, so the fence could not close. Give the fence lines of its own, as in `\n```js\nx\n```\n`.
-
 ### Markers in code examples
 
 Markers shown as examples in code are skipped, so a document can show marker syntax without updating it.
 
 - **Skipped:** fenced code blocks, with backticks or tildes, including fences inside lists and blockquotes, and inline code spans on one line.
-- **Not skipped:** indented code blocks, and inline code spans that wrap across lines. A marker there is treated as real.
-- **Not skipped:** in a GFM table row, an unmatched backtick in one cell can pair with the opening backtick of a code span in a later cell. A marker inside that code span is treated as real.
+- **Not skipped, so a marker there is treated as real:**
+	- indented code blocks, and inline code spans that wrap across lines
+	- in a GFM table row, a code span whose opening backtick pairs with an unmatched backtick in an earlier cell
 
 To keep an example literal, put it in a fenced code block. Inline code on one line also works outside tables.
 
