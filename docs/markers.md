@@ -60,23 +60,31 @@ An unclosed opening comment with the section's own tag name changes the section.
 
 ### Content layout
 
-When a section is updated, the position of its opening comment decides whether the content goes on its own lines:
+Where a marker sits decides how its content is laid out, so choose the position by what the content is:
+
+- **Block content, such as a heading, list, table, or code block:** put the marker at the start of its own line. comment-mark puts the content on its own lines, adding a line break after the opening comment and before the closing comment where one is missing.
+- **Inline content, such as a version, date, or link:** put the marker inside a line. comment-mark inserts the content as given, so it stays part of the sentence.
 
 ```md
-<!-- author -->
-**Jane**
-<!-- /author -->
+<!-- changelog -->
+## Changelog
+<!-- /changelog -->
 
-Written by <!-- author -->Jane<!-- /author -->.
+Version <!-- version -->2.0<!-- /version --> is out.
 ```
 
-- **At the start of a line,** the content goes on its own lines. comment-mark adds a line break after the opening comment and before the closing comment, on each side that does not already have one.
-- **Inside a line,** the content is inserted as given, with no added line breaks.
-- **Empty content** stays empty, so clearing a section leaves `<!-- a --><!-- /a -->`.
+The wrong position breaks the rendering:
 
-The rule is the same for CLI values, static values, resolver results, and the files plugin.
+| Content | Marker inside a line | Marker at the start of a line |
+| --- | --- | --- |
+| `## Changelog` | Plain text: `See ## Changelog below` | A heading |
+| `- one` and `- two` | Plain text `Items: - one`, then a list with only `two` | A list |
+| A table | Plain text with the pipes showing | A table |
+| `**2.0**` | Bold text inside the sentence | A separate paragraph that splits the sentence |
 
-The reason is how Markdown renders comments. A line that starts with `<!--` begins an HTML block, and Markdown on that line is not rendered, so `<!-- a -->**Jane**<!-- /a -->` on its own line shows `**Jane**` as literal text. A comment inside a line renders as nothing, so content inserted there usually renders as if the markers were absent. The main exception is content that ends with a line break (see below).
+The line breaks come from how Markdown renders comments. A line that starts with `<!--` begins an HTML block, and Markdown on that line is not rendered. Without the added line breaks, `<!-- changelog -->## Changelog<!-- /changelog -->` would show `## Changelog` as literal text. A comment inside a line renders as nothing, so inline content usually renders as if the markers were absent. The main exception is content that ends with a line break (see below).
+
+Empty content stays empty in both positions, so clearing a section leaves `<!-- a --><!-- /a -->`. The rule is the same for CLI values, static values, resolver results, and the files plugin.
 
 Details:
 
