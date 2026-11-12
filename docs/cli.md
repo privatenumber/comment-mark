@@ -1,7 +1,5 @@
 # CLI
 
-[Back to README](../README.md)
-
 Use the CLI to read or update a file without writing a script:
 
 ```sh

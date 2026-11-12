@@ -1,7 +1,5 @@
 # Markers and selectors
 
-[Back to README](../README.md)
-
 ## Markers
 
 A marker is a matching pair of HTML comments. The tag name names the section:

@@ -1,7 +1,5 @@
 # Node.js API
 
-[Back to README](../README.md)
-
 Selectors use the syntax described in [Markers and selectors](./markers.md#selectors).
 
 ## Update a file
