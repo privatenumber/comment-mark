@@ -1,19 +1,21 @@
-import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { createFixture } from 'fs-fixture';
 import { describe, test, expect } from 'manten';
+import spawn from 'nano-spawn';
+import packageJson from '../../package.json' with { type: 'json' };
 import { createMarker } from '../utils/create-marker.ts';
 import { commentMarkCli } from '../utils/comment-mark-cli.ts';
 
 describe('CLI', () => {
-	test('sources name, description, and version from package.json', async () => {
-		const packageJson = JSON.parse(
-			await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
-		) as {
-			name: string;
-			description: string;
-			version: string;
-		};
+	test('runs the source CLI', async () => {
+		const cliPath = fileURLToPath(new URL('../../src/cli.ts', import.meta.url));
 
+		const { stdout } = await spawn(process.execPath, [cliPath, '--version']);
+
+		expect(stdout).toBe(packageJson.version);
+	});
+
+	test('sources name, description, and version from package.json', async () => {
 		const { stdout: versionOutput } = await commentMarkCli('--version');
 		expect(versionOutput).toBe(packageJson.version);
 
