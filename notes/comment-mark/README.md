@@ -19,4 +19,5 @@ Start with [related tools](./related-tools.md) for how comment-mark compares wit
 
 - [CLI](./cli.md): marker names that collide with CLI controls, selector flag parsing, missing-selector exits, and open CLI issues.
 - [Packaging and runtime](./packaging-and-runtime.md): the ESM-only build and `require(esm)`, the supported Node floor versus the development runtime, agent skills, and releases.
+- [Documentation layout](./documentation.md): what the README and each `docs/` file own, and why the README links to the docs with relative paths.
 - [Testing and benchmarks](./testing-and-benchmarks.md): how the suite is organized, what scaling tests can and cannot show, and how to read benchmark results.
