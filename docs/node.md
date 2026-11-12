@@ -113,7 +113,7 @@ Returns a promise that resolves to the updated content as a string. Buffer input
 - A static value whose selector matches no marker rejects, so a typo or a stale selector is not mistaken for a successful no-op. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
 - Rejects an array with more values than matches, a function as an array entry, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
-- When a line starts an HTML comment block after any list or blockquote prefixes and up to three indentation columns, markers on that line put nonempty content on its own lines. Missing boundary breaks use the first line ending outside every marker's opening comment and content (CRLF, LF, or CR), or LF when there is none. Other markers get no added boundary line breaks; inside lists and blockquotes, continuation prefixes are still written after content line breaks. This also applies to HTML, where added breaks may be visible inside `<pre>`.
+- The marker's position decides the layout: a marker at the start of a line puts nonempty content on its own lines, and a marker inside a line inserts it as given. See [content layout](./markers.md#content-layout).
 - Rejects updates that would change marker boundaries, line context, or container continuation, such as an unclosed fence hiding a closing comment.
 - Content in a list item or blockquote stays in that container. Reading the content removes its container prefixes.
 - Rejects when a marker is malformed, when a resolver throws or rejects, or when an update cannot be written: an attribute name the grammar rejects, a value containing `-->`, or a value that needs both quote characters.
@@ -188,7 +188,7 @@ Each marker names a file in its `path` attribute:
 <!-- /file -->
 ```
 
-The file is read as UTF-8. Like any other content, it gets missing boundary line breaks when its marker is on a comment-started line. A balanced marker written inside an included file stays part of the section's content.
+The file is read as UTF-8. Like any other content, it is laid out by its marker's position ([content layout](./markers.md#content-layout)). A balanced marker written inside an included file stays part of the section's content.
 
 - `baseDirectory` (`string`, required): every `path` is resolved against this directory. An absolute `path` is used as written.
 - `tagName` (`string`): the tag name of the markers to fill. Defaults to `file`.

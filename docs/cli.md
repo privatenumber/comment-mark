@@ -105,7 +105,7 @@ Read mode preserves section whitespace and prints `[]` when no markers exist. It
 - Flag names are selectors, matched verbatim with no case or dash conversion: `--lastUpdated` and `--last-updated` are different selectors.
 - Use `--selector=value`, not `--selector value`. Quote values containing spaces or newlines, and quote the selector when it contains brackets.
 - The first `=` outside brackets and quotes separates the flag from its value, so `--"item[kind='fruit']"=pear` passes the selector `item[kind='fruit']`.
-- Use `--selector=` to clear a section. Markers on a comment-started line put nonempty content on its own lines; other markers get no added boundary line breaks.
+- Use `--selector=` to clear a section. The marker's position decides whether the value goes on its own lines; see [content layout](./markers.md#content-layout).
 - Attributes must be separated by whitespace and appear at most once: `id="a"file="b"` and `id="a" id="b"` are rejected.
 - Only the outermost marker pair is a marker. A pair nested inside another pair is part of the outer marker's content.
 - Each selector can be set once per invocation. Repeated flags, valueless flags, and extra positional arguments are rejected before writing.
@@ -137,4 +137,4 @@ For a repository with two contributors, the result looks like:
 <!-- /contributors -->
 ```
 
-Shell command substitution removes trailing newlines. Because the marker starts a line, comment-mark adds missing boundary newlines so the content sits between the marker lines.
+Shell command substitution removes trailing newlines. Because the marker starts a line, comment-mark adds the missing line breaks so the content sits between the marker lines ([content layout](./markers.md#content-layout)).
