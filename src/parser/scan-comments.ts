@@ -257,18 +257,12 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		if (!htmlBlock) {
 			return false;
 		}
-		if (htmlBlock.end === 'blankLine') {
-			if (matched < htmlBlock.depth || isBlank(line, contentStart)) {
-				htmlBlock = undefined;
-				return false;
-			}
-			return true;
-		}
-		if (matched < htmlBlock.depth) {
+		const { end, depth } = htmlBlock;
+		if (matched < depth || (end === 'blankLine' && isBlank(line, contentStart))) {
 			htmlBlock = undefined;
 			return false;
 		}
-		if (closesHtmlBlock(line, contentStart, htmlBlock.end)) {
+		if (end !== 'blankLine' && closesHtmlBlock(line, contentStart, end)) {
 			htmlBlock = undefined;
 		}
 		return true;
@@ -313,9 +307,10 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 
 		// A comment inside a line is paragraph text, so it spans only the lines that
 		// continue its paragraph. On any other line the paragraph has ended, and
-		// its `<!--` was literal text.
+		// its `<!--` was literal text. A heading ends its paragraph on its own line,
+		// so `inParagraph` is false after one.
 		if (commentStart !== -1) {
-			if (continuesParagraph(line, cursor, matched < containers.length)) {
+			if (inParagraph && continuesParagraph(line, cursor, matched < containers.length)) {
 				const close = line.indexOf(closeDelimiter, cursor.index);
 				if (close === -1) {
 					return;
@@ -397,11 +392,6 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		if (headingContent !== undefined) {
 			inParagraph = false;
 			scanInline(line, lineStart, headingContent, false);
-			// A heading is one line, so a comment it leaves open in its text was
-			// literal. Inside an HTML block, the line is raw HTML instead.
-			if (commentInParagraph) {
-				commentStart = -1;
-			}
 			return;
 		}
 
