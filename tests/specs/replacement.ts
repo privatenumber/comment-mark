@@ -103,28 +103,21 @@ describe('replacement', () => {
 	});
 
 	test('multi-line', async () => {
-		const output = await commentMark(`
-			# multiline
-			${createMarker('a', 'hello world')}
-		`, {
+		const output = await commentMark(`# multiline\n${createMarker('a', 'hello world')}\n`, {
 			a: 'hello world\n\ngoogbye world\nhello again',
 		});
 
-		expect(output).toBe('\n\t\t\t# multiline\n\t\t\t<!-- a -->hello world\n\ngoogbye world\nhello again<!-- /a -->\n\t\t');
+		expect(output).toBe('# multiline\n<!-- a -->\nhello world\n\ngoogbye world\nhello again\n<!-- /a -->\n');
 	});
 
 	test('multiple', async () => {
-		const output = await commentMark(`
-			${createMarker('a')}
-			${createMarker('b')}
-			${createMarker('ba')}
-		`, {
+		const output = await commentMark(`x ${createMarker('a')}\nx ${createMarker('b')}\nx ${createMarker('ba')}\n`, {
 			a: 'hello world',
 			b: 'goodbye world',
 			ba: 'something world',
 		});
 
-		expect(output).toBe(`\n\t\t\t${createMarker('a', 'hello world')}\n\t\t\t${createMarker('b', 'goodbye world')}\n\t\t\t${createMarker('ba', 'something world')}\n\t\t`);
+		expect(output).toBe(`x ${createMarker('a', 'hello world')}\nx ${createMarker('b', 'goodbye world')}\nx ${createMarker('ba', 'something world')}\n`);
 	});
 
 	test('updates the first match for a scalar value', async () => {

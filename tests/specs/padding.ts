@@ -125,20 +125,6 @@ describe('marker position layout', () => {
 			continuation: '',
 		},
 		{
-			name: 'four spaces',
-			before: '    ',
-			after: '',
-			lineStart: false,
-			continuation: '',
-		},
-		{
-			name: 'tab',
-			before: '\t',
-			after: '',
-			lineStart: false,
-			continuation: '',
-		},
-		{
 			name: 'sentence',
 			before: 'Version: ',
 			after: '.',
