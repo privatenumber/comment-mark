@@ -433,3 +433,152 @@ export const isSetextUnderline = (line: string, cursor: Cursor) => {
 
 	return isBlank(line, index + underline);
 };
+
+// Type 6 HTML block tag names as GitHub's renderer lists them (`blocktagname`
+// in https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/scanners.re#L40).
+// CommonMark 0.31.2 adds `search` and drops `source`; this follows GitHub.
+const blockTagNames = new Set([
+	'address',
+	'article',
+	'aside',
+	'base',
+	'basefont',
+	'blockquote',
+	'body',
+	'caption',
+	'center',
+	'col',
+	'colgroup',
+	'dd',
+	'details',
+	'dialog',
+	'dir',
+	'div',
+	'dl',
+	'dt',
+	'fieldset',
+	'figcaption',
+	'figure',
+	'footer',
+	'form',
+	'frame',
+	'frameset',
+	'h1',
+	'h2',
+	'h3',
+	'h4',
+	'h5',
+	'h6',
+	'head',
+	'header',
+	'hr',
+	'html',
+	'iframe',
+	'legend',
+	'li',
+	'link',
+	'main',
+	'menu',
+	'menuitem',
+	'nav',
+	'noframes',
+	'ol',
+	'optgroup',
+	'option',
+	'p',
+	'param',
+	'section',
+	'source',
+	'summary',
+	'table',
+	'tbody',
+	'td',
+	'tfoot',
+	'th',
+	'thead',
+	'title',
+	'tr',
+	'track',
+	'ul',
+]);
+
+// Type 1 HTML blocks, whose content is raw text.
+const rawTagNames = new Set(['pre', 'script', 'style', 'textarea']);
+
+const isAsciiAlphanumeric = (char: string | undefined) => (
+	char !== undefined && (
+		(char >= 'a' && char <= 'z')
+		|| (char >= 'A' && char <= 'Z')
+		|| (char >= '0' && char <= '9')
+	)
+);
+
+/**
+ * Returns the index after at most three columns of indentation, or -1 when the
+ * line is indented four or more columns and so cannot start a block here.
+ */
+export const skipBlockIndent = (line: string, cursor: Cursor) => {
+	let { index, column } = cursor;
+	let indent = cursor.pending;
+
+	while (indent <= 3 && (line[index] === ' ' || line[index] === '\t')) {
+		const width = line[index] === ' ' ? 1 : tabSize - (column % tabSize);
+		indent += width;
+		column += width;
+		index += 1;
+	}
+
+	return indent <= 3 ? index : -1;
+};
+
+/**
+ * How an HTML block ends: at a blank line, or after the first line that
+ * contains one of the closers, in any letter case.
+ */
+export type HtmlBlockEnd = 'blankLine' | readonly string[];
+
+const rawTextClosers = ['</pre>', '</script>', '</style>', '</textarea>'];
+
+/**
+ * Matches the start of an HTML block that can interrupt a paragraph, which is
+ * every kind except type 7 (any other tag on its own line), and returns how the
+ * block ends. The rules follow `_scan_html_block_start` in GitHub's renderer:
+ * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/scanners.re#L178-L190
+ */
+export const matchHtmlBlock = (line: string, cursor: Cursor): HtmlBlockEnd | undefined => {
+	const index = skipBlockIndent(line, cursor);
+	if (index === -1 || line[index] !== '<') {
+		return undefined;
+	}
+
+	const next = line[index + 1];
+	if (next === '?') {
+		return ['?>'];
+	}
+	if (next === '!') {
+		if (line.startsWith('--', index + 2)) {
+			return ['-->'];
+		}
+		const after = line[index + 2];
+		if (after !== undefined && after >= 'A' && after <= 'Z') {
+			return ['>'];
+		}
+		return line.slice(index + 2, index + 9).toUpperCase() === '[CDATA[' ? [']]>'] : undefined;
+	}
+
+	const closing = next === '/';
+	const nameStart = index + (closing ? 2 : 1);
+	let nameEnd = nameStart;
+	while (isAsciiAlphanumeric(line[nameEnd])) {
+		nameEnd += 1;
+	}
+	const name = line.slice(nameStart, nameEnd).toLowerCase();
+	const after = line[nameEnd];
+	// `spacechar` in cmark-gfm also includes vertical tab, form feed, and CR.
+	const endsName = after === undefined || after === '>' || ' \t\v\f\r'.includes(after);
+
+	if (!closing && rawTagNames.has(name)) {
+		return endsName ? rawTextClosers : undefined;
+	}
+	return blockTagNames.has(name) && (endsName || line.startsWith('/>', nameEnd)) ? 'blankLine' : undefined;
+};

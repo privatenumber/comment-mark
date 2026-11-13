@@ -103,6 +103,128 @@ describe('block comments', () => {
 	});
 });
 
+describe('empty comments', () => {
+	test('an empty comment does not hide the next marker', () => {
+		// `<!-->` and `<!--->` are complete comments, so they do not run to the
+		// next marker's `-->`.
+		for (const empty of ['<!-->', '<!--->']) {
+			for (const source of [`x ${empty} ${createMarker('a', 'old')}`, `${empty}\n${createMarker('a', 'old')}`]) {
+				expect(getCommentMarkAll(source)).toStrictEqual([
+					{
+						tagName: 'a',
+						attributes: {},
+						content: 'old',
+					},
+				]);
+			}
+		}
+	});
+});
+
+describe('comments that span lines', () => {
+	// An unclosed `<!--` inside a paragraph continues only while the paragraph
+	// does. Each source would hide the marker if the comment stayed open.
+	const endingLines: [string, string][] = [
+		['a blank line', ''],
+		['an ATX heading', '# Heading'],
+		['a setext underline', '==='],
+		['a thematic break', '***'],
+		['a blockquote', '> quote'],
+		['a bullet list item', '- item'],
+		['a fence', '~~~\n~~~'],
+		['an HTML block', '<div>\n'],
+	];
+
+	for (const [name, line] of endingLines) {
+		test(`a comment in a paragraph ends at ${name}`, () => {
+			const source = `text <!-- note\n${line}\n${createMarker('a', 'old')}`;
+
+			expect(getCommentMarkAll(source)).toStrictEqual([
+				{
+					tagName: 'a',
+					attributes: {},
+					content: 'old',
+				},
+			]);
+		});
+	}
+
+	// Each source opens a comment and continues its paragraph on a second line.
+	const continuingParagraphs: [string, string][] = [
+		['a paragraph line', 'text <!-- note\nmore'],
+		['a lazy blockquote line', '> text <!-- note\nmore'],
+		['an ordered item that cannot interrupt a paragraph', 'text <!-- note\n2. more'],
+	];
+
+	for (const [name, paragraph] of continuingParagraphs) {
+		test(`a comment in a paragraph continues on ${name}`, () => {
+			// The comment ends at the opening comment's `-->`, so no marker opens.
+			const source = `${paragraph} ${createMarker('a', 'old')}`;
+
+			expect(getCommentMarkAll(source)).toStrictEqual([]);
+		});
+	}
+
+	test('a comment in a heading ends with the heading', () => {
+		const source = `# Title <!-- note\ntext ${createMarker('a', 'old')}`;
+
+		expect(getCommentMarkAll(source)).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: 'old',
+			},
+		]);
+	});
+
+	test('a comment opened on an HTML block line continues past a blank line', () => {
+		// The line is raw HTML, where a comment runs to the next `-->`. GitHub also
+		// ends a tag name at a form feed.
+		for (const tag of ['<div>', '<div\f>']) {
+			const source = `${tag}<!-- note\n\n${createMarker('a', 'old')}`;
+
+			expect(getCommentMarkAll(source)).toStrictEqual([]);
+		}
+	});
+
+	test('a comment opened on a later line of an HTML block is raw HTML', () => {
+		// The block runs to the blank line, so `# heading` is raw HTML, not a
+		// heading, and the comment runs to the next `-->`.
+		const source = `<div>\nx <!-- note\n# heading\n${createMarker('a', 'old')}\n</div>`;
+
+		expect(getCommentMarkAll(source)).toStrictEqual([]);
+	});
+
+	test('a blockquote prefix does not close an HTML block that ends at >', () => {
+		// A `<!DOCTYPE` block ends at a `>` in its content, not in the `>` prefix.
+		const source = `> <!DOCTYPE\n> x <!-- note\n> # heading\n> ${createMarker('a', 'old')}`;
+
+		expect(getCommentMarkAll(source)).toStrictEqual([]);
+	});
+
+	// Each HTML block ends before the paragraph that opens the comment, so the
+	// comment is paragraph text and ends at the blank line.
+	const endedBlocks: [string, string][] = [
+		['a blank line', '<div>\n'],
+		['its closing tag', '<pre>\n</pre>'],
+		['the end of its list item', '- <div>\n-'],
+	];
+
+	for (const [name, block] of endedBlocks) {
+		test(`an HTML block ends at ${name}`, () => {
+			const source = `${block}\ntext <!-- note\n\n${createMarker('a', 'old')}`;
+
+			expect(getCommentMarkAll(source)).toStrictEqual([
+				{
+					tagName: 'a',
+					attributes: {},
+					content: 'old',
+				},
+			]);
+		});
+	}
+});
+
 describe('fenced code blocks', () => {
 	test('ignores markers inside fenced code blocks', () => {
 		const content = ['```md', createMarker('a', 'example'), '```'].join('\n');

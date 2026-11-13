@@ -2,6 +2,7 @@ import {
 	type Container,
 	type Cursor,
 	type Fence,
+	type HtmlBlockEnd,
 	closesFence,
 	continueContainer,
 	isBlank,
@@ -10,9 +11,19 @@ import {
 	matchAtxHeading,
 	matchBlockquote,
 	matchFence,
+	matchHtmlBlock,
 	matchListMarker,
-	tabSize,
+	skipBlockIndent,
 } from './block-context.ts';
+
+/**
+ * An open HTML block: how it ends, and the number of containers it is nested
+ * in, which must all continue for the block to continue.
+ */
+type HtmlBlock = {
+	end: HtmlBlockEnd;
+	depth: number;
+};
 
 export type CommentVisitor = (
 	start: number,
@@ -40,17 +51,37 @@ const closeDelimiter = '-->';
  * so a following ordered list is recognized and its fenced example stays code.
  */
 const startsBlockComment = (line: string, cursor: Cursor) => {
-	let { index, column } = cursor;
-	let indent = cursor.pending;
+	const index = skipBlockIndent(line, cursor);
+	return index !== -1 && line.startsWith(openDelimiter, index);
+};
 
-	while (indent <= 3 && (line[index] === ' ' || line[index] === '\t')) {
-		const width = line[index] === ' ' ? 1 : tabSize - (column % tabSize);
-		indent += width;
-		column += width;
-		index += 1;
-	}
+/**
+ * Reports whether the line continues the open paragraph, which an inline
+ * comment needs in order to span lines. A blank line or the start of another
+ * block ends the paragraph. `lazy` means some containers did not continue, as in
+ * an unprefixed line after a `>` paragraph; such a line still continues the
+ * paragraph, but cannot be a setext underline.
+ */
+const continuesParagraph = (line: string, cursor: Cursor, lazy: boolean) => (
+	!isBlank(line, cursor.index)
+	// The matchers below commit the cursor on success, so they get a copy.
+	&& !matchBlockquote(line, { ...cursor })
+	&& !isThematicBreak(line, cursor)
+	&& (lazy || !isSetextUnderline(line, cursor))
+	&& !matchListMarker(line, { ...cursor }, true)
+	&& matchAtxHeading(line, cursor) === undefined
+	&& !matchFence(line, { ...cursor })
+	&& matchHtmlBlock(line, cursor) === undefined
+);
 
-	return indent <= 3 && line.startsWith(openDelimiter, index);
+/**
+ * Reports whether the line's content, which starts at `contentStart` after any
+ * container prefixes, holds one of the closers. A blockquote's `>` prefix must
+ * not end a block whose closer is `>`.
+ */
+const closesHtmlBlock = (line: string, contentStart: number, closers: readonly string[]) => {
+	const lower = line.toLowerCase();
+	return closers.some(closer => lower.includes(closer, contentStart));
 };
 
 /**
@@ -139,7 +170,15 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	let commentStart = -1;
 	let commentContinuation = '';
 	let commentStartsLine = false;
+	// Whether the open comment is paragraph text, which ends with its paragraph.
+	// Otherwise it is raw HTML, which stays open until a line containing `-->`.
+	let commentInParagraph = false;
 	let inParagraph = false;
+	// Inside an HTML block, a comment is raw HTML even when it does not start
+	// the line.
+	let htmlBlock: HtmlBlock | undefined;
+	// Whether the line being scanned belongs to an HTML block.
+	let lineInHtmlBlock = false;
 
 	// One cursor reused across lines. The scan is synchronous, so the cursor
 	// never escapes a call, and reusing it keeps the hot loop allocation-free.
@@ -170,6 +209,17 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			}
 
 			if (line.startsWith(openDelimiter, index)) {
+				// `<!-->` and `<!--->` are complete, empty comments in CommonMark and on
+				// GitHub. They hold no tag, so they are skipped rather than opening a
+				// comment that would run to the next `-->`.
+				const emptyEnd = line.startsWith('>', index + 4)
+					? index + 5
+					: (line.startsWith('->', index + 4) ? index + 6 : -1);
+				if (emptyEnd !== -1) {
+					index = emptyEnd;
+					continue;
+				}
+
 				const continuation = containers.length === 0
 					? ''
 					: containers.map(container => (
@@ -180,6 +230,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 					commentStart = lineStart + index;
 					commentContinuation = continuation;
 					commentStartsLine = startsLine;
+					commentInParagraph = !startsLine && !lineInHtmlBlock;
 					return;
 				}
 				visit(
@@ -197,14 +248,36 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		}
 	};
 
+	/**
+	 * Continues or ends the open HTML block for a line whose containers matched
+	 * `matched` levels, and reports whether the line belongs to the block. A block
+	 * that ends at a closer still includes the closer's line.
+	 */
+	const continueHtmlBlock = (line: string, contentStart: number, matched: number) => {
+		if (!htmlBlock) {
+			return false;
+		}
+		const { end, depth } = htmlBlock;
+		if (matched < depth || (end === 'blankLine' && isBlank(line, contentStart))) {
+			htmlBlock = undefined;
+			return false;
+		}
+		if (end !== 'blankLine' && closesHtmlBlock(line, contentStart, end)) {
+			htmlBlock = undefined;
+		}
+		return true;
+	};
+
 	const scanLine = (line: string, lineStart: number) => {
 		cursor.index = 0;
 		cursor.column = 0;
 		cursor.pending = 0;
 
-		// A comment opened on an earlier line stays open until `-->`, so code
+		// A comment in raw HTML stays open until a line containing `-->`, so code
 		// syntax inside it is never interpreted.
-		if (commentStart !== -1) {
+		if (commentStart !== -1 && !commentInParagraph) {
+			// Containers are not matched here, so they are assumed to continue.
+			lineInHtmlBlock = continueHtmlBlock(line, 0, htmlBlock?.depth ?? 0);
 			const close = line.indexOf(closeDelimiter);
 			if (close === -1) {
 				return;
@@ -229,6 +302,31 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				break;
 			}
 			matched += 1;
+		}
+		lineInHtmlBlock = continueHtmlBlock(line, cursor.index, matched);
+
+		// A comment inside a line is paragraph text, so it spans only the lines that
+		// continue its paragraph. On any other line the paragraph has ended, and
+		// its `<!--` was literal text. A heading ends its paragraph on its own line,
+		// so `inParagraph` is false after one.
+		if (commentStart !== -1) {
+			if (inParagraph && continuesParagraph(line, cursor, matched < containers.length)) {
+				const close = line.indexOf(closeDelimiter, cursor.index);
+				if (close === -1) {
+					return;
+				}
+				visit(
+					commentStart,
+					commentStart + openDelimiter.length,
+					lineStart + close,
+					commentContinuation,
+					false,
+				);
+				commentStart = -1;
+				scanInline(line, lineStart, close + closeDelimiter.length, false);
+				return;
+			}
+			commentStart = -1;
 		}
 
 		if (fence) {
@@ -313,6 +411,20 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		// ordered list is recognized and its fenced example stays code.
 		const blockComment = startsBlockComment(line, cursor);
 		inParagraph = !blockComment;
+		// A line such as `<div>` starts an HTML block, so a comment that opens
+		// later in the block is raw HTML rather than paragraph text.
+		if (!lineInHtmlBlock) {
+			const end = matchHtmlBlock(line, cursor);
+			if (end !== undefined) {
+				lineInHtmlBlock = true;
+				if (end === 'blankLine' || !closesHtmlBlock(line, cursor.index, end)) {
+					htmlBlock = {
+						end,
+						depth: containers.length,
+					};
+				}
+			}
+		}
 		scanInline(line, lineStart, cursor.index, blockComment);
 	};
 
