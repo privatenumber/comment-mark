@@ -11,7 +11,8 @@ import {
 	matchBlockquote,
 	matchFence,
 	matchListMarker,
-	tabSize,
+	skipBlockIndent,
+	startsHtmlBlock,
 } from './block-context.ts';
 
 export type CommentVisitor = (
@@ -40,18 +41,28 @@ const closeDelimiter = '-->';
  * so a following ordered list is recognized and its fenced example stays code.
  */
 const startsBlockComment = (line: string, cursor: Cursor) => {
-	let { index, column } = cursor;
-	let indent = cursor.pending;
-
-	while (indent <= 3 && (line[index] === ' ' || line[index] === '\t')) {
-		const width = line[index] === ' ' ? 1 : tabSize - (column % tabSize);
-		indent += width;
-		column += width;
-		index += 1;
-	}
-
-	return indent <= 3 && line.startsWith(openDelimiter, index);
+	const index = skipBlockIndent(line, cursor);
+	return index !== -1 && line.startsWith(openDelimiter, index);
 };
+
+/**
+ * Reports whether the line continues the open paragraph, which an inline
+ * comment needs in order to span lines. A blank line or the start of another
+ * block ends the paragraph. `lazy` means some containers did not continue, as in
+ * an unprefixed line after a `>` paragraph; such a line still continues the
+ * paragraph, but cannot be a setext underline.
+ */
+const continuesParagraph = (line: string, cursor: Cursor, lazy: boolean) => (
+	!isBlank(line, cursor.index)
+	// The matchers below commit the cursor on success, so they get a copy.
+	&& !matchBlockquote(line, { ...cursor })
+	&& !isThematicBreak(line, cursor)
+	&& (lazy || !isSetextUnderline(line, cursor))
+	&& !matchListMarker(line, { ...cursor }, true)
+	&& matchAtxHeading(line, cursor) === undefined
+	&& !matchFence(line, { ...cursor })
+	&& !startsHtmlBlock(line, cursor)
+);
 
 /**
  * Collects the backtick runs in one line and links each run to the next run of
@@ -139,6 +150,9 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	let commentStart = -1;
 	let commentContinuation = '';
 	let commentStartsLine = false;
+	// Whether the open comment is paragraph text, which ends with its paragraph.
+	// Otherwise it is raw HTML, which stays open until a line containing `-->`.
+	let commentInParagraph = false;
 	let inParagraph = false;
 
 	// One cursor reused across lines. The scan is synchronous, so the cursor
@@ -170,6 +184,17 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			}
 
 			if (line.startsWith(openDelimiter, index)) {
+				// `<!-->` and `<!--->` are complete, empty comments in CommonMark and on
+				// GitHub. They hold no tag, so they are skipped rather than opening a
+				// comment that would run to the next `-->`.
+				const emptyEnd = line.startsWith('>', index + 4)
+					? index + 5
+					: (line.startsWith('->', index + 4) ? index + 6 : -1);
+				if (emptyEnd !== -1) {
+					index = emptyEnd;
+					continue;
+				}
+
 				const continuation = containers.length === 0
 					? ''
 					: containers.map(container => (
@@ -180,6 +205,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 					commentStart = lineStart + index;
 					commentContinuation = continuation;
 					commentStartsLine = startsLine;
+					commentInParagraph = !startsLine;
 					return;
 				}
 				visit(
@@ -202,9 +228,9 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		cursor.column = 0;
 		cursor.pending = 0;
 
-		// A comment opened on an earlier line stays open until `-->`, so code
+		// A comment in raw HTML stays open until a line containing `-->`, so code
 		// syntax inside it is never interpreted.
-		if (commentStart !== -1) {
+		if (commentStart !== -1 && !commentInParagraph) {
 			const close = line.indexOf(closeDelimiter);
 			if (close === -1) {
 				return;
@@ -229,6 +255,29 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				break;
 			}
 			matched += 1;
+		}
+
+		// A comment inside a line is paragraph text, so it spans only the lines that
+		// continue its paragraph. On any other line the paragraph has ended, and
+		// its `<!--` was literal text.
+		if (commentStart !== -1) {
+			if (continuesParagraph(line, cursor, matched < containers.length)) {
+				const close = line.indexOf(closeDelimiter, cursor.index);
+				if (close === -1) {
+					return;
+				}
+				visit(
+					commentStart,
+					commentStart + openDelimiter.length,
+					lineStart + close,
+					commentContinuation,
+					false,
+				);
+				commentStart = -1;
+				scanInline(line, lineStart, close + closeDelimiter.length, false);
+				return;
+			}
+			commentStart = -1;
 		}
 
 		if (fence) {
@@ -294,6 +343,8 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		if (headingContent !== undefined) {
 			inParagraph = false;
 			scanInline(line, lineStart, headingContent, false);
+			// A heading is one line, so a comment it leaves open was literal text.
+			commentStart = -1;
 			return;
 		}
 
@@ -314,6 +365,11 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		const blockComment = startsBlockComment(line, cursor);
 		inParagraph = !blockComment;
 		scanInline(line, lineStart, cursor.index, blockComment);
+		// A line such as `<div><!--` starts another kind of HTML block, so a
+		// comment it leaves open is raw HTML rather than paragraph text.
+		if (commentInParagraph && commentStart !== -1 && startsHtmlBlock(line, cursor)) {
+			commentInParagraph = false;
+		}
 	};
 
 	// Lines end with LF, CRLF, or CR. Both searches only move forward, and the

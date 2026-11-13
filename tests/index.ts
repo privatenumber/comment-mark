@@ -10,6 +10,7 @@ describe('comment-mark', () => {
 	import('./specs/resolvers.ts');
 	import('./specs/attribute-updates.ts');
 	import('./specs/markdown.ts');
+	import('./specs/reference-parser.ts');
 	import('./specs/scaling.ts');
 	import('./specs/files-plugin.ts');
 	import('./specs/package-entry.ts');
