@@ -532,26 +532,38 @@ export const skipBlockIndent = (line: string, cursor: Cursor) => {
 };
 
 /**
- * Reports whether the line starts an HTML block that can interrupt a
- * paragraph, which is every kind except type 7 (any other tag on its own line).
- * The rules follow `_scan_html_block_start` in GitHub's renderer:
+ * How an HTML block ends: at a blank line, or after the first line that
+ * contains one of the closers, in any letter case.
+ */
+export type HtmlBlockEnd = 'blankLine' | readonly string[];
+
+const rawTextClosers = ['</pre>', '</script>', '</style>', '</textarea>'];
+
+/**
+ * Matches the start of an HTML block that can interrupt a paragraph, which is
+ * every kind except type 7 (any other tag on its own line), and returns how the
+ * block ends. The rules follow `_scan_html_block_start` in GitHub's renderer:
  * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/scanners.re#L178-L190
  */
-export const startsHtmlBlock = (line: string, cursor: Cursor) => {
+export const matchHtmlBlock = (line: string, cursor: Cursor): HtmlBlockEnd | undefined => {
 	const index = skipBlockIndent(line, cursor);
 	if (index === -1 || line[index] !== '<') {
-		return false;
+		return undefined;
 	}
 
 	const next = line[index + 1];
 	if (next === '?') {
-		return true;
+		return ['?>'];
 	}
 	if (next === '!') {
+		if (line.startsWith('--', index + 2)) {
+			return ['-->'];
+		}
 		const after = line[index + 2];
-		return line.startsWith('--', index + 2)
-			|| (after !== undefined && after >= 'A' && after <= 'Z')
-			|| line.slice(index + 2, index + 9).toUpperCase() === '[CDATA[';
+		if (after !== undefined && after >= 'A' && after <= 'Z') {
+			return ['>'];
+		}
+		return line.slice(index + 2, index + 9).toUpperCase() === '[CDATA[' ? [']]>'] : undefined;
 	}
 
 	const closing = next === '/';
@@ -566,7 +578,7 @@ export const startsHtmlBlock = (line: string, cursor: Cursor) => {
 	const endsName = after === undefined || after === '>' || ' \t\v\f\r'.includes(after);
 
 	if (!closing && rawTagNames.has(name)) {
-		return endsName;
+		return endsName ? rawTextClosers : undefined;
 	}
-	return blockTagNames.has(name) && (endsName || line.startsWith('/>', nameEnd));
+	return blockTagNames.has(name) && (endsName || line.startsWith('/>', nameEnd)) ? 'blankLine' : undefined;
 };

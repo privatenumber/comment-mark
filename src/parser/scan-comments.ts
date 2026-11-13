@@ -2,6 +2,7 @@ import {
 	type Container,
 	type Cursor,
 	type Fence,
+	type HtmlBlockEnd,
 	closesFence,
 	continueContainer,
 	isBlank,
@@ -10,10 +11,19 @@ import {
 	matchAtxHeading,
 	matchBlockquote,
 	matchFence,
+	matchHtmlBlock,
 	matchListMarker,
 	skipBlockIndent,
-	startsHtmlBlock,
 } from './block-context.ts';
+
+/**
+ * An open HTML block: how it ends, and the number of containers it is nested
+ * in, which must all continue for the block to continue.
+ */
+type HtmlBlock = {
+	end: HtmlBlockEnd;
+	depth: number;
+};
 
 export type CommentVisitor = (
 	start: number,
@@ -61,8 +71,13 @@ const continuesParagraph = (line: string, cursor: Cursor, lazy: boolean) => (
 	&& !matchListMarker(line, { ...cursor }, true)
 	&& matchAtxHeading(line, cursor) === undefined
 	&& !matchFence(line, { ...cursor })
-	&& !startsHtmlBlock(line, cursor)
+	&& matchHtmlBlock(line, cursor) === undefined
 );
+
+const closesHtmlBlock = (line: string, closers: readonly string[]) => {
+	const lower = line.toLowerCase();
+	return closers.some(closer => lower.includes(closer));
+};
 
 /**
  * Collects the backtick runs in one line and links each run to the next run of
@@ -154,6 +169,11 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	// Otherwise it is raw HTML, which stays open until a line containing `-->`.
 	let commentInParagraph = false;
 	let inParagraph = false;
+	// Inside an HTML block, a comment is raw HTML even when it does not start
+	// the line.
+	let htmlBlock: HtmlBlock | undefined;
+	// Whether the line being scanned belongs to an HTML block.
+	let lineInHtmlBlock = false;
 
 	// One cursor reused across lines. The scan is synchronous, so the cursor
 	// never escapes a call, and reusing it keeps the hot loop allocation-free.
@@ -205,7 +225,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 					commentStart = lineStart + index;
 					commentContinuation = continuation;
 					commentStartsLine = startsLine;
-					commentInParagraph = !startsLine;
+					commentInParagraph = !startsLine && !lineInHtmlBlock;
 					return;
 				}
 				visit(
@@ -223,6 +243,32 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		}
 	};
 
+	/**
+	 * Continues or ends the open HTML block for a line whose containers matched
+	 * `matched` levels, and reports whether the line belongs to the block. A block
+	 * that ends at a closer still includes the closer's line.
+	 */
+	const continueHtmlBlock = (line: string, contentStart: number, matched: number) => {
+		if (!htmlBlock) {
+			return false;
+		}
+		if (htmlBlock.end === 'blankLine') {
+			if (matched < htmlBlock.depth || isBlank(line, contentStart)) {
+				htmlBlock = undefined;
+				return false;
+			}
+			return true;
+		}
+		if (matched < htmlBlock.depth) {
+			htmlBlock = undefined;
+			return false;
+		}
+		if (closesHtmlBlock(line, htmlBlock.end)) {
+			htmlBlock = undefined;
+		}
+		return true;
+	};
+
 	const scanLine = (line: string, lineStart: number) => {
 		cursor.index = 0;
 		cursor.column = 0;
@@ -231,6 +277,8 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		// A comment in raw HTML stays open until a line containing `-->`, so code
 		// syntax inside it is never interpreted.
 		if (commentStart !== -1 && !commentInParagraph) {
+			// Containers are not matched here, so they are assumed to continue.
+			lineInHtmlBlock = continueHtmlBlock(line, 0, htmlBlock?.depth ?? 0);
 			const close = line.indexOf(closeDelimiter);
 			if (close === -1) {
 				return;
@@ -256,6 +304,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			}
 			matched += 1;
 		}
+		lineInHtmlBlock = continueHtmlBlock(line, cursor.index, matched);
 
 		// A comment inside a line is paragraph text, so it spans only the lines that
 		// continue its paragraph. On any other line the paragraph has ended, and
@@ -343,8 +392,11 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		if (headingContent !== undefined) {
 			inParagraph = false;
 			scanInline(line, lineStart, headingContent, false);
-			// A heading is one line, so a comment it leaves open was literal text.
-			commentStart = -1;
+			// A heading is one line, so a comment it leaves open in its text was
+			// literal. Inside an HTML block, the line is raw HTML instead.
+			if (commentInParagraph) {
+				commentStart = -1;
+			}
 			return;
 		}
 
@@ -364,12 +416,21 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		// ordered list is recognized and its fenced example stays code.
 		const blockComment = startsBlockComment(line, cursor);
 		inParagraph = !blockComment;
-		scanInline(line, lineStart, cursor.index, blockComment);
-		// A line such as `<div><!--` starts another kind of HTML block, so a
-		// comment it leaves open is raw HTML rather than paragraph text.
-		if (commentInParagraph && commentStart !== -1 && startsHtmlBlock(line, cursor)) {
-			commentInParagraph = false;
+		// A line such as `<div>` starts an HTML block, so a comment that opens
+		// later in the block is raw HTML rather than paragraph text.
+		if (!lineInHtmlBlock) {
+			const end = matchHtmlBlock(line, cursor);
+			if (end !== undefined) {
+				lineInHtmlBlock = true;
+				if (end === 'blankLine' || !closesHtmlBlock(line, end)) {
+					htmlBlock = {
+						end,
+						depth: containers.length,
+					};
+				}
+			}
 		}
+		scanInline(line, lineStart, cursor.index, blockComment);
 	};
 
 	// Lines end with LF, CRLF, or CR. Both searches only move forward, and the

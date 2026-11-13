@@ -186,6 +186,36 @@ describe('comments that span lines', () => {
 			expect(getCommentMarkAll(source)).toStrictEqual([]);
 		}
 	});
+
+	test('a comment opened on a later line of an HTML block is raw HTML', () => {
+		// The block runs to the blank line, so `# heading` is raw HTML, not a
+		// heading, and the comment runs to the next `-->`.
+		const source = `<div>\nx <!-- note\n# heading\n${createMarker('a', 'old')}\n</div>`;
+
+		expect(getCommentMarkAll(source)).toStrictEqual([]);
+	});
+
+	// Each HTML block ends before the paragraph that opens the comment, so the
+	// comment is paragraph text and ends at the blank line.
+	const endedBlocks: [string, string][] = [
+		['a blank line', '<div>\n'],
+		['its closing tag', '<pre>\n</pre>'],
+		['the end of its list item', '- <div>\n-'],
+	];
+
+	for (const [name, block] of endedBlocks) {
+		test(`an HTML block ends at ${name}`, () => {
+			const source = `${block}\ntext <!-- note\n\n${createMarker('a', 'old')}`;
+
+			expect(getCommentMarkAll(source)).toStrictEqual([
+				{
+					tagName: 'a',
+					attributes: {},
+					content: 'old',
+				},
+			]);
+		});
+	}
 });
 
 describe('fenced code blocks', () => {
