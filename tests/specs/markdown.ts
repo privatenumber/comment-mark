@@ -195,6 +195,13 @@ describe('comments that span lines', () => {
 		expect(getCommentMarkAll(source)).toStrictEqual([]);
 	});
 
+	test('a blockquote prefix does not close an HTML block that ends at >', () => {
+		// A `<!DOCTYPE` block ends at a `>` in its content, not in the `>` prefix.
+		const source = `> <!DOCTYPE\n> x <!-- note\n> # heading\n> ${createMarker('a', 'old')}`;
+
+		expect(getCommentMarkAll(source)).toStrictEqual([]);
+	});
+
 	// Each HTML block ends before the paragraph that opens the comment, so the
 	// comment is paragraph text and ends at the blank line.
 	const endedBlocks: [string, string][] = [

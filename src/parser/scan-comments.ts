@@ -74,9 +74,14 @@ const continuesParagraph = (line: string, cursor: Cursor, lazy: boolean) => (
 	&& matchHtmlBlock(line, cursor) === undefined
 );
 
-const closesHtmlBlock = (line: string, closers: readonly string[]) => {
+/**
+ * Reports whether the line's content, which starts at `contentStart` after any
+ * container prefixes, holds one of the closers. A blockquote's `>` prefix must
+ * not end a block whose closer is `>`.
+ */
+const closesHtmlBlock = (line: string, contentStart: number, closers: readonly string[]) => {
 	const lower = line.toLowerCase();
-	return closers.some(closer => lower.includes(closer));
+	return closers.some(closer => lower.includes(closer, contentStart));
 };
 
 /**
@@ -263,7 +268,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			htmlBlock = undefined;
 			return false;
 		}
-		if (closesHtmlBlock(line, htmlBlock.end)) {
+		if (closesHtmlBlock(line, contentStart, htmlBlock.end)) {
 			htmlBlock = undefined;
 		}
 		return true;
@@ -422,7 +427,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			const end = matchHtmlBlock(line, cursor);
 			if (end !== undefined) {
 				lineInHtmlBlock = true;
-				if (end === 'blankLine' || !closesHtmlBlock(line, end)) {
+				if (end === 'blankLine' || !closesHtmlBlock(line, cursor.index, end)) {
 					htmlBlock = {
 						end,
 						depth: containers.length,
