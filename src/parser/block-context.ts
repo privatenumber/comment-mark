@@ -562,7 +562,8 @@ export const startsHtmlBlock = (line: string, cursor: Cursor) => {
 	}
 	const name = line.slice(nameStart, nameEnd).toLowerCase();
 	const after = line[nameEnd];
-	const endsName = after === undefined || after === ' ' || after === '\t' || after === '>';
+	// `spacechar` in cmark-gfm also includes vertical tab, form feed, and CR.
+	const endsName = after === undefined || after === '>' || ' \t\v\f\r'.includes(after);
 
 	if (!closing && rawTagNames.has(name)) {
 		return endsName;

@@ -50,7 +50,7 @@ Observed with Node 26.13.0 on 2026-11-13:
 
 - **Fuzzing within the spec's scope:** 0 disagreements in 500,000 documents (seeds 1, 99, 12345, 777, 31337). `develop` at `dd89524` disagreed on about 1% of documents. Against `develop`'s build, the reference spec and 10 of the 14 new explicit tests fail. The other 4 tests check lines that must continue a comment, so they pass on both builds.
 - **Real documents:** 5,141 unique `.md` files (39.6 MB, 2,769 comments) from a local `node_modules` tree agreed with micromark on every comment, before and after the fix. The fixed scanner and `develop` gave identical output on every file.
-- **Remaining disagreements outside the scope** all existed before the fix: indented code blocks, `\<!--`, code spans that wrap lines, code spans in table cells, a link reference definition such as `[x]:<!---->`, raw content inside HTML blocks, a block comment whose opening line already contains `-->`, and multiline opening comments inside containers.
+- **Remaining disagreements outside the scope** all existed before the fix: indented code blocks, `\<!--`, code spans that wrap lines, code spans in table cells, a table delimiter row after a paragraph line with an open comment (the row makes that line a table header, which ends the comment), a link reference definition such as `[x]:<!---->`, raw content inside HTML blocks, a block comment whose opening line already contains `-->`, and multiline opening comments inside containers.
 
 ## Scanner extraction
 

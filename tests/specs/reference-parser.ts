@@ -5,8 +5,9 @@ import { getCommentMarkAll } from '#comment-mark';
 
 /**
  * Returns the `[start, end)` range of every comment that a CommonMark parser
- * with GFM tables finds. A comment in an HTML block counts only when it closes
- * inside that block.
+ * with GFM tables finds. An HTML block is one token, so every `<!--` to `-->`
+ * that closes inside it counts. That is wrong for `<!--` inside an attribute
+ * value, which the generated documents do not contain.
  */
 const findReferenceComments = (source: string) => {
 	const events = postprocess(

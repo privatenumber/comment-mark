@@ -178,10 +178,13 @@ describe('comments that span lines', () => {
 	});
 
 	test('a comment opened on an HTML block line continues past a blank line', () => {
-		// The line is raw HTML, where a comment runs to the next `-->`.
-		const source = `<div><!-- note\n\n${createMarker('a', 'old')}`;
+		// The line is raw HTML, where a comment runs to the next `-->`. GitHub also
+		// ends a tag name at a form feed.
+		for (const tag of ['<div>', '<div\f>']) {
+			const source = `${tag}<!-- note\n\n${createMarker('a', 'old')}`;
 
-		expect(getCommentMarkAll(source)).toStrictEqual([]);
+			expect(getCommentMarkAll(source)).toStrictEqual([]);
+		}
 	});
 });
 
