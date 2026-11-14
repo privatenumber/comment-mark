@@ -168,8 +168,8 @@ The primary check compares the scanner with a local stand-in for GitHub: cmark-g
 | `links` | 1, 2, 99 | 0 | |
 | `refs` | 1, 2, 99 | 0 | |
 | `tables` | 1 | 29 | All also occur at `afdc279`, and none needs a table. Two patterns: a dropped definition that renders no markup, and the quotes in a resolved link's `<a href="…">`; see [known gaps](#known-gaps) |
-| `foreign` | 1 | 16 | All 43 across both seeds have one shape: the document has `<![CDATA[`, and the scanner reports a strict subset of the oracle's comments. parse5 leaves SVG or MathML at an end tag or a breakout start tag, such as `</p>` or `<div>`, and reads the CDATA opener as a bogus comment. The scanner keeps the CDATA as text. On 2026-11-14, GitHub `/markdown` agreed with the scanner on 8 of them, including `</li><svg></p><![CDATA[> <!-- /a2 -->` and `<math>\n\n- <![CDATA[</p><!-- a1 -->`: each comment rendered as escaped text. These are oracle errors, not scanner gaps |
-| `foreign` | 2 | 27 | Same shape and cause as seed 1 |
+| `foreign` | 1 | 16 | All 43 across both seeds have one shape: the document has `<![CDATA[`, and the scanner reports a strict subset of the oracle's comments. parse5 leaves SVG or MathML at an end tag or a breakout start tag, such as `</p>` or `<div>`, and reads the CDATA opener as a bogus comment. On 2026-11-15, after generated emphasis was modeled, all 43 documents were sent to GitHub `/markdown`, and in each one GitHub showed every disputed comment as escaped text, as the scanner predicts. These are oracle errors |
+| `foreign` | 2 | 27 | Same shape and cause as seed 1; included in the 43 GitHub checks |
 
 A mutant with `<…>` autolinks disabled gives 590 to 650 mismatches per `autolink` seed, so the fuzz detects autolink bugs. The `GitHub rendering` group in the [Markdown tests](../../tests/specs/markdown.ts) locks one case per rule, each checked against the oracle.
 
