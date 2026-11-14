@@ -28,7 +28,7 @@ const isLowSurrogate = (code: number) => code >= 0xDC_00 && code <= 0xDF_FF;
  * all. cmark-gfm reads NUL, and encoding reads a lone surrogate, as U+FFFD,
  * which is 3 bytes.
  */
-const utf8Length = (text: string, index: number) => {
+export const utf8Length = (text: string, index: number) => {
 	const code = text.charCodeAt(index);
 	if (code === 0) {
 		return 3;
@@ -256,12 +256,18 @@ export const scanTitle = (text: string, index: number) => {
 };
 
 /** `cmark_parse_reference_inline`: returns the index after the definition, or -1. */
-const scanDefinition = (text: string, index: number) => {
+const scanDefinition = (
+	text: string,
+	index: number,
+	onDefinition?: (label: string, destination: string, title: string) => void,
+) => {
+	const labelStart = index;
 	index = scanLabel(text, index);
 	if (index === -1 || text.charCodeAt(index) !== 58) {
 		return -1;
 	}
-	const destinationEnd = scanDestination(text, skipSpacesAndLineEnd(text, index + 1));
+	const destinationStart = skipSpacesAndLineEnd(text, index + 1);
+	const destinationEnd = scanDestination(text, destinationStart);
 	if (destinationEnd === -1) {
 		return -1;
 	}
@@ -273,10 +279,23 @@ const scanDefinition = (text: string, index: number) => {
 	if (titleEnd !== -1) {
 		const end = skipLineEnd(text, skipSpaces(text, titleEnd));
 		if (end !== -1) {
+			onDefinition?.(
+				text.slice(labelStart + 1, index - 1),
+				text.slice(destinationStart, destinationEnd),
+				text.slice(titleStart, titleEnd),
+			);
 			return end;
 		}
 	}
-	return skipLineEnd(text, skipSpaces(text, destinationEnd));
+	const end = skipLineEnd(text, skipSpaces(text, destinationEnd));
+	if (end !== -1) {
+		onDefinition?.(
+			text.slice(labelStart + 1, index - 1),
+			text.slice(destinationStart, destinationEnd),
+			'',
+		);
+	}
+	return end;
 };
 
 /**
@@ -284,17 +303,16 @@ const scanDefinition = (text: string, index: number) => {
  * start of a paragraph. `text` holds the paragraph's lines, each followed by a
  * line feed.
  */
-export const countDefinitionLines = (text: string, onLabel?: (label: string) => void) => {
+export const countDefinitionLines = (
+	text: string,
+	onLabel?: (label: string, destination: string, title: string) => void,
+) => {
 	let index = 0;
 	let lines = 0;
 	while (text.charCodeAt(index) === 91) {
-		const end = scanDefinition(text, index);
+		const end = scanDefinition(text, index, onLabel);
 		if (end === -1) {
 			break;
-		}
-		if (onLabel) {
-			const labelEnd = scanLabel(text, index);
-			onLabel(text.slice(index + 1, labelEnd - 1));
 		}
 		for (; index < end; index += 1) {
 			if (text.charCodeAt(index) === 10) {

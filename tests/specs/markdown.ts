@@ -7,6 +7,73 @@ import {
 import { scanComments } from '../../src/parser/scan-comments/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
+describe('reference expansion budget', () => {
+	test('preserves text when an image exceeds the budget', async () => {
+		// GitHub /markdown probe, Sat Nov 14: 98 references resolve the image;
+		// 101 references leave it as text.
+		for (const count of [98, 101]) {
+			const prefix = '[r] '.repeat(count);
+			const source = `${prefix}x <!-- a -->PRESERVE ![<!-- a -->old][r] tail<!-- /a --> KEEP\n\n[r]: ${'u'.repeat(1000)}`;
+			const markers = getCommentMarkAll(source);
+			expect(markers[0].content).toBe(count === 98 ? 'PRESERVE ![<!-- a -->old][r] tail' : 'old][r] tail');
+			const updated = await commentMark(source, { a: 'NEW' });
+			expect(updated.includes('PRESERVE ![')).toBe(count === 101);
+		}
+	});
+
+	test('a failed large lookup does not consume the remaining budget', () => {
+		const source = `${'[r] '.repeat(99)}![<!-- a -->old][large] ![<!-- /a -->x][small]\n\n`
+			+ `[r]: ${'u'.repeat(1000)}\n[large]: ${'u'.repeat(1001)}\n[small]: /x`;
+		expect(getCommentMarkAll(source).length).toBe(0);
+	});
+
+	test('counts decoded numeric entities and normalized title line endings', () => {
+		for (const definition of [
+			`[s]: ${'u'.repeat(999)}&#x75;`,
+			String.raw`[s]: ${'u'.repeat(999)}\!`,
+			`[s]: < ${'u'.repeat(1000)} >`,
+			`[s]: / "${'t'.repeat(997)}\r\nx"`,
+		]) {
+			const source = `${'[r] '.repeat(99)}![<!-- a -->old][s] <!-- /a -->\n\n`
+				+ `[r]: ${'u'.repeat(1000)}\n${definition}`;
+			expect(getCommentMarkAll(source).length).toBe(0);
+		}
+	});
+
+	test('counts NUL and lone surrogates as replacement characters in definitions', () => {
+		for (const character of ['\0', '\uD800']) {
+			const source = `${'[r] '.repeat(33)}![<!-- a -->old][r] <!-- /a -->\n\n`
+				+ `[r]: ${character.repeat(1000)}`;
+			expect(getCommentMarkAll(source).length).toBe(1);
+		}
+	});
+
+	test('slow-path CPU time scales near linearly', () => {
+		const measure = (count: number) => {
+			const source = `${'[r] x\n\n'.repeat(count)}<!-- a -->old<!-- /a -->\n\n[r]: ${'u'.repeat(1000)}\n`;
+			let best = Infinity;
+			for (let index = 0; index < 5; index += 1) {
+				const start = process.cpuUsage();
+				getCommentMarkAll(source);
+				const elapsed = process.cpuUsage(start);
+				best = Math.min(best, elapsed.user + elapsed.system);
+			}
+			return best;
+		};
+		measure(1000);
+		const small = measure(4000);
+		const large = measure(8000);
+		expect(large / small < 3).toBe(true);
+	});
+
+	test('counts NUL input bytes before replacement for the cap', () => {
+		const prefix = '[r] '.repeat(103);
+		const source = `\`\`\`\n${'\0'.repeat(102_000)}\n\`\`\`\n\n${prefix}![<!-- a -->old][r] <!-- /a -->\n\n`
+			+ `[r]: ${'u'.repeat(1000)}`;
+		expect(getCommentMarkAll(source).length).toBe(1);
+	});
+});
+
 describe('comment and code boundaries', () => {
 	test('buffered HTML lines retain streamed comment positions and line context', () => {
 		for (const newline of ['\n', '\r\n', '\r']) {

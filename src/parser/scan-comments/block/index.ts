@@ -39,7 +39,7 @@ export type BlockHandlers = {
 	 * between the previous HTML block line and this one.
 	 */
 	html: (start: number, end: number, afterMarkup: boolean, continuation: string) => void;
-	definition?: (label: string) => void;
+	definition?: (label: string, destination: string, title: string) => void;
 };
 
 type Container =

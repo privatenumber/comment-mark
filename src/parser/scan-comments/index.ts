@@ -2,6 +2,8 @@ import { lexBlocks, type BlockHandlers } from './block/index.ts';
 import { normalizeLabel } from './block/reference-definition.ts';
 import { createHtmlTokenizer } from './html-tokenizer.ts';
 import { lexInline } from './inline-lexer.ts';
+import { createReferenceBudget, type ReferenceDefinition } from './reference-budget.ts';
+import { joinText } from './text.ts';
 import { createForwardSearch } from './utils/forward-search.ts';
 
 /**
@@ -38,10 +40,15 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	const findTagOpen = createForwardSearch(source, '<');
 	const findOpenBracket = createForwardSearch(source, '[');
 	const findCloseBracket = createForwardSearch(source, ']');
-	const labels = new Set<string>();
+	const labels = new Map<string, ReferenceDefinition>();
+	let failures: Map<number, Set<number>> | undefined;
+	let activeFailures: Set<number> | undefined;
+	let lookupOrdinal = 0;
 	const isDefinedLabel = (label: string) => {
 		const normalized = normalizeLabel(label);
-		return normalized !== '' && labels.has(normalized);
+		const failed = activeFailures?.has(lookupOrdinal);
+		lookupOrdinal += 1;
+		return !failed && normalized !== '' && labels.has(normalized);
 	};
 
 	const handlers: BlockHandlers = {
@@ -49,17 +56,12 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			tokenizer.feed(start, end, afterMarkup, continuation, true);
 		},
 		text: (segments, continuation) => {
+			activeFailures = failures?.get(segments[0]);
+			lookupOrdinal = 0;
 			// The inline phase reads the lines joined by line feeds. `textStarts`
 			// maps each line back to its source position.
-			let text = '';
 			const textStarts: number[] = [];
-			for (let index = 0; index < segments.length; index += 2) {
-				if (index > 0) {
-					text += '\n';
-				}
-				textStarts.push(text.length);
-				text += source.slice(segments[index], segments[index + 1]);
-			}
+			const text = joinText(source, segments, textStarts);
 
 			let line = 0;
 			// The block's opening tag, such as `<p>`, comes before its first span.
@@ -136,8 +138,17 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				handlers.html(start, end, afterMarkup, continuation);
 			}
 		},
-		definition: label => labels.add(normalizeLabel(label)),
+		definition: (label, destination, title) => {
+			const normalized = normalizeLabel(label);
+			if (normalized && !labels.has(normalized)) {
+				labels.set(normalized, {
+					destination,
+					title,
+				});
+			}
+		},
 	});
+	failures = createReferenceBudget(source, labels);
 	const findLineFeed = createForwardSearch(source, '\n');
 	const findCarriageReturn = createForwardSearch(source, '\r');
 	for (let index = 0; index < continuations.length; index += 1) {
