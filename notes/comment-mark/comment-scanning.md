@@ -136,7 +136,7 @@ The primary check compares the scanner with a local stand-in for GitHub: cmark-g
 | `autolink` | 3 | 0 | |
 | `links` | 1, 2, 99 | 0 | |
 | `refs` | 1, 2, 99 | 0 | |
-| `tables` | 1 | 25 | All also occur at `afdc279`, and none needs a table. Two patterns: a dropped definition that renders no markup, and the quotes in a resolved link's `<a href="…">`; see [known gaps](#known-gaps) |
+| `tables` | 1 | 29 | All also occur at `afdc279`, and none needs a table. Two patterns: a dropped definition that renders no markup, and the quotes in a resolved link's `<a href="…">`; see [known gaps](#known-gaps) |
 
 A mutant with `<…>` autolinks disabled gives 590 to 650 mismatches per `autolink` seed, so the fuzz detects autolink bugs. The `GitHub rendering` group in the [Markdown tests](../../tests/specs/markdown.ts) locks one case per rule, each checked against the oracle.
 
