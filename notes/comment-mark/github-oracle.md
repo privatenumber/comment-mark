@@ -287,7 +287,7 @@ console.log({
 
 cmark-gfm matches a reference to its definition after `cmark_utf8proc_case_fold`, which uses the Unicode tables bundled with cmark-gfm 0.29.0.gfm.13. The scanner folds with JavaScript's `toLowerCase().toUpperCase()`, which uses the newer tables of the running Node. The two disagree on 185 scalars. Each of them folds to itself in cmark-gfm, but JavaScript merges it with another scalar, such as dotless `ı` with `I`. [reference-definition.ts](../../src/parser/scan-comments/block/reference-definition.ts) keeps these scalars unfolded.
 
-Measured on 2026-11-14 with Node 26.13.0 (Unicode 17.0). Of the 1,112,064 Unicode scalars, 2,767 change under either fold. After the exceptions, no scalar folds differently from cmark-gfm, and no two scalars that cmark-gfm keeps apart compare equal. Labels that combine each changed scalar with `̇`, `ͅ`, `Σ`, `I`, `ı`, `ß`, or `a` also agree. That is a sample, not proof for every label.
+Measured on 2026-11-14 with Node 26.13.0 (Unicode 17.0). Of the 1,112,064 Unicode scalars, 2,767 change under either fold. The scanner keys a label instead of folding it, so `A` keys as `A` where cmark-gfm folds it to `a`. What must agree is which labels match. After the exceptions, every scalar has the same key as its cmark-gfm fold, so labels that cmark-gfm folds alike match, and no two scalars that cmark-gfm folds apart share a key. Labels that combine each changed scalar with `̇`, `ͅ`, `Σ`, `I`, `ı`, `ß`, or `a` also agree. That is a sample, not proof for every label.
 
 Regenerate the table when Node's `process.versions.unicode` changes. Build `fold-scalars.c` in an empty directory against the [oracle build](#build), and run `compare-folds.mjs` beside it:
 
@@ -297,7 +297,7 @@ cc -I $C/src -I $C/build/src -o fold-scalars fold-scalars.c $C/build/src/libcmar
 node compare-folds.mjs
 ```
 
-It prints the exception count and the exceptions as `[start, end]` ranges in hexadecimal, for the table in `reference-definition.ts`. The other three counts must be 0: exceptions that cmark-gfm folds to another scalar, scalars whose key disagrees with cmark-gfm, and labels where neighboring scalars change the key.
+It prints the exception count and the exceptions as `[start, end]` ranges in hexadecimal, for the table in `reference-definition.ts`. The other four counts must be 0: exceptions that cmark-gfm folds to another scalar, scalars whose key differs from the key of their cmark-gfm fold, keys shared by scalars that cmark-gfm folds apart, and labels where neighboring scalars change the key.
 
 `fold-scalars.c` prints each scalar and its cmark-gfm fold as hexadecimal UTF-8:
 
@@ -386,21 +386,8 @@ const key = text => Array.from(text, (char) => {
     return char.toLowerCase().toUpperCase()
 }).join('')
 
-// Two scalars must share a key exactly when cmark folds them alike.
-const classes = new Map()
-let collisions = 0
-for (const char of changed) {
-    const value = fold(char)
-    if (classes.has(key(char)) && classes.get(key(char)) !== value) {
-        collisions += 1
-    } else {
-        classes.set(key(char), value)
-    }
-}
-console.log('collisions', collisions)
-
-// The scanner case-maps each run between exceptions as one string, and case
-// mapping can depend on neighbors, such as a final sigma.
+// The key of a whole label, as normalizeLabel computes it: each run between
+// exceptions is case-mapped as one string.
 const runKey = (text) => {
     let result = ''
     let run = ''
@@ -414,6 +401,31 @@ const runKey = (text) => {
     }
     return result + run.toLowerCase().toUpperCase()
 }
+
+// Labels that cmark folds alike must share a key: a scalar and its cmark fold,
+// such as `ß` and `ss`, must have the same key.
+let mismatches = 0
+for (const char of changed) {
+    if (key(char) !== runKey(fold(char))) {
+        mismatches += 1
+    }
+}
+console.log('mismatches', mismatches)
+
+// Labels that cmark folds apart must have different keys.
+const classes = new Map()
+let collisions = 0
+for (const char of changed) {
+    const value = fold(char)
+    if (classes.has(key(char)) && classes.get(key(char)) !== value) {
+        collisions += 1
+    } else {
+        classes.set(key(char), value)
+    }
+}
+console.log('collisions', collisions)
+
+// Case mapping can depend on neighbors, such as a final sigma.
 let interactions = 0
 for (const a of changed) {
     for (const b of ['̇', 'ͅ', 'Σ', 'I', 'ı', 'ß', 'a']) {
