@@ -397,7 +397,11 @@ const checkDomain = (text: string, start: number, short: boolean) => {
 	let index = start + 1;
 	const finalCode = text.charCodeAt(text.length - 1);
 	const last = text.length - (finalCode < 128 && finalCode !== 0 ? 1 : 0);
-	while (index < last) {
+	// cmark-gfm scans bytes from the second byte of the host. After a non-ASCII
+	// first character (NUL becomes U+FFFD), that is a UTF-8 continuation byte,
+	// which ends the scan.
+	const first = text.charCodeAt(start);
+	while (index < last && first < 128 && first !== 0) {
 		let code = text.charCodeAt(index);
 		if (code === 92 && index + 1 < last) {
 			index += 1;
