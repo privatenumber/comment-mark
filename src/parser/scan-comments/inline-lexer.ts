@@ -268,6 +268,7 @@ export const lexInline = (
 	text: string,
 	emit: (start: number, end: number) => void,
 	isDefinedLabel: (label: string) => boolean,
+	linkElement?: (open: boolean) => void,
 ) => {
 	// Once a kind of construct fails to close, cmark-gfm stops matching that
 	// kind for the rest of the text. An unclosed comment disables every `<!`
@@ -459,6 +460,7 @@ export const lexInline = (
 		position: number;
 		bracketAfter: boolean;
 	}[] = [];
+	// A start of -1 marks a pending link opener (0), resolved opener (1), or closer (2).
 	const spans: {
 		start: number;
 		end: number;
@@ -475,6 +477,12 @@ export const lexInline = (
 			position: index + (image ? 2 : 1),
 			bracketAfter: false,
 		});
+		if (linkElement && !image) {
+			spans.push({
+				start: -1,
+				end: 0,
+			});
+		}
 		if (image) {
 			images += 1;
 		} else {
@@ -483,7 +491,13 @@ export const lexInline = (
 	};
 	const flushSpans = () => {
 		for (const span of spans) {
-			emit(span.start, span.end);
+			if (span.start === -1) {
+				if (span.end !== 0) {
+					linkElement!(span.end === 1);
+				}
+			} else {
+				emit(span.start, span.end);
+			}
 		}
 		spans.length = 0;
 	};
@@ -547,13 +561,20 @@ export const lexInline = (
 						spans.length = opener.spanStart;
 					} else {
 						noLinkOpeners = true;
+						if (linkElement) {
+							spans[opener.spanStart].end = 1;
+							spans.push({
+								start: -1,
+								end: 2,
+							});
+						}
 					}
 				}
 				if (opener.image) {
 					images -= 1;
-					if (images === 0) {
-						flushSpans();
-					}
+				}
+				if (images === 0 && (!linkElement || brackets.length === 0)) {
+					flushSpans();
 				}
 				break;
 			}
@@ -577,7 +598,7 @@ export const lexInline = (
 				if (end === -1) {
 					index += 1;
 				} else {
-					if (images > 0) {
+					if (images > 0 || (linkElement && brackets.length > 0)) {
 						spans.push({
 							start: index,
 							end,

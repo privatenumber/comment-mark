@@ -31,7 +31,9 @@ export type BlockHandlers = {
 	 * Receives the text of a paragraph, heading, or table cell when the block
 	 * ends, as `[start, end]` pairs, one per line.
 	 */
-	text: (segments: number[], continuation: string, unescapePipes?: boolean) => void;
+	text: (segments: number[], continuation: string, unescapePipes?: boolean, type?: 'paragraph' | 'heading' | 'cell') => void;
+	open?: ((type: 'blockquote' | 'li' | 'ul' | 'ol' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'table' | 'thead' | 'tbody' | 'tr' | 'th' | 'td') => void) | undefined;
+	close?: (() => void) | undefined;
 
 	/**
 	 * Receives each line of an HTML block as it is read. `afterMarkup` is true
@@ -45,6 +47,10 @@ export type BlockHandlers = {
 type Container =
 	| { type: 'blockquote' }
 	| {
+		type: 'list';
+		marker: number;
+	}
+	| {
 		type: 'listItem';
 		// The column where the item's content starts, relative to its parent.
 		indent: number;
@@ -54,6 +60,7 @@ type Container =
 type Leaf =
 	| {
 		type: 'paragraph' | 'heading';
+		headingLevel?: number;
 		segments: number[];
 		continuation: string;
 		// Set when the paragraph failed to become a table header.
@@ -75,6 +82,7 @@ type Leaf =
 		type: 'table';
 		columns: number;
 		continuation: string;
+		bodyOpen: boolean;
 	};
 
 type TextLeaf = Extract<Leaf, { type: 'paragraph' | 'heading' }>;
@@ -187,7 +195,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	const continuation = () => {
 		let prefix = '';
 		for (const container of containers) {
-			prefix += container.type === 'blockquote' ? '> ' : ' '.repeat(container.indent);
+			prefix += container.type === 'blockquote' ? '> ' : (container.type === 'listItem' ? ' '.repeat(container.indent) : '');
 		}
 		return prefix;
 	};
@@ -208,20 +216,36 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	};
 
 	const finalizeLeaf = () => {
+		if (leaf?.type === 'table') {
+			if (leaf.bodyOpen) {
+				handlers.close?.();
+			}
+			handlers.close?.();
+		}
 		if (
 			leaf?.type === 'heading'
 			|| (leaf?.type === 'paragraph' && resolveDefinitions(leaf.segments))
 		) {
-			handlers.text(leaf.segments, leaf.continuation);
+			if (leaf.type === 'heading') {
+				handlers.open?.(`h${leaf.headingLevel}` as 'h1');
+			}
+			handlers.text(leaf.segments, leaf.continuation, false, leaf.type);
+			if (leaf.type === 'heading') {
+				handlers.close?.();
+			}
 		}
 		leaf = undefined;
 	};
 
-	const reportCells = (cells: number[], columns: number, prefix: string) => {
+	const reportCells = (cells: number[], columns: number, prefix: string, type: 'th' | 'td') => {
 		const end = Math.min(cells.length, columns * 2);
+		// Generated empty cells follow a closed cell, so their adjacent open and
+		// close cannot change the tokenizer state or element stack.
 		for (let index = 0; index < end; index += 2) {
+			handlers.open?.(type);
 			const segments = trimTableText(source, [cells[index], cells[index + 1]]);
-			handlers.text(segments, prefix, true);
+			handlers.text(segments, prefix, true, 'cell');
+			handlers.close?.();
 		}
 	};
 
@@ -248,13 +272,19 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 		// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/extensions/table.c#L283-L295
 		if (segments.length > 2) {
 			const preceding = trimTableText(source, segments.slice(0, -2));
-			handlers.text(preceding, paragraph.continuation, true);
+			handlers.text(preceding, paragraph.continuation, true, 'paragraph');
 		}
-		reportCells(header, header.length / 2, paragraph.continuation);
+		handlers.open?.('table');
+		handlers.open?.('thead');
+		handlers.open?.('tr');
+		reportCells(header, header.length / 2, paragraph.continuation, 'th');
+		handlers.close?.();
+		handlers.close?.();
 		leaf = {
 			type: 'table',
 			columns: header.length / 2,
 			continuation: paragraph.continuation,
+			bodyOpen: false,
 		};
 		advance(lineEnd - offset, false);
 		return true;
@@ -287,6 +317,8 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				if (isSpaceOrTab(peek(offset))) {
 					advance(1, true);
 				}
+			} else if (container.type === 'list') {
+				continue;
 			} else if (indent >= container.indent) {
 				advance(container.indent, true);
 			} else if (blank && container.hasChild) {
@@ -358,17 +390,26 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			if (!leafMatched) {
 				finalizeLeaf();
 			}
-			containers.length = matched;
+			while (containers.length > matched) {
+				containers.pop();
+				handlers.close?.();
+			}
 		};
 
 		let target: Target = leafMatched ? leaf!.type : 'container';
 		let opened = false;
-		const addChild = (writesMarkup = true) => {
+		const addChild = (writesMarkup = true, listMarker?: number) => {
 			closeUnmatched();
 			if (target !== 'container') {
 				finalizeLeaf();
 			}
-			const parent = containers.at(-1);
+			let parent = containers.at(-1);
+			if (parent?.type === 'list' && parent.marker !== listMarker) {
+				containers.pop();
+				handlers.close?.();
+				markup = true;
+				parent = containers.at(-1);
+			}
 			if (parent?.type === 'listItem') {
 				parent.hasChild = true;
 			}
@@ -402,15 +443,23 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				}
 				addChild();
 				containers.push({ type: 'blockquote' });
+				handlers.open?.('blockquote');
 				return true;
 			}
 
 			const headingLength = scanAtxHeadingStart(source, firstNonspace, lineEnd);
 			if (headingLength) {
+				let headingLevel = 0;
+				if (handlers.open) {
+					while (source.charCodeAt(firstNonspace + headingLevel) === 35) {
+						headingLevel += 1;
+					}
+				}
 				advance(firstNonspace + headingLength - offset, false);
 				addChild();
 				leaf = {
 					type: 'heading',
+					headingLevel,
 					segments: [],
 					continuation: continuation(),
 					tableVisited: false,
@@ -453,6 +502,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				const paragraph = leaf as TextLeaf;
 				if (resolveDefinitions(paragraph.segments)) {
 					paragraph.type = 'heading';
+					paragraph.headingLevel = char === 61 ? 1 : 2;
 					advance(lineEnd - offset, false);
 					target = 'heading';
 				}
@@ -471,6 +521,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				: 0;
 			if (markerLength) {
 				const markerOffset = indent;
+				const marker = source.charCodeAt(firstNonspace + markerLength - 1);
 				advance(firstNonspace + markerLength - offset, false);
 				const savedOffset = offset;
 				const savedColumn = column;
@@ -490,12 +541,20 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 						advance(1, true);
 					}
 				}
-				addChild();
+				addChild(true, marker);
+				if (containers.at(-1)?.type !== 'list') {
+					containers.push({
+						type: 'list',
+						marker,
+					});
+					handlers.open?.(marker === 46 || marker === 41 ? 'ol' : 'ul');
+				}
 				containers.push({
 					type: 'listItem',
 					indent: markerOffset + padding,
 					hasChild: false,
 				});
+				handlers.open?.('li');
 				return true;
 			}
 
@@ -516,7 +575,13 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				closeUnmatched();
 				opened = true;
 				const table = leaf as Extract<Leaf, { type: 'table' }>;
-				reportCells(cells, table.columns, table.continuation);
+				if (!table.bodyOpen) {
+					table.bodyOpen = true;
+					handlers.open?.('tbody');
+				}
+				handlers.open?.('tr');
+				reportCells(cells, table.columns, table.continuation, 'td');
+				handlers.close?.();
 				advance(lineEnd - offset, false);
 				target = 'row';
 				return true;
@@ -627,6 +692,10 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 		processLine(lineStart, source.length);
 	}
 	finalizeLeaf();
+	while (containers.length > 0) {
+		containers.pop();
+		handlers.close?.();
+	}
 };
 
 /**

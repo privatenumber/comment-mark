@@ -31,8 +31,8 @@ export type CommentVisitor = (
  * 3. The browser phase reads HTML blocks and raw HTML spans as a browser would
  *    and reports the comments.
  *
- * Each phase follows GitHub's renderer, cmark-gfm 0.29.0.gfm.13, and the HTML
- * standard. The rules each phase leaves out are listed in
+ * The phases model GitHub's renderer, cmark-gfm 0.29.0.gfm.13, and its HTML
+ * handling. The rules each phase leaves out are listed in
  * notes/comment-mark/comment-scanning.md.
  */
 export const scanComments = (source: string, visit: CommentVisitor) => {
@@ -41,8 +41,21 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	}
 };
 
+// Search for the names, not for `<`: a document can hold a `<` at every other
+// position, and a search per `<` costs a native call each.
+const hasTagNamed = (lower: string, name: string) => {
+	for (let index = lower.indexOf(name); index !== -1; index = lower.indexOf(name, index + 1)) {
+		if (lower.charCodeAt(index - 1) === 60) {
+			return true;
+		}
+	}
+	return false;
+};
+
 const scanDocument = (source: string, visit: CommentVisitor) => {
-	const tokenizer = createHtmlTokenizer(source, visit);
+	const lower = source.toLowerCase();
+	const hasForeignContent = hasTagNamed(lower, 'svg') || hasTagNamed(lower, 'math');
+	const tokenizer = createHtmlTokenizer(source, visit, hasForeignContent);
 	const findTagOpen = createForwardSearch(source, '<');
 	const findOpenBracket = createForwardSearch(source, '[');
 	const findCloseBracket = createForwardSearch(source, ']');
@@ -57,11 +70,12 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 		return !failed && normalized !== '' && labels.has(normalized);
 	};
 
-	const handlers: BlockHandlers = {
+	const handlers: Pick<BlockHandlers, 'html' | 'text'> = {
 		html: (start, end, afterMarkup, continuation) => {
 			tokenizer.feed(start, end, afterMarkup, continuation, true);
 		},
-		text: (segments, continuation, unescapePipes) => {
+		text: (segments, continuation, unescapePipes, type) => {
+			const element = type === 'paragraph' ? tokenizer.open('p') : undefined;
 			activeFailures = failures?.get(segments[0]);
 			lookupOrdinal = 0;
 			// The inline phase reads the lines joined by line feeds. `textStarts`
@@ -98,7 +112,19 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 					tokenizer.feed(partStart, partEnd, afterMarkup, continuation, false);
 					afterMarkup = false;
 				}
-			}, isDefinedLabel);
+			}, isDefinedLabel, hasForeignContent
+				? (open) => {
+					if (open) {
+						tokenizer.open('a');
+					} else {
+						tokenizer.close('a');
+					}
+					afterMarkup = true;
+				}
+				: undefined);
+			if (element !== undefined) {
+				tokenizer.close(element);
+			}
 		},
 	};
 	// Each event uses three numbers: text uses -1 and an index into textSegments;
@@ -107,9 +133,11 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 	const positions: number[] = [];
 	const continuations: string[] = [];
 	const textSegments: number[][] = [];
+	const containers: ReturnType<typeof tokenizer.open>[] = [];
+	const containerNames = ['blockquote', 'li', 'ul', 'ol', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td'] as const;
 	let buffering = false;
 	lexBlocks(source, {
-		text: (segments, continuation, unescapePipes) => {
+		text: (segments, continuation, unescapePipes, type) => {
 			// Raw HTML starts with `<`, so text without one renders as text and
 			// needs no replay. A `<` between two segments only costs a needless
 			// inline pass.
@@ -126,11 +154,11 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 					buffering = left !== -1 && left < end && right !== -1 && right < end;
 				}
 				if (buffering) {
-					positions.push(-1, textSegments.length, Number(unescapePipes));
+					positions.push(-1, textSegments.length, Number(unescapePipes) + (type === 'paragraph' ? 2 : (type === 'heading' ? 4 : 0)));
 					continuations.push(continuation);
 					textSegments.push(segments);
 				} else {
-					handlers.text(segments, continuation, unescapePipes);
+					handlers.text(segments, continuation, unescapePipes, type);
 				}
 			}
 		},
@@ -157,6 +185,26 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 				handlers.html(start, end, afterMarkup, continuation);
 			}
 		},
+		open: hasForeignContent
+			? (name) => {
+				if (buffering) {
+					positions.push(-2, containerNames.indexOf(name), 0);
+					continuations.push('');
+				} else {
+					containers.push(tokenizer.open(name));
+				}
+			}
+			: undefined,
+		close: hasForeignContent
+			? () => {
+				if (buffering) {
+					positions.push(-3, 0, 0);
+					continuations.push('');
+				} else {
+					tokenizer.close(containers.pop());
+				}
+			}
+			: undefined,
 		definition: (label, destination, title) => {
 			const normalized = normalizeLabel(label);
 			if (normalized && !labels.has(normalized)) {
@@ -177,26 +225,42 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 	for (let index = 0; index < continuations.length; index += 1) {
 		const start = positions[index * 3];
 		const end = positions[(index * 3) + 1];
-		if (start === -1) {
-			handlers.text(textSegments[end], continuations[index], positions[(index * 3) + 2] === 1);
-		} else {
-			const flags = positions[(index * 3) + 2];
-			let lineStart = start;
-			let afterMarkup = flags === 1 || flags === 3;
-			if (flags >= 2) {
-				while (lineStart < end) {
-					const lf = findLineFeed(lineStart);
-					const cr = findCarriageReturn(lineStart);
-					const lineEnd = Math.min(lf === -1 ? end : lf, cr === -1 ? end : cr, end);
-					if (lineEnd === end) {
-						break;
-					}
-					handlers.html(lineStart, lineEnd, afterMarkup, continuations[index]);
-					afterMarkup = false;
-					lineStart = lineEnd + (source.startsWith('\r\n', lineEnd) ? 2 : 1);
-				}
+		switch (start) {
+			case -1: {
+				const flags = positions[(index * 3) + 2];
+				handlers.text(textSegments[end], continuations[index], flags % 2 === 1, flags >= 4 ? 'heading' : (flags >= 2 ? 'paragraph' : 'cell'));
+
+				break;
 			}
-			handlers.html(lineStart, end, afterMarkup, continuations[index]);
+			case -2: {
+				containers.push(tokenizer.open(containerNames[end]));
+
+				break;
+			}
+			case -3: {
+				tokenizer.close(containers.pop());
+
+				break;
+			}
+			default: {
+				const flags = positions[(index * 3) + 2];
+				let lineStart = start;
+				let afterMarkup = flags === 1 || flags === 3;
+				if (flags >= 2) {
+					while (lineStart < end) {
+						const lf = findLineFeed(lineStart);
+						const cr = findCarriageReturn(lineStart);
+						const lineEnd = Math.min(lf === -1 ? end : lf, cr === -1 ? end : cr, end);
+						if (lineEnd === end) {
+							break;
+						}
+						handlers.html(lineStart, lineEnd, afterMarkup, continuations[index]);
+						afterMarkup = false;
+						lineStart = lineEnd + (source.startsWith('\r\n', lineEnd) ? 2 : 1);
+					}
+				}
+				handlers.html(lineStart, end, afterMarkup, continuations[index]);
+			}
 		}
 	}
 };

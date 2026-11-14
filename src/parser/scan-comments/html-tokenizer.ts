@@ -14,7 +14,7 @@ import { createForwardSearch } from './utils/forward-search.ts';
  * such as `</p>` or `<li>`, or nothing, as between two raw HTML spans that
  * touch. Escaped text holds no `<`, `>`, or `"`. Generated markup holds a `>`
  * and no `-->`, so only an open comment, an open quoted attribute value, and
- * raw text carry past it. Without it, as between two HTML blocks, every state
+ * CDATA carry past it. Without it, as between two HTML blocks, every state
  * carries.
  *
  * Only the states that decide where a comment starts and ends are modeled. A
@@ -35,14 +35,26 @@ const State = {
 	SingleQuotedValue: 9,
 	UnquotedValue: 10,
 	AfterQuotedValue: 11,
-	// The content of `<noscript>`, which is raw text when scripting is enabled.
-	RawText: 12,
+	Cdata: 12,
 } as const;
 
 // GitHub's tagfilter extension writes `<` as `&lt;` before these tag names, so
 // the browser reads their contents as ordinary HTML:
 // https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/extensions/tagfilter.c
 const filteredTagNames = ['title', 'textarea', 'style', 'xmp', 'iframe', 'noembed', 'noframes', 'script', 'plaintext'];
+const voidTagNames = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+
+type Element = {
+	name: string;
+	foreign: boolean;
+	position: number;
+	indexes: number[];
+};
+
+type NameNode = {
+	children: Map<string, NameNode>;
+	indexes?: number[] | undefined;
+};
 
 const isHtmlWhitespace = (code: number) => (
 	code === 32 || code === 9 || code === 10 || code === 12 || code === 13
@@ -63,21 +75,107 @@ export type HtmlTokenizer = {
 		continuation: string,
 		inHtmlBlock: boolean,
 	) => void;
+	open: (name: string) => string;
+	close: (name: string | undefined) => void;
 };
 
-export const createHtmlTokenizer = (source: string, visit: CommentVisitor): HtmlTokenizer => {
+export const createHtmlTokenizer = (
+	source: string,
+	visit: CommentVisitor,
+	hasForeignContent: boolean,
+): HtmlTokenizer => {
 	const findTagOpen = createForwardSearch(source, '<');
 	const findTagClose = createForwardSearch(source, '>');
 	const findCommentClose = createForwardSearch(source, '-->');
 	const findBangCommentClose = createForwardSearch(source, '--!>');
 	const findDoubleQuote = createForwardSearch(source, '"');
 	const findSingleQuote = createForwardSearch(source, '\'');
-	const findEndTagOpen = createForwardSearch(source, '</');
+	const findCdataClose = createForwardSearch(source, ']]>');
+	// Keep each Map key below V8's 16,384-character length-only hashing threshold.
+	const elements: Element[] = [];
+	const positions = new Map<string, number[]>();
+	const longPositions: NameNode = { children: new Map() };
+	const longNode = (name: string, create: boolean) => {
+		let node = longPositions;
+		for (let offset = 0; offset < name.length; offset += 16_383) {
+			const chunk = name.slice(offset, offset + 16_383);
+			let child = node.children.get(chunk);
+			if (!child) {
+				if (!create) {
+					return undefined;
+				}
+				child = { children: new Map() };
+				node.children.set(chunk, child);
+			}
+			node = child;
+		}
+		return node;
+	};
+	const findIndexes = (name: string) => {
+		if (name.length < 16_384) {
+			return positions.get(name);
+		}
+		return longNode(name, false)?.indexes;
+	};
+	const push = (name: string) => {
+		const parent = elements.at(-1);
+		let indexes: number[] | undefined;
+		if (name.length < 16_384) {
+			indexes = positions.get(name);
+			if (!indexes) {
+				indexes = [];
+				positions.set(name, indexes);
+			}
+		} else {
+			const node = longNode(name, true)!;
+			indexes = node.indexes;
+			if (!indexes) {
+				indexes = [];
+				node.indexes = indexes;
+			}
+		}
+		const element = {
+			name,
+			foreign: !!parent?.foreign || ((name === 'svg' || name === 'math') && !positions.get('select')?.length),
+			position: elements.length,
+			indexes,
+		};
+		elements.push(element);
+		indexes.push(element.position);
+		return element;
+	};
+	const popTo = (position: number) => {
+		while (elements.length > position) {
+			const element = elements.pop()!;
+			const { indexes } = element;
+			indexes.pop();
+			if (indexes.length === 0) {
+				if (element.name.length < 16_384) {
+					positions.delete(element.name);
+				} else {
+					const path: [NameNode, string][] = [];
+					let node = longPositions;
+					for (let offset = 0; offset < element.name.length; offset += 16_383) {
+						const chunk = element.name.slice(offset, offset + 16_383);
+						path.push([node, chunk]);
+						node = node.children.get(chunk)!;
+					}
+					node.indexes = undefined;
+					while (path.length > 0 && node.children.size === 0 && !node.indexes) {
+						const [parent, chunk] = path.pop()!;
+						parent.children.delete(chunk);
+						node = parent;
+					}
+				}
+			}
+		}
+	};
 
 	let state: number = State.Data;
 	let tagNameStart = 0;
 	let isEndTag = false;
-	let isNoscript = false;
+	let tagName = '';
+	let selfClosing = false;
 	let commentStart = -1;
 	let commentContinuation = '';
 	let commentStartsLine = false;
@@ -115,13 +213,94 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 	};
 
 	const endTagName = (nameEnd: number) => {
-		isNoscript = !isEndTag
-			&& nameEnd - tagNameStart === 8
-			&& source.slice(tagNameStart, nameEnd).toLowerCase() === 'noscript';
+		if (!hasForeignContent) {
+			return;
+		}
+		tagName = '';
+		for (let index = tagNameStart; index < nameEnd; index += 1) {
+			const code = source.charCodeAt(index);
+			if (code === 0 || (code >= 0xD8_00 && code <= 0xDF_FF)) {
+				const next = source.charCodeAt(index + 1);
+				if (
+					code <= 0xDB_FF && code >= 0xD8_00 && index + 1 < nameEnd
+					&& next >= 0xDC_00 && next <= 0xDF_FF
+				) {
+					tagName += source[index] + source[index + 1];
+					index += 1;
+				} else {
+					tagName += '\uFFFD';
+				}
+			} else {
+				tagName += code >= 65 && code <= 90 ? String.fromCharCode(code + 32) : source[index];
+			}
+		}
+	};
+
+	const closeElement = (name: string) => {
+		let position = findIndexes(name)?.at(-1);
+		if (name.length === 2 && name[0] === 'h' && name[1] >= '1' && name[1] <= '6') {
+			for (let level = 1; level <= 6; level += 1) {
+				const candidate = positions.get(`h${level}`)?.at(-1);
+				if (
+					candidate !== undefined && !elements[candidate].foreign
+					&& (position === undefined || candidate > position)
+				) {
+					position = candidate;
+				}
+			}
+		}
+		if (position !== undefined) {
+			popTo(position);
+		}
+	};
+	const processElement = (name: string, closing: boolean, selfClosed = false) => {
+		const select = positions.get('select')?.at(-1);
+		if (select !== undefined && !elements[select].foreign) {
+			if (closing) {
+				if (name !== 'select' && name !== 'option' && name !== 'optgroup' && name !== 'template') {
+					return;
+				}
+				if (name === 'option' && elements.at(-1)?.name !== 'option') {
+					return;
+				}
+				if (name === 'optgroup') {
+					if (elements.at(-1)?.name === 'option' && elements.at(-2)?.name === 'optgroup') {
+						popTo(elements.length - 1);
+					}
+					if (elements.at(-1)?.name !== 'optgroup') {
+						return;
+					}
+				}
+			} else if (name === 'select' || name === 'input' || name === 'keygen' || name === 'textarea') {
+				popTo(select);
+				if (name === 'select') {
+					return;
+				}
+			} else if (name === 'option' || name === 'optgroup') {
+				if (elements.at(-1)?.name === 'option') {
+					popTo(elements.length - 1);
+				}
+				if (name === 'optgroup' && elements.at(-1)?.name === 'optgroup') {
+					popTo(elements.length - 1);
+				}
+			} else if (name !== 'script' && name !== 'template') {
+				return;
+			}
+		}
+		if (closing) {
+			closeElement(name);
+		} else if ((name.length > 10 || !voidTagNames.has(name)) && !(selfClosed && (elements.at(-1)?.foreign || name === 'svg' || name === 'math'))) {
+			push(name);
+		}
 	};
 
 	const emitTag = () => {
-		state = isNoscript ? State.RawText : State.Data;
+		// Without SVG or MathML, no element can be foreign, so elements are not
+		// tracked.
+		if (hasForeignContent) {
+			processElement(tagName, isEndTag, selfClosing);
+		}
+		state = State.Data;
 	};
 
 	/** Reads data from `index` and returns where reading continues. */
@@ -133,6 +312,10 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 
 		const next = peek(open + 1);
 		if (next === 33) {
+			if (elements.at(-1)?.foreign && open + 9 <= end && source.startsWith('<![CDATA[', open)) {
+				state = State.Cdata;
+				return open + 9;
+			}
 			if (peek(open + 2) !== 45 || peek(open + 3) !== 45) {
 				// A doctype, CDATA section, or bogus comment. All end at `>`.
 				state = State.BogusComment;
@@ -174,7 +357,7 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 		}
 		state = State.TagName;
 		isEndTag = closing;
-		isNoscript = false;
+		selfClosing = false;
 		tagNameStart = nameStart;
 		return nameStart + 1;
 	};
@@ -186,6 +369,7 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 			case State.TagName: {
 				if (isHtmlWhitespace(code) || code === 47) {
 					endTagName(index);
+					selfClosing = code === 47;
 					state = State.BeforeAttributeName;
 				} else if (code === 62) {
 					endTagName(index);
@@ -196,7 +380,12 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 			case State.BeforeAttributeName: {
 				if (code === 62) {
 					emitTag();
-				} else if (!isHtmlWhitespace(code) && code !== 47) {
+				} else if (code === 47) {
+					selfClosing = true;
+				} else if (isHtmlWhitespace(code)) {
+					selfClosing = false;
+				} else {
+					selfClosing = false;
 					state = State.AttributeName;
 				}
 				return index + 1;
@@ -206,6 +395,7 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 			case State.AfterAttributeName: {
 				switch (code) {
 					case 47: {
+						selfClosing = true;
 						state = State.BeforeAttributeName;
 						break;
 					}
@@ -258,8 +448,10 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 				if (code === 62) {
 					emitTag();
 				} else if (isHtmlWhitespace(code) || code === 47) {
+					selfClosing = code === 47;
 					state = State.BeforeAttributeName;
 				} else {
+					selfClosing = false;
 					state = State.AttributeName;
 				}
 				return index + 1;
@@ -307,23 +499,13 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 				state = State.AfterQuotedValue;
 				return quote + 1;
 			}
-			case State.RawText: {
-				let open = findEndTagOpen(index);
-				while (open !== -1 && open < end) {
-					const after = peek(open + 10);
-					if (
-						open + 10 <= end
-						&& source.slice(open + 2, open + 10).toLowerCase() === 'noscript'
-						&& (isHtmlWhitespace(after) || after === 47 || after === 62)
-					) {
-						state = State.TagName;
-						isEndTag = true;
-						tagNameStart = open + 2;
-						return open + 10;
-					}
-					open = findEndTagOpen(open + 1);
+			case State.Cdata: {
+				const close = findCdataClose(index);
+				if (close === -1 || close + 3 > end) {
+					return end;
 				}
-				return end;
+				state = State.Data;
+				return close + 3;
 			}
 			default: {
 				return readTag(index);
@@ -333,6 +515,7 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 
 	/** Moves past the line feed or generated markup that precedes a segment. */
 	const separate = (afterMarkup: boolean) => {
+		selfClosing = false;
 		// A line feed ends a tag name, attribute name, or unquoted value.
 		switch (state) {
 			case State.TagName: {
@@ -362,17 +545,32 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 			&& state !== State.Comment
 			&& state !== State.DoubleQuotedValue
 			&& state !== State.SingleQuotedValue
-			&& state !== State.RawText
+			&& state !== State.Cdata
 		) {
 			if (state === State.BogusComment) {
 				state = State.Data;
 			} else {
 				emitTag();
 			}
+			return true;
 		}
+		return false;
 	};
 
 	return {
+		open: (name) => {
+			const consumed = separate(true);
+			if (hasForeignContent && !consumed && state === State.Data) {
+				processElement(name, false);
+			}
+			return name;
+		},
+		close: (name) => {
+			const consumed = separate(true);
+			if (hasForeignContent && !consumed && state === State.Data && name !== undefined) {
+				processElement(name, true);
+			}
+		},
 		feed: (start, segmentEnd, afterMarkup, continuation, inHtmlBlock) => {
 			separate(afterMarkup);
 			end = segmentEnd;

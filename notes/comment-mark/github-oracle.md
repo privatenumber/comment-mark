@@ -1,6 +1,8 @@
 # GitHub oracle
 
-A local stand-in for GitHub's Markdown rendering, used to check which HTML comments [the scanner](./comment-scanning.md) should report. It renders with cmark-gfm 0.29.0.gfm.13 and GitHub's extensions, then parses the HTML with parse5 as a browser would. A comment is a comment node that parse5 builds from a real `<!--` and `-->` in the output.
+A local stand-in for GitHub's Markdown rendering, used to check which HTML comments [the scanner](./comment-scanning.md) should report. It renders with cmark-gfm 0.29.0.gfm.13 and GitHub's extensions, then parses the HTML with parse5 with scripting disabled, as GitHub parses it. A comment is a comment node that parse5 builds from a real `<!--` and `-->` in the output.
+
+The oracle is wrong inside SVG and MathML, where GitHub matched none of the four parsers compared [below](#github-probes). There, [GitHub's own API](#github-probes) is the authority, and the probes below are the evidence.
 
 It is not in the test suite because it needs a C build. The [micromark differential spec](./comment-scanning.md#micromark-differential-spec) is the CI check. Verified on macOS with CMake 4.4.3, Apple clang, Node 26.13.0, and parse5 8.1.1 on 2026-11-13.
 
@@ -76,7 +78,8 @@ int main(void) {
 
 ```js
 // GitHub-like oracle: cmark-gfm 0.29.0.gfm.13 with GitHub's extensions renders
-// each document, then parse5 parses the HTML as a browser would. A comment is
+// each document, then parse5 parses the HTML as GitHub does, with scripting
+// disabled. A comment is
 // whatever the HTML parser ends up treating as a comment node.
 import { execFileSync } from 'node:child_process'
 import { parseFragment } from 'parse5'
@@ -96,7 +99,7 @@ const walk = (node, visit) => {
 
 export const commentsOf = (html) => {
     const comments = []
-    walk(parseFragment(html), (node) => {
+    walk(parseFragment(html, { scriptingEnabled: false }), (node) => {
         if (node.nodeName === '#comment') { comments.push(node.data) }
     })
     return comments
@@ -104,7 +107,7 @@ export const commentsOf = (html) => {
 
 export const textOf = (html) => {
     let text = ''
-    walk(parseFragment(html), (node) => {
+    walk(parseFragment(html, { scriptingEnabled: false }), (node) => {
         if (node.nodeName === '#text') { text += node.value }
     })
     return text
@@ -130,6 +133,7 @@ const random = (limit) => {
 }
 
 export const fragmentSets = {
+    foreign: ['<svg>', '</svg>', '<math>', '<![CDATA[', ']]>', '>', '</p>', '<p>', '- ', '> ', '</ul>', '</li>', '</h1>', '# ', '*', '| a |\n| - |\n| ', '<!-- a -->', '<!-- /a -->', 'x', ' ', '\n', '\n\n', '<div>\n'],
     tables: ['| x |\n| - |\n| ', ' |', String.raw`\|`, '<!-- a -->', '<!-- /a -->', '`', String.raw`[x][r\|s]`, `\n\n${String.raw`[r\|s]: /u`}\n`, ' ', '\n', 'x', '<a title="', '">'],
     refs: ['[', ']', '][', '[]', ']: /u\n', '\n\n[r]: /u\n', '[r]', '[R]', 'r', ' ', '\n', 'x <!-- a -->', 'x <!-- /a -->', '<!--', '-->', '!'],
     links: ['[', '![', ']', '](', ')', '(', '<', '>', '"', "'", ' ', '\n', '`', '\\', 'x <!-- a -->', 'x <!-- /a -->', '<!--', '-->', 'u', '<u>', '"t"', '[x](', '![x](', '[x', '![x', '<!-- a -->', '<!-- /a -->'],
@@ -166,7 +170,10 @@ const oracleComments = (html) => {
         for (const child of node.childNodes ?? []) { walk(child) }
         if (node.content) { walk(node.content) }
     }
-    walk(parseFragment(html, { sourceCodeLocationInfo: true }))
+    walk(parseFragment(html, {
+        sourceCodeLocationInfo: true,
+        scriptingEnabled: false
+    }))
     return comments.map(normalize).filter(text => text !== '' && text !== '-').map(key)
 }
 
@@ -513,3 +520,71 @@ export const namedEntity = (name: string) => {
 Run `node compare.mjs <scan-comments/index.ts> 20000 <seed> [rich|autolink|links|refs|tables]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
 
 The comparison numbers each generated marker, such as `<!-- a12 -->`, and each bare `<!--`, such as `<!--o12q`. A comment is identified by the number it starts with, which checks its opening, and the last marker number in it, which checks its closing. Where a comment has no number, as with `<!-->` or a `<!--` built from two fragments, its first or last 3 characters are compared after normalization: entities decoded, and tag-like sequences and whitespace dropped. A comment that spans chunks also holds markup that the renderer generates, so its full text cannot match. A few mismatches per seed remain as artifacts of this normalization, when generated markup such as `<hr />` or a setext underline falls in those last 3 characters. Use `show.mjs` to confirm each mismatch before treating it as a scanner bug.
+
+## GitHub probes
+
+GitHub's [`POST /markdown`](https://docs.github.com/en/rest/markdown/markdown#render-a-markdown-document) API, in `gfm` mode, returns the HTML that GitHub serves. It strips every recognized comment, so the visible text shows how each `<!--` was parsed: a comment disappears, and text appears escaped as `&lt;!--`. Each probe sends one synthetic document:
+
+```sh
+jq -n --arg t "$document" '{text:$t,mode:"gfm"}' | gh api markdown --input -
+```
+
+Probed on 2026-11-14. In the table, D is `<![CDATA[ > <!-- a -->x<!-- /a --> ]]>`. **In** means GitHub kept D as CDATA text, with the output holding `&gt; &lt;!-- a --&gt;x&lt;!-- /a --&gt;`. **Out** means D was a bogus comment that ends at the first `>`, so the markers rendered as comments, with the output holding ` x ]]&gt;`. The last column says whether [the scanner](./comment-scanning.md#github-html-handling) matches. Tests in `tests/specs/markdown.ts` (`foreign content`) cite these numbers.
+
+| # | Markdown | GitHub | Scanner |
+| --- | --- | --- | --- |
+| 1 | `<svg>\n\ntext\n\nD` | in | matches |
+| 2 | `<svg><span></svg>D` | out | matches |
+| 3 | `<svg></span>D` | in | matches |
+| 4 | `<svg></p>D` | out | matches |
+| 5 | `<svg><br>D` | D dropped, no comments | matches |
+| 6 | `<svg><svg></svg>D` | in | matches |
+| 7 | `<math><mi>D` | in | matches |
+| 8 | `<svg/>D` | out | matches |
+| 9 | `<svg><foreignObject><div></svg></div>D` | in | differs |
+| 10 | `<select><math>D` | out | matches |
+| 11 | `<select></select><svg>D` | in | matches |
+| 12 | `<p><svg></p>D` | out | matches |
+| 13 | `<SVG>D` | in | matches |
+| 14 | `- <svg>\n- D` | out | matches |
+| 15 | `> <svg>\n\nD` | out | matches |
+| 16 | `<em><svg></em>D` | out | matches |
+| 17 | `*<svg>* D` | out | differs |
+| 18 | `<svg><desc>D` | in | matches |
+| 19 | `<table><tr><td><svg></td></tr></table>D` | out | matches |
+| 20 | `<svg>\n</svg>\n\nD` | out | matches |
+| 101 | `x <svg>\n\nD` | out | matches |
+| 102 | `x <svg><foreignObject>\n\nD` | in | differs |
+| 103 | `- <svg>\n\n  para\n\n  D` | in | matches |
+| 104 | `<svg>\n\n- D` | in | matches |
+| 105 | `- x <svg>\n- D` | out | matches |
+| 106 | `<select>\n\n<svg>D` | out | matches |
+| 107 | `<div><p><svg></div>D` | out | matches |
+| 108 | `<b><svg></b>D` | out | matches |
+| 109 | `<table><svg>D` | in | matches |
+| 110 | `<svg><table>D` | in | matches |
+| 111 | `# <svg>\n\nD` | out | matches |
+| 112 | `<svg>\n\n# x\n\nD` | in | matches |
+| 113 | `<svg><noscript><!-- a -->x<!-- /a --></noscript> tail` | comments stripped | matches |
+| 114 | `<div><span><svg></div>D` | out | matches |
+
+An earlier round of 35 probes on the same day found:
+
+- **Breakout start tags don't leave SVG.** D stays in after `<em>x</em>`, `<p>x</p>`, `<b>x</b>`, `<div>x</div>`, and `<font color="red">` inside `<svg>`, and after Markdown's own `*x*` inside it. The [HTML standard](https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inforeign) leaves foreign content at each of these.
+- **End tags close SVG.** `<svg><foreignObject></svg>D` and `<div>\n\ntext\n\n<svg>\n</div>\nD` are out. `<svg><foreignObject><p><p></p></foreignObject>D</svg>` is in.
+- **Integration points keep CDATA.** `<math><annotation-xml encoding="text/html">D` is in, and so is the encoding `text&#47;html`.
+- **Scripting is disabled.** `<noscript><!-- a -->x<!-- /a --></noscript> tail` renders `<p>x tail</p>`, so the content is HTML with comments, not raw text.
+- **Comments are stripped everywhere tested,** including inside `<svg>`, `<math>`, and `<select>`.
+
+### Parsers that don't match
+
+No local parser reproduces these results, so none can stand in for GitHub inside SVG and MathML:
+
+- **parse5 8.1.1** leaves SVG at breakout start tags. It also reads CDATA directly at an `annotation-xml` integration point as a bogus comment, and it still has the "in select" insertion mode that the standard removed ([inikulin/parse5#1610](https://github.com/inikulin/parse5/issues/1610)). Its default `scriptingEnabled: true` makes `<noscript>` raw text, so the scripts above turn it off.
+- **Nokogiri 1.13.8's HTML5 parser (gumbo)** leaves SVG at `<em>` and `<font color>`.
+- **lol-html v3.0.3's tree-builder simulator** leaves foreign content at breakout start tags and reads `<noscript>` as raw text ([`tree_builder_simulator/mod.rs`](https://github.com/cloudflare/lol-html/blob/v3.0.3/src/parser/tree_builder_simulator/mod.rs)).
+- **libxml2 2.14.6** (through lxml 6.1.3) reads `<![CDATA[` as a bogus comment everywhere, even in `<svg><text>`.
+
+GitHub's public sources don't name its sanitizer. The [html-pipeline README](https://github.com/gjtorikian/html-pipeline/blob/v3.2.4/README.md) says GitHub no longer uses html-pipeline. Probes 9 and 102 are hard to reconcile with a spec-following tree builder: probe 9 needs `<div>` inside `foreignObject` to be an HTML element, which blocks `</svg>`, while probe 102 needs the paragraph's `<p>` there to stay foreign. One explanation is a streaming stage that decides CDATA before a full parser builds the tree. That is an inference from these two probes, not a documented fact, and a parser not compared here could still explain both.
+
+Rerun these probes when GitHub's rendering changes, or before relying on a parser as a stand-in for SVG and MathML.
