@@ -102,7 +102,7 @@ npx comment-mark README.md | jq -r '.[] | select(.tagName == "contributors") | .
 - **Code examples stay literal.** Markers inside code blocks and inline code are ignored, so a document can show markers without updating them. comment-mark reads comments the way GitHub renders them, apart from a few rare forms; see [markers in code examples](./docs/markers.md#markers-in-code-examples).
 - **Mistakes fail loudly.** The CLI reports each selector that matches no section and exits with code `1`, after saving the sections that matched. In JavaScript, a static value whose selector matches nothing rejects instead of being skipped.
 - **Structure is checked before writing.** A malformed marker, or an update that would move a section's boundaries, stops the update and leaves the file as it was.
-- **Works with Markdown and HTML,** including multiline content inside lists and blockquotes.
+- **Works with Markdown, including raw HTML,** and with multiline content inside lists and blockquotes.
 
 ## Documentation
 

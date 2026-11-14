@@ -6,7 +6,7 @@ Use the CLI to read or update a file without writing a script:
 npx comment-mark <file> [--<selector>=<value>...] [--<selector>.<attribute>=<value>...]
 ```
 
-`file` is the path to a Markdown or HTML file. Selectors use the syntax described in [Markers and selectors](./markers.md#selectors). The examples below use `npx`; package scripts can call `comment-mark` directly.
+`file` is the path to a Markdown file, which can contain raw HTML. Selectors use the syntax described in [Markers and selectors](./markers.md#selectors). The examples below use `npx`; package scripts can call `comment-mark` directly.
 
 ## Update sections
 
