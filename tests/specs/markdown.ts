@@ -8,6 +8,29 @@ import { scanComments } from '../../src/parser/scan-comments/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('reference expansion budget', () => {
+	test('uses decoded named entity sizes at the budget boundary', async () => {
+		// cmark-gfm 0.29.0.gfm.13 renders only the outer comments in each case.
+		for (const destination of [
+			'&amp;'.repeat(200),
+			'&nGt;'.repeat(100),
+			`${'u'.repeat(994)}&nGt;`,
+			`${'u'.repeat(987)}&notanentity;`,
+			`${'u'.repeat(996)}&amp`,
+			`${'u'.repeat(999)}&bsol;&excl;`,
+		]) {
+			const source = `${'[r] '.repeat(99)}x <!-- a -->PRESERVE ![<!-- a -->inner][r] tail<!-- /a -->\n\n[r]: ${destination}`;
+			const updated = await commentMark(source, { a: 'NEW' });
+			expect(updated).toBe(source.replace('PRESERVE ![<!-- a -->inner][r] tail', 'NEW'));
+		}
+	});
+
+	test('leaves the image literal just beyond the entity-sized boundary', () => {
+		for (const extra of [0, 1]) {
+			const source = `${'[r] '.repeat(99)}![<!-- a -->inner][s] <!-- /a -->\n\n[r]: ${'u'.repeat(1000)}\n[s]: ${'u'.repeat(994 + extra)}&nGt;`;
+			expect(getCommentMarkAll(source).length).toBe(extra);
+		}
+	});
+
 	test('counts numeric noncharacters as one byte', async () => {
 		// cmark-gfm 0.29.0.gfm.13 renders only the outer comments.
 		for (const code of [65_534, 65_535]) {

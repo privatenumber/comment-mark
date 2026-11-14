@@ -1,5 +1,6 @@
 import { lexBlocks } from './block/index.ts';
 import { isCmarkSpace, normalizeLabel, utf8Length } from './block/reference-definition.ts';
+import { namedEntity } from './entities.ts';
 import { isAsciiPunctuation } from './html-tag.ts';
 import { lexInline } from './inline-lexer.ts';
 import { joinText } from './text.ts';
@@ -11,8 +12,7 @@ import { createForwardSearch } from './utils/forward-search.ts';
  * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/references.c#L35
  * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/blocks.c#L652-L659
  * The fast bound is the number of `]` characters times twice the largest raw
- * definition size in UTF-8 after NUL replacement. Named entities retain their
- * raw length as an approximation.
+ * definition size in UTF-8 after NUL replacement. An entity grows by at most one byte.
  */
 
 export type ReferenceDefinition = {
@@ -77,31 +77,62 @@ const cleanSize = (text: string) => {
 	if (!text.includes('&') && !text.includes('\\')) {
 		return byteLength(text);
 	}
-	let decoded = '';
-	let noncharacterBytes = 0;
+	let size = 0;
+	let backslash = false;
 	for (let index = 0; index < text.length; index += 1) {
+		let code = text.charCodeAt(index);
+		let bytes = utf8Length(text, index);
 		if (text.startsWith('&#', index)) {
 			const entity = numericEntity(text, index);
 			if (entity) {
-				// cmark's UTF-8 encoder writes these noncharacters as one byte.
-				if (entity.code === 0xFF_FE || entity.code === 0xFF_FF) {
-					noncharacterBytes += 2;
+				code = entity.code;
+				// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/utf8.c#L202-L207
+				if (code === 0xFF_FE || code === 0xFF_FF || code < 0x80) {
+					bytes = 1;
+				} else if (code < 0x8_00) {
+					bytes = 2;
+				} else if (code < 0x1_00_00) {
+					bytes = 3;
+				} else {
+					bytes = 4;
 				}
-				decoded += String.fromCodePoint(entity.code);
 				index = entity.end;
-				continue;
+			}
+		} else if (code === 38) {
+			// Houdini searches names of 2-31 bytes, terminated by `;`.
+			// The table contains only ASCII letters and digits.
+			// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/houdini_html_u.c#L10-L35
+			// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/houdini_html_u.c#L80-L100
+			let end = index + 1;
+			while (end < text.length && end - index <= 31) {
+				const character = text.charCodeAt(end);
+				if (
+					!(character >= 65 && character <= 90)
+					&& !(character >= 97 && character <= 122)
+					&& !(character >= 48 && character <= 57)
+				) {
+					break;
+				}
+				end += 1;
+			}
+			if (end - index >= 3 && text.charCodeAt(end) === 59) {
+				const value = namedEntity(text.slice(index + 1, end));
+				if (value !== undefined) {
+					code = value < 0 ? -value : -1;
+					bytes = value < 0 ? 1 : value;
+					index = end;
+				}
 			}
 		}
-		decoded += text[index];
-	}
-	let size = 0;
-	for (let index = 0; index < decoded.length; index += 1) {
-		if (decoded.charCodeAt(index) === 92 && isAsciiPunctuation(decoded.charCodeAt(index + 1))) {
-			index += 1;
+		if (backslash && isAsciiPunctuation(code)) {
+			size -= 1;
+			backslash = false;
+		} else {
+			backslash = code === 92;
 		}
-		size += utf8Length(decoded, index);
+		size += bytes;
 	}
-	return size - noncharacterBytes;
+	return size;
 };
 
 const definitionSize = ({ destination: rawDestination, title }: ReferenceDefinition) => {
@@ -146,6 +177,7 @@ export const createReferenceBudget = (source: string, labels: Map<string, Refere
 	let used = 0;
 	const findLeft = createForwardSearch(source, '[');
 	const findRight = createForwardSearch(source, ']');
+	const findTagOpen = createForwardSearch(source, '<');
 	lexBlocks(source, {
 		html: () => {},
 		text: (segments) => {
@@ -159,6 +191,8 @@ export const createReferenceBudget = (source: string, labels: Map<string, Refere
 			if (left === -1 || left >= end || right === -1 || right >= end) {
 				return;
 			}
+			const open = findTagOpen(start);
+			const replayed = open !== -1 && open < end;
 			let ordinal = 0;
 			lexInline(joinText(source, segments), () => {}, (label) => {
 				const current = ordinal;
@@ -174,12 +208,14 @@ export const createReferenceBudget = (source: string, labels: Map<string, Refere
 					sizes.set(normalized, size);
 				}
 				if (size > cap - used) {
-					let block = failures.get(start);
-					if (!block) {
-						block = new Set();
-						failures.set(start, block);
+					if (replayed) {
+						let block = failures.get(start);
+						if (!block) {
+							block = new Set();
+							failures.set(start, block);
+						}
+						block.add(current);
 					}
-					block.add(current);
 					return false;
 				}
 				used += size;
