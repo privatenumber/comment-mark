@@ -360,6 +360,9 @@ export const lexInline = (
 	let destinationIndex: ReturnType<typeof indexDestinations> | undefined;
 	let destinationWork = 0;
 	const scanUnbracketedDestination = (start: number) => {
+		if (!destinationIndex && destinationWork > text.length) {
+			destinationIndex = indexDestinations(text);
+		}
 		if (destinationIndex) {
 			return destinationIndex(start);
 		}
@@ -388,9 +391,6 @@ export const lexInline = (
 			}
 		}
 		destinationWork += cursor - start + 1;
-		if (destinationWork > text.length) {
-			destinationIndex = indexDestinations(text);
-		}
 		const startsWithSpace = cursor === start && text.charCodeAt(cursor) !== 41;
 		return cursor >= text.length || depth > 32 || startsWithSpace ? -1 : cursor;
 	};
@@ -414,8 +414,8 @@ export const lexInline = (
 		return text.charCodeAt(end) === 41 ? end + 1 : -1;
 	};
 
-	// Every opener stays on the stack; `]` uses the most recent one. A completed
-	// link deactivates older link openers.
+	// A completed link sets one shared flag; a later `[` clears it, so even an
+	// older link opener may become usable again.
 	// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L1136-L1349
 	const brackets: {
 		image: boolean;

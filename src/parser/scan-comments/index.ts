@@ -36,6 +36,8 @@ export type CommentVisitor = (
 export const scanComments = (source: string, visit: CommentVisitor) => {
 	const tokenizer = createHtmlTokenizer(source, visit);
 	const findTagOpen = createForwardSearch(source, '<');
+	const findOpenBracket = createForwardSearch(source, '[');
+	const findCloseBracket = createForwardSearch(source, ']');
 	const labels = new Set<string>();
 	const isDefinedLabel = (label: string) => {
 		const normalized = normalizeLabel(label);
@@ -78,20 +80,12 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			}, isDefinedLabel);
 		},
 	};
-	const events: (
-		| {
-			type: 'text';
-			segments: number[];
-			continuation: string;
-		}
-		| {
-			type: 'html';
-			start: number;
-			end: number;
-			afterMarkup: boolean;
-			continuation: string;
-		}
-	)[] = [];
+	// Each event uses three numbers: text uses -1 and an index into textSegments;
+	// HTML uses start, end, and afterMarkup. The arrays retain source order.
+	const positions: number[] = [];
+	const continuations: string[] = [];
+	const textSegments: number[][] = [];
+	let buffering = false;
 	lexBlocks(source, {
 		text: (segments, continuation) => {
 			// Raw HTML starts with `<`, so text without one renders as text and
@@ -102,27 +96,39 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			}
 			const open = findTagOpen(segments[0]);
 			if (open !== -1 && open < segments.at(-1)!) {
-				events.push({
-					type: 'text',
-					segments,
-					continuation,
-				});
+				if (!buffering) {
+					const start = segments[0];
+					const end = segments.at(-1)!;
+					const left = findOpenBracket(start);
+					const right = findCloseBracket(start);
+					buffering = left !== -1 && left < end && right !== -1 && right < end;
+				}
+				if (buffering) {
+					positions.push(-1, textSegments.length, 0);
+					continuations.push(continuation);
+					textSegments.push(segments);
+				} else {
+					handlers.text(segments, continuation);
+				}
 			}
 		},
-		html: (start, end, afterMarkup, continuation) => events.push({
-			type: 'html',
-			start,
-			end,
-			afterMarkup,
-			continuation,
-		}),
+		html: (start, end, afterMarkup, continuation) => {
+			if (buffering) {
+				positions.push(start, end, Number(afterMarkup));
+				continuations.push(continuation);
+			} else {
+				handlers.html(start, end, afterMarkup, continuation);
+			}
+		},
 		definition: label => labels.add(normalizeLabel(label)),
 	});
-	for (const event of events) {
-		if (event.type === 'text') {
-			handlers.text(event.segments, event.continuation);
+	for (let index = 0; index < continuations.length; index += 1) {
+		const start = positions[index * 3];
+		const end = positions[(index * 3) + 1];
+		if (start === -1) {
+			handlers.text(textSegments[end], continuations[index]);
 		} else {
-			handlers.html(event.start, event.end, event.afterMarkup, event.continuation);
+			handlers.html(start, end, positions[(index * 3) + 2] === 1, continuations[index]);
 		}
 	}
 };
