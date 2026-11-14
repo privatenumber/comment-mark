@@ -343,8 +343,8 @@ if (output.status !== 0) {
     throw new Error(output.stderr)
 }
 
-// utf8proc's fold rejects the noncharacters U+FFFE and U+FFFF, so fold-scalars
-// prints junk for them. In a label, cmark-gfm keeps each one distinct.
+// cmark-gfm's encoder writes U+FFFE and U+FFFF as the single bytes 0xFE and
+// 0xFF (utf8.c:202-207), which do not decode as UTF-8. Each folds to itself.
 const folds = new Map()
 const changed = []
 for (const line of output.stdout.trimEnd().split('\n')) {
@@ -435,6 +435,68 @@ for (const a of changed) {
     }
 }
 console.log('interactions', interactions)
+```
+
+## Entity table
+
+[entities.ts](../../src/parser/scan-comments/entities.ts) holds the decoded byte length of each named entity in cmark-gfm 0.29.0.gfm.13, for the [reference expansion budget](./comment-scanning.md#reference-expansion-budget). Regenerate it when the scanner ports a new cmark-gfm tag, from that tag's `src/entities.inc`:
+
+```sh
+node generate-entities.mjs <cmark-gfm>/src/entities.inc src/parser/scan-comments/entities.ts
+```
+
+The script fails if the table does not have 2,125 entries, or if decoding any entity grows it by more than 1 byte, which the budget's fast bound relies on. On 2026-11-14 the output also matched `character-entities` 2.0.2 in every name and decoded byte length.
+
+`generate-entities.mjs`:
+
+```js
+// Generates src/parser/scan-comments/entities.ts from cmark-gfm's entities.inc.
+// Usage: node generate-entities.mjs <entities.inc> <entities.ts>
+import fs from 'node:fs'
+
+const source = fs.readFileSync(process.argv[2], 'utf8')
+const entries = [...source.matchAll(/\{\(unsigned char\*\)"([^"]+)", \{([^}]+)\}\}/g)]
+if (entries.length !== 2125) {
+    throw new Error(`Expected 2125 entries, got ${entries.length}`)
+}
+
+// A single ASCII byte is stored as its negated code, so the scanner can see
+// a decoded backslash or punctuation. Anything longer is stored as its length.
+const groups = new Map()
+for (const [, name, raw] of entries) {
+    const bytes = raw.split(',').map(Number).filter(byte => byte !== 0)
+    if (bytes.length > name.length + 3) {
+        throw new Error(`Decoding grows ${name} by more than 1 byte`)
+    }
+    const value = bytes.length === 1 ? -bytes[0] : bytes.length
+    groups.set(value, [...groups.get(value) ?? [], name])
+}
+
+const lines = [...groups]
+    .sort((a, b) => a[0] - b[0])
+    .map(([value, names]) => `\t[${value}, '${names.join(' ')}'],`)
+
+fs.writeFileSync(process.argv[3], `// Generated from src/entities.inc in cmark-gfm 0.29.0.gfm.13. To regenerate,
+// see "Entity table" in notes/comment-mark/github-oracle.md.
+// Negative values encode single ASCII bytes; positive values are decoded byte lengths.
+const groups: [number, string][] = [
+${lines.join('\n')}
+];
+
+let entities: Map<string, number> | undefined;
+
+export const namedEntity = (name: string) => {
+\tif (!entities) {
+\t\tentities = new Map();
+\t\tfor (const [value, names] of groups) {
+\t\t\tfor (const entry of names.split(' ')) {
+\t\t\t\tentities.set(entry, value);
+\t\t\t}
+\t\t}
+\t}
+\treturn entities.get(name);
+};
+`)
 ```
 
 ## Results
