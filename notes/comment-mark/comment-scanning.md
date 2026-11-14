@@ -37,6 +37,7 @@ A comment ends at the first `-->` that the browser sees. What the browser sees b
 ### Scanner invariants
 
 - **Tabs.** A tab advances to the next multiple of four columns but is one source character. The block phase tracks a partially consumed tab, as cmark-gfm does, so list padding and indented code read the same columns GitHub reads.
+- **Limits and NUL.** cmark-gfm's limits apply as it counts them: 80 backticks per code span, 255 for a stored fence length, and 1,000 UTF-8 bytes per reference label. cmark-gfm reads NUL as U+FFFD, so NUL does not end an autolink and counts as 3 bytes in a label.
 - **Escapes.** A backslash escape stops `\<` from opening raw HTML and stops a backtick from opening a code span. Inside a code span, backslashes are literal.
 - **Linearity.** Each phase reads the source in order. A code span closer is found with one forward cursor per run length, and cmark-gfm's limit of 80 backticks per code span bounds the number of lengths. Searches that could rescan, such as the next `-->` or the next closing quote, use [forward-search.ts](../../src/parser/utils/forward-search.ts), which reuses a result until the scan moves past it. The scaling check below doubles each adversarial input and the time at most doubles.
 - **Local state.** Scan state lives in each call, so a resolver's nested parse cannot disturb an outer scan. The `resolver reentrancy` group in the [resolver tests](../../tests/specs/resolvers.ts) checks this. [eslint.config.ts](../../eslint.config.ts) bans regular expressions in `src/` so scans stay index-based. It also turns off `unicorn/prefer-code-point` in `src/parser/`, because the lexers compare UTF-16 code units with ASCII codes and rely on `charCodeAt` returning `NaN` past the end.
@@ -58,7 +59,8 @@ These forms are still read differently than GitHub reads them. A gap can hide a 
 - **Bare-URL autolinks.** The autolink extension links bare `http://` and `www.` URLs in `url_match` and `www_match`, and email addresses in `postprocess_text` ([`autolink.c`](https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/extensions/autolink.c#L168-L460)). A backtick or backslash inside such a URL is link text, not a code span opener or escape, so it shifts code span pairing. `\<http://x>`aaa x <!-- a -->+`` renders the comment, but the scanner pairs the backticks and hides it.
 - **Rendered text and markup inside an open tag.** When raw HTML leaves a tag or attribute value open, the browser reads the rendered output that follows as part of it, until a character ends it. The browser phase models only that generated markup ends with `>`. It ignores that rendered text can hold a `'`, which closes a single-quoted value, and that generated markup can hold quotes, such as `<ol start="2">`, `<td align="left">`, `<pre lang="js">`, and the tasklist `<input>`. In `<div>\n<a b='\n\n'\n\n<!-- a -->old<!-- /a -->`, the lone `'` paragraph closes the value, so GitHub renders the marker, but the scanner keeps the value open and misses it.
 - **Tight lists.** A paragraph in a tight list renders without `<p>`, but the block phase assumes generated markup before every text block. When nothing else is generated there, an open tag or bogus comment from earlier raw HTML carries into the paragraph in the browser, while the scanner resets it. In `- <!-- n --><?x\n  text <!-- a -->old<!-- /a -->`, the `<?x` bogus comment hides `<!-- a -->` on GitHub, but the scanner reports it.
-- **Footnotes** are not recognized, and **CDATA** in SVG and MathML content is not modeled.
+- **Browser context.** The browser phase has no tree, so it does not know the insertion mode. It reads `<noscript>` content as raw text everywhere, but inside `<select>` the browser ignores `<noscript>`, so `<select><noscript><!-- a -->old<!-- /a --></noscript></select>` renders the marker that the scanner skips. CDATA in SVG and MathML content is also not modeled: `<svg><text><![CDATA[ > <!-- a -->old<!-- /a --> ]]></text></svg>` holds no comment, but the scanner reports one.
+- **Footnotes** are not recognized.
 
 ### Observations
 
@@ -94,13 +96,13 @@ The primary check compares the scanner with a local stand-in for GitHub: cmark-g
 
 **Oracle validation.** The oracle's visible text matched GitHub's `/markdown` API (`mode=gfm`) on all 180 generated documents tried on 2026-11-13. GitHub's API output has no comment nodes to compare, so the check compares visible text: text that one side hides in a comment and the other shows is a difference. It cannot tell apart two comments that hide the same text with different boundaries.
 
-**Comparison.** `compare.mjs` generates documents from fragments with a seeded random generator, and compares the comments each side finds. Each generated marker gets a unique number, such as `<!-- a12 -->`, and a comment that holds one is identified by its last marker number, so a match means the same comment on both sides. Other comments are compared by their last 3 characters after both sides are normalized the same way, because a comment that spans chunks also holds generated markup in the oracle's output. Results on 20,000 documents per seed, at the head of this branch on 2026-11-14:
+**Comparison.** `compare.mjs` generates documents from fragments with a seeded random generator, and compares the comments each side finds. Each generated `<!--` gets a unique number, such as `<!-- a12 -->` or `<!--o12q`. A comment is identified by the number it starts with and the last marker number in it, so a match means the same opening and closing on both sides. Where a comment has no number, its first or last 3 characters are compared after both sides are normalized the same way, because a comment that spans chunks also holds generated markup in the oracle's output. Results on 20,000 documents per seed, at the head of this branch on 2026-11-14, each mismatch checked with `show.mjs`:
 
 | Fragment set | Seed | Mismatches | Cause |
 | --- | --- | --- | --- |
-| `rich` | 1 | 2 | normalization artifacts (`<hr />`, setext `===`) |
+| `rich` | 1 | 2 | 1 normalization artifact (`<hr />`), 1 quote in generated markup (`<ol start="2">`) |
 | `rich` | 2 | 0 | |
-| `rich` | 99 | 4 | normalization artifacts |
+| `rich` | 99 | 5 | normalization artifacts |
 | `rich` | 12345 | 3 | artifacts |
 | `autolink` | 1 | 2 | bare-URL autolinks |
 | `autolink` | 2 | 2 | bare-URL autolinks |

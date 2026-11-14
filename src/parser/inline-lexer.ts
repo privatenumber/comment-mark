@@ -49,13 +49,14 @@ const matchUriAutolink = (text: string, index: number) => {
 	if (schemeLength < 2 || schemeLength > 32 || text.charCodeAt(cursor) !== 58) {
 		return -1;
 	}
-	// Anything but controls, space, `<`, and `>`.
+	// Anything but U+0001 to U+0020, `<`, and `>`. cmark-gfm reads NUL as
+	// U+FFFD, so NUL is allowed.
 	for (cursor += 1; cursor < text.length; cursor += 1) {
 		const code = text.charCodeAt(cursor);
 		if (code === 62) {
 			return cursor + 1;
 		}
-		if (code <= 32 || code === 60) {
+		if ((code !== 0 && code <= 32) || code === 60) {
 			return -1;
 		}
 	}

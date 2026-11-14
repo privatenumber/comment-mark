@@ -11,12 +11,29 @@ import { isSpaceChar } from './html-tag.ts';
 // In UTF-8 bytes, as cmark-gfm reads its input.
 const maxLabelLength = 1000;
 
-// The UTF-8 length of a UTF-16 code unit. A surrogate pair is 4 bytes in all.
-const utf8Length = (code: number) => {
+const isHighSurrogate = (code: number) => code >= 0xD8_00 && code <= 0xDB_FF;
+const isLowSurrogate = (code: number) => code >= 0xDC_00 && code <= 0xDF_FF;
+
+/**
+ * The UTF-8 length of the code unit at `index`. A surrogate pair is 4 bytes in
+ * all. cmark-gfm reads NUL, and encoding reads a lone surrogate, as U+FFFD,
+ * which is 3 bytes.
+ */
+const utf8Length = (text: string, index: number) => {
+	const code = text.charCodeAt(index);
+	if (code === 0) {
+		return 3;
+	}
 	if (code < 0x80) {
 		return 1;
 	}
-	if (code < 0x8_00 || (code >= 0xD8_00 && code <= 0xDF_FF)) {
+	if (code < 0x8_00) {
+		return 2;
+	}
+	if (
+		(isHighSurrogate(code) && isLowSurrogate(text.charCodeAt(index + 1)))
+		|| (isLowSurrogate(code) && isHighSurrogate(text.charCodeAt(index - 1)))
+	) {
 		return 2;
 	}
 	return 3;
@@ -72,7 +89,7 @@ const scanLabel = (text: string, index: number) => {
 			index += 1;
 			length += 1;
 		}
-		length += utf8Length(code);
+		length += utf8Length(text, index);
 		if (length > maxLabelLength) {
 			return -1;
 		}

@@ -137,9 +137,15 @@ const fragments = fragmentSets[process.argv[5] ?? 'rich']
 
 // A comment that spans chunks also holds the markup and escaped text that the
 // renderer generates between them, so tags and entities are dropped on both sides.
-// Each generated marker has a unique number, such as `a12` or `/a12`, so the
-// last one in a comment identifies it. Other comments compare by their end.
-const key = text => [...text.matchAll(/\/?a\d+/g)].at(-1)?.[0] ?? text.slice(-3)
+// Each generated `<!--` has a unique number: `o12q` after a bare `<!--`, and
+// `a12` or `/a12` in a marker. The number a comment starts with identifies its
+// opening, and the last marker number in it identifies its closing. Without
+// one, a comment compares by its first or last 3 characters.
+const key = (text) => {
+    const opening = text.match(/^(?:o\d+q|\/?a\d+)/)?.[0] ?? text.slice(0, 3)
+    const closing = [...text.matchAll(/\/?a\d+/g)].at(-1)?.[0] ?? text.slice(-3)
+    return `${opening}|${closing}`
+}
 
 const normalize = text => text
     .replaceAll('&gt;', '>').replaceAll('&lt;', '<').replaceAll('&quot;', '"').replaceAll('&amp;', '&')
@@ -172,9 +178,17 @@ const scannerComments = (document) => {
 const docs = []
 for (let i = 0; i < count; i += 1) {
     let document = ''
-    const length = 2 + random(14)
-    for (let j = 0; j < length; j += 1) { document += fragments[random(fragments.length)] }
     let marker = 0
+    const length = 2 + random(14)
+    for (let j = 0; j < length; j += 1) {
+        const fragment = fragments[random(fragments.length)]
+        if (fragment === '<!--') {
+            marker += 1
+            document += `<!--o${marker}q`
+        } else {
+            document += fragment
+        }
+    }
     docs.push(document.replaceAll(/(<!-- \/?a)( -->)/g, (_, open, close) => {
         marker += 1
         return `${open}${marker}${close}`
@@ -271,4 +285,4 @@ console.log({
 
 Run `node compare.mjs <scan-comments.ts> 20000 <seed> [rich|autolink]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
 
-The comparison numbers each generated marker, such as `<!-- a12 -->`, and identifies a comment by the last marker number in it, so equal results mean the same comments. Other comments, such as a stray `<!--` that runs to a later `-->`, are compared by their last 3 characters after normalization: entities decoded, and tag-like sequences and whitespace dropped. A comment that spans chunks also holds markup that the renderer generates, so its full text cannot match. A few mismatches per seed remain as artifacts of this normalization, when generated markup such as `<hr />` or a setext underline falls in those last 3 characters. Use `show.mjs` to confirm each mismatch before treating it as a scanner bug.
+The comparison numbers each generated marker, such as `<!-- a12 -->`, and each bare `<!--`, such as `<!--o12q`. A comment is identified by the number it starts with, which checks its opening, and the last marker number in it, which checks its closing. Where a comment has no number, as with `<!-->` or a `<!--` built from two fragments, its first or last 3 characters are compared after normalization: entities decoded, and tag-like sequences and whitespace dropped. A comment that spans chunks also holds markup that the renderer generates, so its full text cannot match. A few mismatches per seed remain as artifacts of this normalization, when generated markup such as `<hr />` or a setext underline falls in those last 3 characters. Use `show.mjs` to confirm each mismatch before treating it as a scanner bug.

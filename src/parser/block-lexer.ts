@@ -767,7 +767,8 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				leaf = {
 					type: 'fence',
 					char,
-					length: fenceLength,
+					// cmark-gfm stores at most 255, so any longer run closes it.
+					length: Math.min(fenceLength, 255),
 					offset: fenceOffset,
 				};
 				advance(firstNonspace + fenceLength - offset, false);

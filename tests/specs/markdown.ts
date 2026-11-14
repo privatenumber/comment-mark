@@ -517,6 +517,10 @@ describe('GitHub rendering', () => {
 		// cmark-gfm limits a label to 1,000 bytes, and each character here is 3.
 		['a reference label over 1,000 UTF-8 bytes is text', `[${'あ'.repeat(334)}]: /u "${marker}"`, true],
 		['a run of more than 80 backticks is literal', `x ${'`'.repeat(81)}${marker}${'`'.repeat(81)}`, true],
+		// cmark-gfm stores a fence length of at most 255.
+		['a fence longer than 255 closes at 255', ['~'.repeat(256), 'code', '~'.repeat(255), '~'.repeat(256), marker, '~'.repeat(256)].join('\n'), false],
+		// cmark-gfm reads NUL as U+FFFD, which an autolink allows.
+		['NUL does not end an autolink', `x <ab:\0\`y> ${marker} \``, true],
 		// GitHub escapes the `<` of `<title>`, so its quote opens no attribute value.
 		['a filtered tag is text', `<div>\n<title a="\n\n${marker}`, true],
 		['an open attribute value continues into the next HTML block', `<div>\n<span a="\n\n${marker}`, false],
@@ -534,6 +538,12 @@ describe('GitHub rendering', () => {
 				: []);
 		});
 	}
+
+	test('a comment-like line inside an attribute does not start the line', async () => {
+		const source = `<pre>\n<span title="\n    <!-- note -->">Value: ${marker}!</span>\n</pre>`;
+
+		expect(await commentMark(source, { a: 'new' })).toBe(source.replace(marker, createMarker('a', 'new')));
+	});
 
 	test('an indented comment on an HTML block line starts its line', async () => {
 		// The line is raw HTML, so indentation does not make it code.

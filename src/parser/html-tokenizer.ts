@@ -3,16 +3,19 @@ import { isAsciiLetter } from './html-tag.ts';
 import { createForwardSearch } from './utils/forward-search.ts';
 
 /**
- * The browser phase. The renderer copies raw HTML to its output unchanged, and
- * the browser's HTML tokenizer decides which of it is a comment:
+ * The browser phase. The renderer copies raw HTML to its output, apart from the
+ * tagfilter escapes below and NUL, which it writes as U+FFFD. The browser's
+ * HTML tokenizer decides which of it is a comment:
  * https://html.spec.whatwg.org/multipage/parsing.html#tokenization
  *
  * The tokenizer reads raw HTML as a sequence of source segments, one per line
  * of an HTML block or of an inline raw HTML span. Between two segments the
- * browser sees a line feed, and sometimes markup that the renderer generates,
- * such as `</p>` or `<li>`. That markup holds a `>` and no `-->`, so only an
- * open comment, an open quoted attribute value, and raw text carry past it.
- * Without it, as between two HTML blocks, every state carries.
+ * browser sees a line feed, escaped text, markup that the renderer generates,
+ * such as `</p>` or `<li>`, or nothing, as between two raw HTML spans that
+ * touch. Escaped text holds no `<`, `>`, or `"`. Generated markup holds a `>`
+ * and no `-->`, so only an open comment, an open quoted attribute value, and
+ * raw text carry past it. Without it, as between two HTML blocks, every state
+ * carries.
  *
  * Only the states that decide where a comment starts and ends are modeled. A
  * comment that ends at `--!>`, at the end of the input, or abruptly, as in
@@ -383,7 +386,9 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 				while (first < end && (source.charCodeAt(first) === 32 || source.charCodeAt(first) === 9)) {
 					first += 1;
 				}
-				startsLine = source.startsWith('<!--', first) || (state === State.Comment && commentStartsLine);
+				// A `<!--` opens a comment only in the data state, not inside a tag.
+				startsLine = (state === State.Data && source.startsWith('<!--', first))
+					|| (state === State.Comment && commentStartsLine);
 			}
 
 			let index = start;

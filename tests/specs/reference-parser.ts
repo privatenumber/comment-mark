@@ -73,7 +73,8 @@ const findReferenceMarkers = (source: string) => {
 const withoutPrefixes = (content: string) => content.replaceAll(/[> ]/g, '');
 
 // Every comment follows text, so no line starts with a comment, and there is
-// no inline code, indentation, or backslash. The scanner follows GitHub, which
+// no inline code, indented code, or backslash. A line can start with one space,
+// which neither parser reads as indentation. The scanner follows GitHub, which
 // differs from micromark's CommonMark in some of those forms, so this spec
 // leaves them to the GitHub oracle in notes/comment-mark/github-oracle.md.
 const fragments = [
