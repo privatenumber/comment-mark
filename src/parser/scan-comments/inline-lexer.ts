@@ -7,11 +7,6 @@ import {
 } from './html-tag.ts';
 import { scanDestination, scanTitle } from './block/reference-definition.ts';
 
-type PositionList = {
-	positions: number[];
-	cursor: number;
-};
-
 /**
  * Indexes `manual_scan_link_url_2` boundaries for monotonic destination starts.
  * A down-step at the starting balance closes the destination; an up-step 33
@@ -21,23 +16,11 @@ type PositionList = {
  */
 const indexDestinations = (text: string) => {
 	const balances = new Int32Array(text.length + 1);
-	const up = new Map<number, PositionList>();
-	const down = new Map<number, PositionList>();
-	const spaces: PositionList = {
-		positions: [],
-		cursor: 0,
-	};
-	const record = (map: Map<number, PositionList>, level: number, position: number) => {
-		let list = map.get(level);
-		if (!list) {
-			list = {
-				positions: [],
-				cursor: 0,
-			};
-			map.set(level, list);
-		}
-		list.positions.push(position);
-	};
+	const levelCount = text.length * 2 + 2;
+	const upOffsets = new Int32Array(levelCount);
+	const downOffsets = new Int32Array(levelCount);
+	const spaces = new Int32Array(text.length);
+	let spaceCount = 0;
 	let balance = 0;
 	for (let index = 0; index < text.length; index += 1) {
 		balances[index] = balance;
@@ -47,28 +30,67 @@ const indexDestinations = (text: string) => {
 			index += 1;
 		} else if (code === 40) {
 			balance += 1;
-			record(up, balance, index);
+			upOffsets[balance + text.length + 1] += 1;
 		} else if (code === 41) {
-			record(down, balance, index);
+			downOffsets[balance + text.length + 1] += 1;
 			balance -= 1;
 		} else if (isSpaceChar(code) && code !== 11 && code !== 12) {
-			spaces.positions.push(index);
+			spaces[spaceCount] = index;
+			spaceCount += 1;
 		}
 	}
 	balances[text.length] = balance;
-	const next = (list: PositionList | undefined, start: number) => {
-		if (!list) {
+	// Counting sort groups each level's positions while preserving source order.
+	for (let level = 1; level < levelCount; level += 1) {
+		upOffsets[level] += upOffsets[level - 1];
+		downOffsets[level] += downOffsets[level - 1];
+	}
+	const upPositions = new Int32Array(upOffsets[levelCount - 1]);
+	const downPositions = new Int32Array(downOffsets[levelCount - 1]);
+	const upCursors = upOffsets.slice();
+	const downCursors = downOffsets.slice();
+	for (let index = 0; index < text.length; index += 1) {
+		const before = balances[index];
+		const after = balances[index + 1];
+		if (after > before) {
+			const level = after + text.length;
+			upPositions[upCursors[level]] = index;
+			upCursors[level] += 1;
+		} else if (after < before) {
+			const level = before + text.length;
+			downPositions[downCursors[level]] = index;
+			downCursors[level] += 1;
+		}
+	}
+	upCursors.set(upOffsets);
+	downCursors.set(downOffsets);
+	const next = (
+		positions: Int32Array,
+		offsets: Int32Array,
+		cursors: Int32Array,
+		level: number,
+		start: number,
+	) => {
+		if (level < 0 || level + 1 >= levelCount) {
 			return text.length;
 		}
-		while (list.cursor < list.positions.length && list.positions[list.cursor] < start) {
-			list.cursor += 1;
+		let cursor = cursors[level];
+		const end = offsets[level + 1];
+		while (cursor < end && positions[cursor] < start) {
+			cursor += 1;
 		}
-		return list.positions[list.cursor] ?? text.length;
+		cursors[level] = cursor;
+		return cursor < end ? positions[cursor] : text.length;
 	};
+	let spaceCursor = 0;
 	return (start: number) => {
-		const whitespace = next(spaces, start);
-		const close = next(down.get(balances[start]), start);
-		const overflow = next(up.get(balances[start] + 33), start);
+		while (spaceCursor < spaceCount && spaces[spaceCursor] < start) {
+			spaceCursor += 1;
+		}
+		const whitespace = spaceCursor < spaceCount ? spaces[spaceCursor] : text.length;
+		const level = balances[start] + text.length;
+		const close = next(downPositions, downOffsets, downCursors, level, start);
+		const overflow = next(upPositions, upOffsets, upCursors, level + 33, start);
 		const end = Math.min(whitespace, close);
 		return end === text.length || overflow < end || whitespace === start ? -1 : end;
 	};
@@ -79,8 +101,9 @@ const indexDestinations = (text: string) => {
  * heading, or table cell, as `handle_pointy_brace` in GitHub's renderer does:
  * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L911-L1018
  *
- * Only the inline rules that decide where raw HTML can start are lexed:
- * backslash escapes, code spans, autolinks, and inline links and images.
+ * It lexes the inline rules that decide where raw HTML can start: backslash
+ * escapes, code spans, `<…>` autolinks, and inline links and images. Reference
+ * links and images, footnotes, and bare-URL autolinks are not lexed yet.
  * Everything else is text that renders escaped, so it cannot open a comment.
  */
 
@@ -346,8 +369,8 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 		return text.charCodeAt(end) === 41 ? end + 1 : -1;
 	};
 
-	// `push_bracket`, `pop_bracket`, and `handle_close_bracket` keep only the
-	// most recent opener. A completed link deactivates older link openers.
+	// Every opener stays on the stack; `]` uses the most recent one. A completed
+	// link deactivates older link openers.
 	// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L1136-L1349
 	const brackets: {
 		image: boolean;
@@ -382,7 +405,7 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 		const code = text.charCodeAt(index);
 		switch (code) {
 			case 33: {
-				if (text.charCodeAt(index + 1) === 91) {
+				if (text.charCodeAt(index + 1) === 91 && text.charCodeAt(index + 2) !== 94) {
 					pushBracket(true);
 					index += 2;
 				} else {

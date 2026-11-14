@@ -473,6 +473,15 @@ describe('links and images', () => {
 		}
 	});
 
+	test('a bracket followed by a caret is not an image opener', () => {
+		const content = 'x <!-- a -->outer ![^<!-- a -->inner](u) tail<!-- /a -->';
+		expect(getCommentMarkAll(content)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'inner](u) tail',
+		}]);
+	});
+
 	test('image spans are emitted in order when an image is literal', () => {
 		const content = '![<!-- a -->old<!-- /a -->] nope <!-- b -->yes<!-- /b -->';
 		expect(getCommentMarkAll(content)).toStrictEqual([
