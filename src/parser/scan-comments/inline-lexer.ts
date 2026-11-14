@@ -104,7 +104,8 @@ const indexDestinations = (text: string) => {
  * It lexes the inline rules that decide where raw HTML can start: backslash
  * escapes, code spans, `<…>` autolinks, and inline links and images. Reference
  * links and images, footnotes, and bare-URL autolinks are not lexed yet.
- * Everything else is text that renders escaped, so it cannot open a comment.
+ * Everything else renders as escaped text or renderer-generated markup, neither
+ * of which can open a comment.
  */
 
 // `MAXBACKTICKS`: a longer run is literal text.
@@ -348,6 +349,42 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 		return start;
 	};
 	let destinationIndex: ReturnType<typeof indexDestinations> | undefined;
+	let destinationWork = 0;
+	const scanUnbracketedDestination = (start: number) => {
+		if (destinationIndex) {
+			return destinationIndex(start);
+		}
+		let cursor = start;
+		let depth = 0;
+		while (cursor < text.length) {
+			const code = text.charCodeAt(cursor);
+			if (code === 92 && isAsciiPunctuation(text.charCodeAt(cursor + 1))) {
+				cursor += 2;
+			} else if (code === 40) {
+				depth += 1;
+				if (depth > 32) {
+					break;
+				}
+				cursor += 1;
+			} else if (code === 41) {
+				if (depth === 0) {
+					break;
+				}
+				depth -= 1;
+				cursor += 1;
+			} else if (isSpaceChar(code) && code !== 11 && code !== 12) {
+				break;
+			} else {
+				cursor += 1;
+			}
+		}
+		destinationWork += cursor - start + 1;
+		if (destinationWork > text.length) {
+			destinationIndex = indexDestinations(text);
+		}
+		const startsWithSpace = cursor === start && text.charCodeAt(cursor) !== 41;
+		return cursor >= text.length || depth > 32 || startsWithSpace ? -1 : cursor;
+	};
 	const matchLinkTail = (start: number) => {
 		if (text.charCodeAt(start) !== 40) {
 			return -1;
@@ -357,8 +394,7 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 		if (text.charCodeAt(destinationStart) === 60) {
 			destinationEnd = scanDestination(text, destinationStart);
 		} else {
-			destinationIndex ??= indexDestinations(text);
-			destinationEnd = destinationIndex(destinationStart);
+			destinationEnd = scanUnbracketedDestination(destinationStart);
 		}
 		if (destinationEnd === -1) {
 			return -1;
