@@ -28,7 +28,7 @@ const indexDestinations = (text: string) => {
 			index += 1;
 		} else if (code === 40 || code === 41) {
 			parenthesisCount += 1;
-		} else if (isSpaceChar(code) && code !== 11 && code !== 12) {
+		} else if (isCmarkSpace(code)) {
 			spaceCount += 1;
 		}
 	}
@@ -48,7 +48,7 @@ const indexDestinations = (text: string) => {
 		} else if (code === 41) {
 			downOffsets[balance + parenthesisCount + 1] += 1;
 			balance -= 1;
-		} else if (isSpaceChar(code) && code !== 11 && code !== 12) {
+		} else if (isCmarkSpace(code)) {
 			spaces[spaceIndex] = index;
 			spaceIndex += 1;
 		}
@@ -408,7 +408,7 @@ export const lexInline = (
 				}
 				depth -= 1;
 				cursor += 1;
-			} else if (isSpaceChar(code) && code !== 11 && code !== 12) {
+			} else if (isCmarkSpace(code)) {
 				break;
 			} else {
 				cursor += 1;
@@ -475,6 +475,22 @@ export const lexInline = (
 		}
 		spans.length = 0;
 	};
+	// `handle_close_bracket`: https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L1199-L1228
+	const matchReference = (opener: (typeof brackets)[number], start: number) => {
+		const labelEnd = text.charCodeAt(start) === 91 ? scanLabel(text, start, true) : -1;
+		let label = labelEnd === -1 ? '' : text.slice(start + 1, labelEnd - 1);
+		let labelStart = 0;
+		while (labelStart < label.length && isCmarkSpace(label.charCodeAt(labelStart))) {
+			labelStart += 1;
+		}
+		const empty = labelStart === label.length;
+		if ((labelEnd === -1 || empty) && !opener.bracketAfter) {
+			label = text.slice(opener.position, start - 1);
+		}
+		return (labelEnd !== -1 || !opener.bracketAfter) && isDefinedLabel(label)
+			? (labelEnd === -1 ? start : labelEnd)
+			: -1;
+	};
 
 	let index = 0;
 	while (index < text.length) {
@@ -500,20 +516,11 @@ export const lexInline = (
 				if (!opener) {
 					break;
 				}
-				let end = opener.image || !noLinkOpeners ? matchLinkTail(index) : -1;
-				if (end === -1 && (opener.image || !noLinkOpeners)) {
-					const labelEnd = text.charCodeAt(index) === 91 ? scanLabel(text, index, true) : -1;
-					let label = labelEnd === -1 ? '' : text.slice(index + 1, labelEnd - 1);
-					let labelStart = 0;
-					while (labelStart < label.length && isCmarkSpace(label.charCodeAt(labelStart))) {
-						labelStart += 1;
-					}
-					const empty = labelStart === label.length;
-					if ((labelEnd === -1 || empty) && !opener.bracketAfter) {
-						label = text.slice(opener.position, index - 1);
-					}
-					if ((labelEnd !== -1 || !opener.bracketAfter) && isDefinedLabel(label)) {
-						end = labelEnd === -1 ? index : labelEnd;
+				let end = -1;
+				if (opener.image || !noLinkOpeners) {
+					end = matchLinkTail(index);
+					if (end === -1) {
+						end = matchReference(opener, index);
 					}
 				}
 				if (end !== -1) {

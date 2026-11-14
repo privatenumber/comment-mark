@@ -73,6 +73,59 @@ const numericEntity = (text: string, index: number) => {
 	};
 };
 
+const decodeEntity = (text: string, index: number) => {
+	if (text.startsWith('&#', index)) {
+		const entity = numericEntity(text, index);
+		if (!entity) {
+			return undefined;
+		}
+		const { code, end } = entity;
+		// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/utf8.c#L202-L207
+		let bytes: number;
+		if (code === 0xFF_FE || code === 0xFF_FF || code < 0x80) {
+			bytes = 1;
+		} else if (code < 0x8_00) {
+			bytes = 2;
+		} else if (code < 0x1_00_00) {
+			bytes = 3;
+		} else {
+			bytes = 4;
+		}
+		return {
+			bytes,
+			code,
+			end,
+		};
+	}
+	// Houdini searches names of 2-31 bytes, terminated by `;`.
+	// The table contains only ASCII letters and digits.
+	// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/houdini_html_u.c#L10-L35
+	// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/houdini_html_u.c#L80-L100
+	let end = index + 1;
+	while (end < text.length && end - index <= 31) {
+		const character = text.charCodeAt(end);
+		if (
+			!(character >= 65 && character <= 90)
+			&& !(character >= 97 && character <= 122)
+			&& !(character >= 48 && character <= 57)
+		) {
+			break;
+		}
+		end += 1;
+	}
+	if (end - index >= 3 && text.charCodeAt(end) === 59) {
+		const entity = namedEntity(text.slice(index + 1, end));
+		if (entity) {
+			return {
+				bytes: entity[0],
+				code: entity[1],
+				end,
+			};
+		}
+	}
+	return undefined;
+};
+
 const cleanSize = (text: string) => {
 	if (!text.includes('&') && !text.includes('\\')) {
 		return byteLength(text);
@@ -82,47 +135,13 @@ const cleanSize = (text: string) => {
 	for (let index = 0; index < text.length; index += 1) {
 		let code = text.charCodeAt(index);
 		let bytes = utf8Length(text, index);
-		if (text.startsWith('&#', index)) {
-			const entity = numericEntity(text, index);
+		if (code === 38) {
+			const entity = decodeEntity(text, index);
 			if (entity) {
+				// The first decoded byte can complete a backslash escape, as `=` does in `\&bne;`.
 				code = entity.code;
-				// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/utf8.c#L202-L207
-				if (code === 0xFF_FE || code === 0xFF_FF || code < 0x80) {
-					bytes = 1;
-				} else if (code < 0x8_00) {
-					bytes = 2;
-				} else if (code < 0x1_00_00) {
-					bytes = 3;
-				} else {
-					bytes = 4;
-				}
+				bytes = entity.bytes;
 				index = entity.end;
-			}
-		} else if (code === 38) {
-			// Houdini searches names of 2-31 bytes, terminated by `;`.
-			// The table contains only ASCII letters and digits.
-			// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/houdini_html_u.c#L10-L35
-			// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/houdini_html_u.c#L80-L100
-			let end = index + 1;
-			while (end < text.length && end - index <= 31) {
-				const character = text.charCodeAt(end);
-				if (
-					!(character >= 65 && character <= 90)
-					&& !(character >= 97 && character <= 122)
-					&& !(character >= 48 && character <= 57)
-				) {
-					break;
-				}
-				end += 1;
-			}
-			if (end - index >= 3 && text.charCodeAt(end) === 59) {
-				const entity = namedEntity(text.slice(index + 1, end));
-				if (entity) {
-					// The first decoded byte can complete a backslash escape, as
-					// `=` does in `\&bne;`.
-					[bytes, code] = entity;
-					index = end;
-				}
 			}
 		}
 		if (backslash && isAsciiPunctuation(code)) {

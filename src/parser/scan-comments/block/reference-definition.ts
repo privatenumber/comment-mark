@@ -284,18 +284,11 @@ const scanDefinition = (
 	// definition ends after the destination.
 	const titleStart = skipSpacesAndLineEnd(text, destinationEnd);
 	const titleEnd = titleStart === destinationEnd ? -1 : scanTitle(text, titleStart);
-	if (titleEnd !== -1) {
-		const end = skipLineEnd(text, skipSpaces(text, titleEnd));
-		if (end !== -1) {
-			onDefinition?.(
-				text.slice(labelStart + 1, index - 1),
-				text.slice(destinationStart, destinationEnd),
-				text.slice(titleStart, titleEnd),
-			);
-			return end;
-		}
+	let end = titleEnd === -1 ? -1 : skipLineEnd(text, skipSpaces(text, titleEnd));
+	if (end === -1) {
+		// cmark rewinds before the title but retains the parsed title.
+		end = skipLineEnd(text, skipSpaces(text, destinationEnd));
 	}
-	const end = skipLineEnd(text, skipSpaces(text, destinationEnd));
 	if (end !== -1) {
 		onDefinition?.(
 			text.slice(labelStart + 1, index - 1),

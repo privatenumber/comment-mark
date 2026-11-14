@@ -88,11 +88,9 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 					const startOffset = Math.max(start, textStarts[part]);
 					const lineEnd = part + 1 < textStarts.length ? textStarts[part + 1] - 1 : text.length;
 					const endOffset = Math.min(end, lineEnd);
-					if (removed.length) {
-						removedBeforeLine = advanceRemoved(removed, removedBeforeLine, textStarts[part]);
-						removedBeforeStart = advanceRemoved(removed, removedBeforeStart, startOffset + 1);
-						removedBeforeEnd = advanceRemoved(removed, removedBeforeEnd, endOffset);
-					}
+					removedBeforeLine = advanceRemoved(removed, removedBeforeLine, textStarts[part]);
+					removedBeforeStart = advanceRemoved(removed, removedBeforeStart, startOffset + 1);
+					removedBeforeEnd = advanceRemoved(removed, removedBeforeEnd, endOffset);
 					const sourceStart = lineStart + removedBeforeStart - removedBeforeLine;
 					const sourceEnd = lineStart + removedBeforeEnd - removedBeforeLine;
 					const partStart = startOffset - textStarts[part] + sourceStart;
