@@ -146,6 +146,14 @@ for (const [start, end] of [
 
 // cmark folds Unicode case, trims, and collapses ASCII whitespace.
 export const normalizeLabel = (label: string) => {
+	let ascii = label.length <= maxLabelLength;
+	for (let index = 0; ascii && index < label.length; index += 1) {
+		const code = label.charCodeAt(index);
+		ascii = code > 0 && code < 128 && !isCmarkSpace(code);
+	}
+	if (ascii) {
+		return label.toUpperCase();
+	}
 	let normalized = '';
 	let space = false;
 	let length = 0;

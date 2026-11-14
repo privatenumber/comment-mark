@@ -36,6 +36,12 @@ export type CommentVisitor = (
  * notes/comment-mark/comment-scanning.md.
  */
 export const scanComments = (source: string, visit: CommentVisitor) => {
+	if (source.includes('<!--')) {
+		scanDocument(source, visit);
+	}
+};
+
+const scanDocument = (source: string, visit: CommentVisitor) => {
 	const tokenizer = createHtmlTokenizer(source, visit);
 	const findTagOpen = createForwardSearch(source, '<');
 	const findOpenBracket = createForwardSearch(source, '[');

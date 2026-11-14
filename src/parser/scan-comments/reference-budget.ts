@@ -23,7 +23,10 @@ export type ReferenceDefinition = {
 const byteLength = (text: string, originalInput = false) => {
 	let length = 0;
 	for (let index = 0; index < text.length; index += 1) {
-		length += originalInput && text.charCodeAt(index) === 0 ? 1 : utf8Length(text, index);
+		const code = text.charCodeAt(index);
+		length += (code > 0 && code < 128) || (originalInput && code === 0)
+			? 1
+			: utf8Length(text, index);
 	}
 	return length;
 };
@@ -71,6 +74,9 @@ const numericEntity = (text: string, index: number) => {
 };
 
 const cleanSize = (text: string) => {
+	if (!text.includes('&') && !text.includes('\\')) {
+		return byteLength(text);
+	}
 	let decoded = '';
 	for (let index = 0; index < text.length; index += 1) {
 		if (text.startsWith('&#', index)) {
