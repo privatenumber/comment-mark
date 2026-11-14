@@ -414,6 +414,22 @@ describe('inline code', () => {
 });
 
 describe('links and images', () => {
+	test('reference labels use cmark case folding and replacement characters', async () => {
+		const content = 'x <!-- a -->outer ![<!-- a -->inner][ı] tail<!-- /a -->\n\n[I]: /u';
+		expect(getCommentMarkAll(content)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'inner][ı] tail',
+		}]);
+		expect(await commentMark(content, { a: 'NEW' })).toBe(
+			'x <!-- a -->outer ![<!-- a -->NEW<!-- /a -->\n\n[I]: /u',
+		);
+		for (const label of ['\u0000', '\uD800', '\uDC00']) {
+			expect(getCommentMarkAll(`![<!-- a -->old<!-- /a -->][\uFFFD]\n\n[${label}]: /url`)).toStrictEqual([]);
+		}
+		expect(getCommentMarkAll('![<!-- a -->old<!-- /a -->][SS]\n\n[ß]: /url')).toStrictEqual([]);
+	});
+
 	test('reference links preserve nested marker boundaries', async () => {
 		for (const [content, old, updated] of [
 			['x <!-- a -->old [outer [ref]](<!-- /a -->) PRESERVE <!-- /a -->\n\n[ref]: /u', 'old [outer [ref]](', 'x <!-- a -->NEW<!-- /a -->) PRESERVE <!-- /a -->\n\n[ref]: /u'],
@@ -546,7 +562,7 @@ describe('links and images', () => {
 
 	test('labels keep vertical tab and form feed', () => {
 		// cmark trims and collapses labels with `cmark_isspace`, which excludes
-		// `\v` and `\f`, so a label of only `\v` is neither blank nor defined.
+		// `\v` and `\f`, so a label of only `\v` is not blank and can resolve.
 		expect(getCommentMarkAll('[\v]: <!-- a -->\n\n<!-- /a -->')).toStrictEqual([]);
 		expect(getCommentMarkAll('[a\vb]: <!-- a -->\n\n[a b]\n<!-- /a -->')).toStrictEqual([]);
 		for (const control of ['\v', '\f']) {
