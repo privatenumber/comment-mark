@@ -508,6 +508,9 @@ describe('GitHub rendering', () => {
 		['a bogus comment continues into the next HTML block', `<div>\n<?x\n\n${marker}`, false],
 		['a paragraph between HTML blocks ends a bogus comment', `<div>\n<?x\n\ntext\n\n${marker}`, true],
 		['a link reference definition renders nothing', '[x]: <!-- a -->\n\nold\n\n<!-- /a -->', false],
+		['a link destination holds no comment', '[x](<!-- a -->)<!-- /a -->', false],
+		['a marker in a link label is a comment', `[${marker}](https://example.com)`, true],
+		['a link destination ends at its closing paren', `[x](https://example.com)${marker}`, true],
 		['text after a link reference definition is a paragraph', `[x]: /url\ntext ${marker}`, true],
 		// The paragraph stays open, so the indented line continues it instead of
 		// opening indented code.
@@ -538,6 +541,11 @@ describe('GitHub rendering', () => {
 				: []);
 		});
 	}
+
+	test('a comment-like opener in a link destination cannot be updated', async () => {
+		await expect(commentMark('[x](<!-- a -->)<!-- /a -->', { a: 'new' }))
+			.rejects.toThrow('[comment-mark] Selector "a" matched no markers');
+	});
 
 	test('a comment-like line inside an attribute does not start the line', async () => {
 		const source = `<pre>\n<span title="\n    <!-- note -->">Value: ${marker}!</span>\n</pre>`;
