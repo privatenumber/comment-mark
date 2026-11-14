@@ -130,6 +130,7 @@ const random = (limit) => {
 }
 
 export const fragmentSets = {
+    tables: ['| x |\n| - |\n| ', ' |', String.raw`\|`, '<!-- a -->', '<!-- /a -->', '`', String.raw`[x][r\|s]`, `\n\n${String.raw`[r\|s]: /u`}\n`, ' ', '\n', 'x', '<a title="', '">'],
     refs: ['[', ']', '][', '[]', ']: /u\n', '\n\n[r]: /u\n', '[r]', '[R]', 'r', ' ', '\n', 'x <!-- a -->', 'x <!-- /a -->', '<!--', '-->', '!'],
     links: ['[', '![', ']', '](', ')', '(', '<', '>', '"', "'", ' ', '\n', '`', '\\', 'x <!-- a -->', 'x <!-- /a -->', '<!--', '-->', 'u', '<u>', '"t"', '[x](', '![x](', '[x', '![x', '<!-- a -->', '<!-- /a -->'],
     autolink: ['x <!-- a -->', 'x <!-- /a -->', '<!--', '-->', '<', '>', '`', ' ', '\n', 'http', 'a', 'ab', ':', '@', '.', '-', 'b.c', 'x@', 'a.b-c', '<a@b.c>', '<http://x>', '<mailto:', '\\', '_', '+', 'a'.repeat(31), 'a'.repeat(63), '<a', '"', '=', '<!X', '<?', '<http://`', '<a`b@c.d>', '`', '``', '<ab:`>', '<a`@b>'],
@@ -501,6 +502,6 @@ export const namedEntity = (name: string) => {
 
 ## Results
 
-Run `node compare.mjs <scan-comments/index.ts> 20000 <seed> [rich|autolink|links|refs]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
+Run `node compare.mjs <scan-comments/index.ts> 20000 <seed> [rich|autolink|links|refs|tables]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
 
 The comparison numbers each generated marker, such as `<!-- a12 -->`, and each bare `<!--`, such as `<!--o12q`. A comment is identified by the number it starts with, which checks its opening, and the last marker number in it, which checks its closing. Where a comment has no number, as with `<!-->` or a `<!--` built from two fragments, its first or last 3 characters are compared after normalization: entities decoded, and tag-like sequences and whitespace dropped. A comment that spans chunks also holds markup that the renderer generates, so its full text cannot match. A few mismatches per seed remain as artifacts of this normalization, when generated markup such as `<hr />` or a setext underline falls in those last 3 characters. Use `show.mjs` to confirm each mismatch before treating it as a scanner bug.
