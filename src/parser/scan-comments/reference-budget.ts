@@ -78,10 +78,15 @@ const cleanSize = (text: string) => {
 		return byteLength(text);
 	}
 	let decoded = '';
+	let noncharacterBytes = 0;
 	for (let index = 0; index < text.length; index += 1) {
 		if (text.startsWith('&#', index)) {
 			const entity = numericEntity(text, index);
 			if (entity) {
+				// cmark's UTF-8 encoder writes these noncharacters as one byte.
+				if (entity.code === 0xFF_FE || entity.code === 0xFF_FF) {
+					noncharacterBytes += 2;
+				}
 				decoded += String.fromCodePoint(entity.code);
 				index = entity.end;
 				continue;
@@ -96,7 +101,7 @@ const cleanSize = (text: string) => {
 		}
 		size += utf8Length(decoded, index);
 	}
-	return size;
+	return size - noncharacterBytes;
 };
 
 const definitionSize = ({ destination: rawDestination, title }: ReferenceDefinition) => {

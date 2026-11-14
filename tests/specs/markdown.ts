@@ -8,6 +8,23 @@ import { scanComments } from '../../src/parser/scan-comments/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('reference expansion budget', () => {
+	test('counts numeric noncharacters as one byte', async () => {
+		// cmark-gfm 0.29.0.gfm.13 renders only the outer comments.
+		for (const code of [65_534, 65_535]) {
+			const source = `${'[r] '.repeat(150)}x <!-- a -->PRESERVE ![<!-- a -->inner][r] tail<!-- /a -->\n\n[r]: ${`&#${code};`.repeat(334)}`;
+			const updated = await commentMark(source, { a: 'NEW' });
+			expect(updated.includes('<!-- a -->NEW<!-- /a -->')).toBe(true);
+		}
+	});
+
+	test('charges a rewound title without consuming its paragraph', async () => {
+		// cmark-gfm 0.29.0.gfm.13 renders both opening comments.
+		const source = `${'[r] '.repeat(99)}x <!-- a -->PRESERVE ![<!-- a -->inner][r] tail<!-- /a -->\n\n[r]: /u\n"${'t'.repeat(1000)}" trailing`;
+		const updated = await commentMark(source, { a: 'NEW' });
+		expect(updated.includes('PRESERVE ![<!-- a -->NEW<!-- /a -->')).toBe(true);
+		expect(updated.endsWith(`"${'t'.repeat(1000)}" trailing`)).toBe(true);
+	});
+
 	test('preserves text when an image exceeds the budget', async () => {
 		// GitHub /markdown probe, Sat Nov 14: 98 references resolve the image;
 		// 101 references leave it as text.

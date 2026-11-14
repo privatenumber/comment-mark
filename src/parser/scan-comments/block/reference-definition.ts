@@ -300,7 +300,7 @@ const scanDefinition = (
 		onDefinition?.(
 			text.slice(labelStart + 1, index - 1),
 			text.slice(destinationStart, destinationEnd),
-			'',
+			titleEnd === -1 ? '' : text.slice(titleStart, titleEnd),
 		);
 	}
 	return end;
