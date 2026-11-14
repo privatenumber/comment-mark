@@ -7,6 +7,63 @@ import {
 import { scanComments } from '../../src/parser/scan-comments/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
+describe('bare autolinks', () => {
+	test('matches cmark-gfm 0.29.0.gfm.13 inline comments', () => {
+		// The oracle renders both comments in every input, including after `<`.
+		for (const source of [
+			'\\<http://x>`aaa x <!-- a -->old<!-- /a -->+`',
+			'http://x/![x <!-- a -->old<!-- /a -->](u)',
+			'www.a.b/` x <!-- a -->old<!-- /a -->`',
+			'www.a.b/(`) x <!-- a -->old<!-- /a -->`',
+			'www.a.b/`) x <!-- a -->old<!-- /a -->`',
+			'www.a.b/`&amp; x <!-- a -->old<!-- /a -->`',
+			'www.a.b/`!!! x <!-- a -->old<!-- /a -->`',
+			'(www.a.b/` x <!-- a -->old<!-- /a -->`',
+			'`a`http://x/` x <!-- a -->old<!-- /a -->`',
+			'http://a.b.c.d.e.f.g.h.i.j.k._z/` x <!-- a -->old<!-- /a -->`',
+			'http://é.x/` x <!-- a -->old<!-- /a -->`',
+			'www.é/` x <!-- a -->old<!-- /a -->`',
+			'http://a/<!-- a -->old<!-- /a -->',
+			String.raw`http://x/\<!-- a -->old<!-- /a -->`,
+		]) {
+			expect(getCommentMarkAll(source)).toStrictEqual([{
+				tagName: 'a',
+				attributes: {},
+				content: 'old',
+			}]);
+		}
+		// The oracle renders these comments as code, not raw HTML.
+		for (const source of [
+			'http://…x/` x <!-- a -->old<!-- /a -->`',
+			'http://a_b.x/` x <!-- a -->old<!-- /a -->`',
+			'http://a\\_.b/` x <!-- a -->old<!-- /a -->`',
+			'www.a._z/` x <!-- a -->old<!-- /a -->`',
+			'xwww.a.b/` x <!-- a -->old<!-- /a -->`',
+			'[http://a/` x <!-- a -->old<!-- /a -->`]',
+			'![http://a/` x <!-- a -->old<!-- /a -->`]',
+		]) {
+			expect(getCommentMarkAll(source)).toStrictEqual([]);
+		}
+	});
+
+	test('counts references after an autolinked backtick', async () => {
+		// cmark-gfm 0.29.0.gfm.13 renders both opening comments.
+		const source = `https://a.com/\` ${'[r] '.repeat(101)}\`x <!-- a -->PRESERVE ![<!-- a -->old][r] tail<!-- /a -->\n\n[r]: ${'u'.repeat(1000)}`;
+		expect(await commentMark(source, { a: 'NEW' }))
+			.toBe(source.replace('old][r] tail', 'NEW'));
+	});
+
+	test('uses the renderer backtick cache after a failed long run', () => {
+		// cmark-gfm 0.29.0.gfm.13 renders the final comment.
+		const source = '``:<a@b.c><http://`<?-`_><a@b.c><http://`x <!-- a -->old<!-- /a -->a.b-c`';
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'old',
+		}]);
+	});
+});
+
 describe('reference expansion budget', () => {
 	test('uses decoded named entity sizes at the budget boundary', async () => {
 		// cmark-gfm 0.29.0.gfm.13 renders only the outer comments in each case.
