@@ -1,4 +1,4 @@
-import { isAsciiPunctuation, isSpaceChar } from '../html-tag.ts';
+import { isAsciiPunctuation } from '../html-tag.ts';
 
 /**
  * Link reference definitions, such as `[x]: <url> "title"`, as GitHub's
@@ -11,6 +11,15 @@ import { isAsciiPunctuation, isSpaceChar } from '../html-tag.ts';
 // In UTF-8 bytes, as cmark-gfm reads its input.
 const maxLabelLength = 1000;
 
+/**
+ * `cmark_isspace`: tab, line feed, carriage return, and space. Unlike the HTML
+ * whitespace in `isSpaceChar`, it excludes `\v` and `\f`:
+ * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/cmark_ctype.c#L7-L11
+ */
+export const isCmarkSpace = (code: number) => (
+	code === 32 || code === 9 || code === 10 || code === 13
+);
+
 const isHighSurrogate = (code: number) => code >= 0xD8_00 && code <= 0xDB_FF;
 const isLowSurrogate = (code: number) => code >= 0xDC_00 && code <= 0xDF_FF;
 
@@ -19,7 +28,7 @@ const isLowSurrogate = (code: number) => code >= 0xDC_00 && code <= 0xDF_FF;
  * all. cmark-gfm reads NUL, and encoding reads a lone surrogate, as U+FFFD,
  * which is 3 bytes.
  */
-const utf8Length = (text: string, index: number) => {
+export const utf8Length = (text: string, index: number) => {
 	const code = text.charCodeAt(index);
 	if (code === 0) {
 		return 3;
@@ -65,7 +74,7 @@ const skipSpacesAndLineEnd = (text: string, index: number) => {
 };
 
 /** `link_label`: returns the index after the `]`, or -1. */
-const scanLabel = (text: string, index: number) => {
+export const scanLabel = (text: string, index: number, allowBlank = false) => {
 	let length = 0;
 	let blank = true;
 	for (index += 1; index < text.length; index += 1) {
@@ -74,9 +83,9 @@ const scanLabel = (text: string, index: number) => {
 			return -1;
 		}
 		if (code === 93) {
-			return blank ? -1 : index + 1;
+			return blank && !allowBlank ? -1 : index + 1;
 		}
-		blank &&= isSpaceChar(code);
+		blank &&= isCmarkSpace(code);
 		if (code === 92 && isAsciiPunctuation(text.charCodeAt(index + 1))) {
 			index += 1;
 			length += 1;
@@ -89,8 +98,101 @@ const scanLabel = (text: string, index: number) => {
 	return -1;
 };
 
+// These 185 scalars fold to themselves in cmark-gfm 0.29.0.gfm.13, but
+// JavaScript's case mappings in Unicode 17.0 (Node 26) merge them with other
+// scalars. To regenerate, see "Reference label case folding" in
+// notes/comment-mark/github-oracle.md.
+const foldExceptions = new Set<number>();
+for (const [start, end] of [
+	[0x1_31, 0x1_31],
+	[0x1_9B, 0x1_9B],
+	[0x2_64, 0x2_64],
+	[0x2_82, 0x2_82],
+	[0x10_D0, 0x10_FA],
+	[0x10_FD, 0x10_FF],
+	[0x1C_8A, 0x1C_8A],
+	[0x1D_8E, 0x1D_8E],
+	[0x2C_5F, 0x2C_5F],
+	[0xA7_94, 0xA7_94],
+	[0xA7_B9, 0xA7_B9],
+	[0xA7_BB, 0xA7_BB],
+	[0xA7_BD, 0xA7_BD],
+	[0xA7_BF, 0xA7_BF],
+	[0xA7_C1, 0xA7_C1],
+	[0xA7_C3, 0xA7_C3],
+	[0xA7_C8, 0xA7_C8],
+	[0xA7_CA, 0xA7_CA],
+	[0xA7_CD, 0xA7_CD],
+	[0xA7_CF, 0xA7_CF],
+	[0xA7_D1, 0xA7_D1],
+	[0xA7_D3, 0xA7_D3],
+	[0xA7_D5, 0xA7_D5],
+	[0xA7_D7, 0xA7_D7],
+	[0xA7_D9, 0xA7_D9],
+	[0xA7_DB, 0xA7_DB],
+	[0xA7_F6, 0xA7_F6],
+	[0x01_05_97, 0x01_05_A1],
+	[0x01_05_A3, 0x01_05_B1],
+	[0x01_05_B3, 0x01_05_B9],
+	[0x01_05_BB, 0x01_05_BC],
+	[0x01_0D_70, 0x01_0D_85],
+	[0x01_6E_60, 0x01_6E_7F],
+	[0x01_6E_BB, 0x01_6E_D3],
+]) {
+	for (let code = start; code <= end; code += 1) {
+		foldExceptions.add(code);
+	}
+}
+
+// cmark folds Unicode case, trims, and collapses ASCII whitespace.
+export const normalizeLabel = (label: string) => {
+	let ascii = label.length <= maxLabelLength;
+	for (let index = 0; ascii && index < label.length; index += 1) {
+		const code = label.charCodeAt(index);
+		ascii = code > 0 && code < 128 && !isCmarkSpace(code);
+	}
+	if (ascii) {
+		return label.toUpperCase();
+	}
+	let normalized = '';
+	let space = false;
+	let length = 0;
+	for (let index = 0; index < label.length; index += 1) {
+		length += utf8Length(label, index);
+		if (length > maxLabelLength) {
+			return '';
+		}
+		const code = label.charCodeAt(index);
+		if (isCmarkSpace(code)) {
+			space = normalized.length > 0;
+		} else {
+			if (space) {
+				normalized += ' ';
+				space = false;
+			}
+			const invalid = code === 0
+				|| (isHighSurrogate(code) && !isLowSurrogate(label.charCodeAt(index + 1)))
+				|| (isLowSurrogate(code) && !isHighSurrogate(label.charCodeAt(index - 1)));
+			normalized += invalid ? '\uFFFD' : label[index];
+		}
+	}
+	let folded = '';
+	let start = 0;
+	for (let index = 0; index < normalized.length;) {
+		const code = normalized.codePointAt(index)!;
+		const size = code > 0xFF_FF ? 2 : 1;
+		if (foldExceptions.has(code)) {
+			folded += normalized.slice(start, index).toLowerCase().toUpperCase();
+			folded += normalized.slice(index, index + size);
+			start = index + size;
+		}
+		index += size;
+	}
+	return folded + normalized.slice(start).toLowerCase().toUpperCase();
+};
+
 /** `manual_scan_link_url`: returns the index after the destination, or -1. */
-const scanDestination = (text: string, index: number) => {
+export const scanDestination = (text: string, index: number) => {
 	if (text.charCodeAt(index) === 60) {
 		for (index += 1; index < text.length;) {
 			const code = text.charCodeAt(index);
@@ -123,7 +225,7 @@ const scanDestination = (text: string, index: number) => {
 			}
 			depth -= 1;
 			index += 1;
-		} else if (isSpaceChar(code)) {
+		} else if (isCmarkSpace(code)) {
 			if (index === start) {
 				return -1;
 			}
@@ -140,7 +242,7 @@ const scanDestination = (text: string, index: number) => {
  * pattern takes the longest match, so an end delimiter after a backslash both
  * can end the title and can be passed over as an escape.
  */
-const scanTitle = (text: string, index: number) => {
+export const scanTitle = (text: string, index: number) => {
 	const open = text.charCodeAt(index);
 	if (open !== 34 && open !== 39 && open !== 40) {
 		return -1;
@@ -162,12 +264,18 @@ const scanTitle = (text: string, index: number) => {
 };
 
 /** `cmark_parse_reference_inline`: returns the index after the definition, or -1. */
-const scanDefinition = (text: string, index: number) => {
+const scanDefinition = (
+	text: string,
+	index: number,
+	onDefinition?: (label: string, destination: string, title: string) => void,
+) => {
+	const labelStart = index;
 	index = scanLabel(text, index);
 	if (index === -1 || text.charCodeAt(index) !== 58) {
 		return -1;
 	}
-	const destinationEnd = scanDestination(text, skipSpacesAndLineEnd(text, index + 1));
+	const destinationStart = skipSpacesAndLineEnd(text, index + 1);
+	const destinationEnd = scanDestination(text, destinationStart);
 	if (destinationEnd === -1) {
 		return -1;
 	}
@@ -176,13 +284,19 @@ const scanDefinition = (text: string, index: number) => {
 	// definition ends after the destination.
 	const titleStart = skipSpacesAndLineEnd(text, destinationEnd);
 	const titleEnd = titleStart === destinationEnd ? -1 : scanTitle(text, titleStart);
-	if (titleEnd !== -1) {
-		const end = skipLineEnd(text, skipSpaces(text, titleEnd));
-		if (end !== -1) {
-			return end;
-		}
+	let end = titleEnd === -1 ? -1 : skipLineEnd(text, skipSpaces(text, titleEnd));
+	if (end === -1) {
+		// cmark rewinds before the title but retains the parsed title.
+		end = skipLineEnd(text, skipSpaces(text, destinationEnd));
 	}
-	return skipLineEnd(text, skipSpaces(text, destinationEnd));
+	if (end !== -1) {
+		onDefinition?.(
+			text.slice(labelStart + 1, index - 1),
+			text.slice(destinationStart, destinationEnd),
+			titleEnd === -1 ? '' : text.slice(titleStart, titleEnd),
+		);
+	}
+	return end;
 };
 
 /**
@@ -190,11 +304,14 @@ const scanDefinition = (text: string, index: number) => {
  * start of a paragraph. `text` holds the paragraph's lines, each followed by a
  * line feed.
  */
-export const countDefinitionLines = (text: string) => {
+export const countDefinitionLines = (
+	text: string,
+	onLabel?: (label: string, destination: string, title: string) => void,
+) => {
 	let index = 0;
 	let lines = 0;
 	while (text.charCodeAt(index) === 91) {
-		const end = scanDefinition(text, index);
+		const end = scanDefinition(text, index, onLabel);
 		if (end === -1) {
 			break;
 		}
