@@ -845,6 +845,93 @@ describe('GitHub rendering', () => {
 	});
 });
 
+describe('table cells', () => {
+	test('unescapes the paragraph split off before the header', async () => {
+		// cmark-gfm 0.29.0.gfm.13 renders both opening comments for this input.
+		const source = 'x <!-- a -->PRESERVE ![<!-- a -->inner][r\\|s] tail<!-- /a -->\n| a |\n| - |\n\n[r\\|s]: /u';
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: String.raw`inner][r\|s] tail`,
+		}]);
+		expect(await commentMark(source, { a: 'NEW' })).toBe(
+			'x <!-- a -->PRESERVE ![<!-- a -->NEW<!-- /a -->\n| a |\n| - |\n\n[r\\|s]: /u',
+		);
+		const withoutTable = source.replace('\n| a |\n| - |', '');
+		// Without a table, cmark resolves the image and renders only the outer pair.
+		expect(getCommentMarkAll(withoutTable)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: String.raw`PRESERVE ![<!-- a -->inner][r\|s] tail`,
+		}]);
+	});
+
+	test('maps each line in a paragraph split off before a header', async () => {
+		// cmark-gfm renders both marker pairs in this multi-line paragraph.
+		const source = 'first \\|\nsecond \\| <!-- a -->old<!-- /a -->\nthird \\| <!-- b -->yes<!-- /b -->\n| a |\n| - |';
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'old',
+		}, {
+			tagName: 'b',
+			attributes: {},
+			content: 'yes',
+		}]);
+		expect(await commentMark(source, {
+			a: 'NEW',
+			b: 'NEXT',
+		})).toBe(
+			'first \\|\nsecond \\| <!-- a -->NEW<!-- /a -->\nthird \\| <!-- b -->NEXT<!-- /b -->\n| a |\n| - |',
+		);
+	});
+
+	test('maps a raw comment spanning paragraph lines after an escaped pipe', async () => {
+		// cmark-gfm renders this multi-line opener and its closer as comments.
+		for (const newline of ['\n', '\r\n', '\r']) {
+			const source = [String.raw`first \| <!-- a`, ' -->old<!-- /a -->', '| a |', '| - |'].join(newline);
+			expect(getCommentMarkAll(source)).toStrictEqual([{
+				tagName: 'a',
+				attributes: {},
+				content: 'old',
+			}]);
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old', 'NEW'));
+		}
+	});
+
+	test('unescapes pipes before resolving image references', async () => {
+		const source = '| x |\n| - |\n| x <!-- a -->PRESERVE ![<!-- a -->inner][r\\|s] tail<!-- /a --> |\n\n[r\\|s]: /u';
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: String.raw`inner][r\|s] tail`,
+		}]);
+		expect(await commentMark(source, { a: 'NEW' })).toBe('| x |\n| - |\n| x <!-- a -->PRESERVE ![<!-- a -->NEW<!-- /a --> |\n\n[r\\|s]: /u');
+	});
+
+	test('keeps code spans containing escaped pipes literal', async () => {
+		const source = '| x |\n| - |\n| `a\\|<!-- a -->old<!-- /a -->` |\n\n<!-- a -->real<!-- /a -->';
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'real',
+		}]);
+		expect(await commentMark(source, { a: 'NEW' })).toBe('| x |\n| - |\n| `a\\|<!-- a -->old<!-- /a -->` |\n\n<!-- a -->\nNEW\n<!-- /a -->');
+	});
+
+	test('maps comments after escaped pipes and raw HTML attributes', async () => {
+		for (const prefix of [String.raw`before \| `, String.raw`<a title="\|">`]) {
+			const source = `| x |\n| - |\n| ${prefix}<!-- a -->old<!-- /a --> |`;
+			expect(getCommentMarkAll(source)).toStrictEqual([{
+				tagName: 'a',
+				attributes: {},
+				content: 'old',
+			}]);
+			expect(await commentMark(source, { a: 'NEW' })).toBe(`| x |\n| - |\n| ${prefix}<!-- a -->NEW<!-- /a --> |`);
+		}
+	});
+});
+
 describe('line endings', () => {
 	test('a marker after a closed fence is recognized in a CR-only document', async () => {
 		const content = ['~~~', 'code', '~~~', createMarker('x', 'real')].join('\r');

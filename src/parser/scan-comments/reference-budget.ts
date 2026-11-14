@@ -180,7 +180,7 @@ export const createReferenceBudget = (source: string, labels: Map<string, Refere
 	const findTagOpen = createForwardSearch(source, '<');
 	lexBlocks(source, {
 		html: () => {},
-		text: (segments) => {
+		text: (segments, _continuation, unescapePipes) => {
 			if (!segments.length) {
 				return;
 			}
@@ -194,7 +194,7 @@ export const createReferenceBudget = (source: string, labels: Map<string, Refere
 			const open = findTagOpen(start);
 			const replayed = open !== -1 && open < end;
 			let ordinal = 0;
-			lexInline(joinText(source, segments), () => {}, (label) => {
+			lexInline(joinText(source, segments, undefined, unescapePipes), () => {}, (label) => {
 				const current = ordinal;
 				ordinal += 1;
 				const normalized = normalizeLabel(label);

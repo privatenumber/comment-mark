@@ -3,7 +3,7 @@ import { normalizeLabel } from './block/reference-definition.ts';
 import { createHtmlTokenizer } from './html-tokenizer.ts';
 import { lexInline } from './inline-lexer.ts';
 import { createReferenceBudget, type ReferenceDefinition } from './reference-budget.ts';
-import { joinText } from './text.ts';
+import { advanceRemoved, joinText } from './text.ts';
 import { createForwardSearch } from './utils/forward-search.ts';
 
 /**
@@ -61,27 +61,42 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 		html: (start, end, afterMarkup, continuation) => {
 			tokenizer.feed(start, end, afterMarkup, continuation, true);
 		},
-		text: (segments, continuation) => {
+		text: (segments, continuation, unescapePipes) => {
 			activeFailures = failures?.get(segments[0]);
 			lookupOrdinal = 0;
 			// The inline phase reads the lines joined by line feeds. `textStarts`
-			// maps each line back to its source position.
+			// maps each line back to its source position; `removed` records inline
+			// offsets of backslashes removed before pipes.
 			const textStarts: number[] = [];
-			const text = joinText(source, segments, textStarts);
+			const removed: number[] = [];
+			const text = joinText(source, segments, textStarts, unescapePipes, removed);
 
 			let line = 0;
+			let removedBeforeStart = 0;
+			let removedBeforeEnd = 0;
+			let removedBeforeLine = 0;
 			// The block's opening tag, such as `<p>`, comes before its first span.
 			// Text between spans renders escaped, so it holds no markup.
 			let afterMarkup = true;
 			lexInline(text, (start, end) => {
-				while (textStarts[line] + segments[(line * 2) + 1] - segments[line * 2] < start) {
+				while (line + 1 < textStarts.length && textStarts[line + 1] <= start) {
 					line += 1;
 				}
 				// A span can cross lines. Each part is fed as one line of the chunk.
 				for (let part = line; part < textStarts.length && textStarts[part] < end; part += 1) {
 					const lineStart = segments[part * 2];
-					const partStart = Math.max(start, textStarts[part]) - textStarts[part] + lineStart;
-					const partEnd = Math.min(end - textStarts[part] + lineStart, segments[(part * 2) + 1]);
+					const startOffset = Math.max(start, textStarts[part]);
+					const lineEnd = part + 1 < textStarts.length ? textStarts[part + 1] - 1 : text.length;
+					const endOffset = Math.min(end, lineEnd);
+					if (removed.length) {
+						removedBeforeLine = advanceRemoved(removed, removedBeforeLine, textStarts[part]);
+						removedBeforeStart = advanceRemoved(removed, removedBeforeStart, startOffset + 1);
+						removedBeforeEnd = advanceRemoved(removed, removedBeforeEnd, endOffset);
+					}
+					const sourceStart = lineStart + removedBeforeStart - removedBeforeLine;
+					const sourceEnd = lineStart + removedBeforeEnd - removedBeforeLine;
+					const partStart = startOffset - textStarts[part] + sourceStart;
+					const partEnd = endOffset - textStarts[part] + sourceEnd;
 					tokenizer.feed(partStart, partEnd, afterMarkup, continuation, false);
 					afterMarkup = false;
 				}
@@ -96,7 +111,7 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 	const textSegments: number[][] = [];
 	let buffering = false;
 	lexBlocks(source, {
-		text: (segments, continuation) => {
+		text: (segments, continuation, unescapePipes) => {
 			// Raw HTML starts with `<`, so text without one renders as text and
 			// needs no replay. A `<` between two segments only costs a needless
 			// inline pass.
@@ -113,11 +128,11 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 					buffering = left !== -1 && left < end && right !== -1 && right < end;
 				}
 				if (buffering) {
-					positions.push(-1, textSegments.length, 0);
+					positions.push(-1, textSegments.length, Number(unescapePipes));
 					continuations.push(continuation);
 					textSegments.push(segments);
 				} else {
-					handlers.text(segments, continuation);
+					handlers.text(segments, continuation, unescapePipes);
 				}
 			}
 		},
@@ -161,7 +176,7 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 		const start = positions[index * 3];
 		const end = positions[(index * 3) + 1];
 		if (start === -1) {
-			handlers.text(textSegments[end], continuations[index]);
+			handlers.text(textSegments[end], continuations[index], positions[(index * 3) + 2] === 1);
 		} else {
 			const flags = positions[(index * 3) + 2];
 			let lineStart = start;

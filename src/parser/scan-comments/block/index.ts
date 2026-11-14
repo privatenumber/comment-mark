@@ -31,7 +31,7 @@ export type BlockHandlers = {
 	 * Receives the text of a paragraph, heading, or table cell when the block
 	 * ends, as `[start, end]` pairs, one per line.
 	 */
-	text: (segments: number[], continuation: string) => void;
+	text: (segments: number[], continuation: string, unescapePipes?: boolean) => void;
 
 	/**
 	 * Receives each line of an HTML block as it is read. `afterMarkup` is true
@@ -88,6 +88,26 @@ type Target = 'container' | Leaf['type'] | 'row' | 'thematicBreak';
 const tabStop = 4;
 const codeIndent = 4;
 const maxListDepth = 100;
+
+const trimTableText = (source: string, segments: number[]) => {
+	let start = segments[0];
+	let end = segments.at(-1)!;
+	while (
+		start < segments[1] && (source.charCodeAt(start) === 32 || source.charCodeAt(start) === 9)
+	) {
+		start += 1;
+	}
+	while (
+		end > segments.at(-2)!
+		&& (source.charCodeAt(end - 1) === 32 || source.charCodeAt(end - 1) === 9)
+	) {
+		end -= 1;
+	}
+	segments[0] = start;
+	segments[segments.length - 1] = end;
+	return segments;
+};
+
 export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	const containers: Container[] = [];
 	let leaf: Leaf | undefined;
@@ -200,7 +220,8 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	const reportCells = (cells: number[], columns: number, prefix: string) => {
 		const end = Math.min(cells.length, columns * 2);
 		for (let index = 0; index < end; index += 2) {
-			handlers.text([cells[index], cells[index + 1]], prefix);
+			const segments = trimTableText(source, [cells[index], cells[index + 1]]);
+			handlers.text(segments, prefix, true);
 		}
 	};
 
@@ -223,9 +244,11 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			return false;
 		}
 
-		// Earlier lines stay a paragraph before the table.
+		// cmark unescapes and trims the earlier lines as one paragraph:
+		// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/extensions/table.c#L283-L295
 		if (segments.length > 2) {
-			handlers.text(segments.slice(0, -2), paragraph.continuation);
+			const preceding = trimTableText(source, segments.slice(0, -2));
+			handlers.text(preceding, paragraph.continuation, true);
 		}
 		reportCells(header, header.length / 2, paragraph.continuation);
 		leaf = {
