@@ -22,6 +22,11 @@ describe('bare autolinks', () => {
 			'`a`http://x/` x <!-- a -->old<!-- /a -->`',
 			'http://a.b.c.d.e.f.g.h.i.j.k._z/` x <!-- a -->old<!-- /a -->`',
 			'http://é.x/` x <!-- a -->old<!-- /a -->`',
+			// cmark-gfm's domain scan starts on the second UTF-8 byte, a
+			// continuation byte here, so it stops before the `_`.
+			'http://é_foo/` x <!-- a -->old<!-- /a -->`',
+			'http://😀_x/` x <!-- a -->old<!-- /a -->`',
+			'http://\0_x/` x <!-- a -->old<!-- /a -->`',
 			'www.é/` x <!-- a -->old<!-- /a -->`',
 			'http://a/<!-- a -->old<!-- /a -->',
 			String.raw`http://x/\<!-- a -->old<!-- /a -->`,
@@ -44,6 +49,13 @@ describe('bare autolinks', () => {
 		]) {
 			expect(getCommentMarkAll(source)).toStrictEqual([]);
 		}
+	});
+
+	test('does not replace across a non-ASCII host', async () => {
+		// cmark-gfm 0.29.0.gfm.13 links both URLs and renders both openers.
+		const source = 'x <!-- a -->PRESERVE http://a/` http://é_foo/` y <!-- a -->inner ` tail<!-- /a -->';
+		expect(await commentMark(source, { a: 'NEW' }))
+			.toBe(source.replace('inner ` tail', 'NEW'));
 	});
 
 	test('counts references after an autolinked backtick', async () => {
