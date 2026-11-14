@@ -2,8 +2,9 @@ import { isSpaceChar } from '../html-tag.ts';
 import { charAt, isSpaceOrTab, lineFeed } from './line.ts';
 
 /**
- * Block start scanners. Each reads the line from `index`, its first nonspace,
- * to `lineEnd`.
+ * Block start scanners for the line from `index`, its first nonspace, to
+ * `lineEnd`. The result depends only on that line, but the search for a
+ * backtick in a fence's info string can read past it.
  */
 
 export const scanAtxHeadingStart = (source: string, index: number, lineEnd: number) => {

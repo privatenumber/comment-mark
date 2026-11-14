@@ -31,7 +31,8 @@ const skipTableSpace = (source: string, index: number, end: number) => {
 
 /**
  * `row_from_string` for one line from `start` to `end`. Returns each cell as
- * a `[start, end]` pair, untrimmed, or undefined when the line is no row.
+ * a `[start, end]` pair, or undefined when the line is no row. A cell starts
+ * after the spaces that follow its pipe and keeps its trailing spaces.
  */
 export const readTableRow = (source: string, start: number, end: number) => {
 	let index = start;

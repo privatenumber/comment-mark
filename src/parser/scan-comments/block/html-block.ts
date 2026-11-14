@@ -80,8 +80,10 @@ const rawTagClosers = ['</script>', '</pre>', '</textarea>', '</style>'];
 const isTrailingSpace = (code: number) => isSpaceOrTab(code) || code === 12;
 
 /**
- * `_scan_html_block_start` and `_scan_html_block_start_7`, reading the line from
- * `index`, its first nonspace, to `lineEnd`. Returns the type or 0.
+ * `_scan_html_block_start` and `_scan_html_block_start_7` for the line from
+ * `index`, its first nonspace, to `lineEnd`. Returns the type or 0. The result
+ * depends only on that line, but `scanHtmlTag` can search past it for the end
+ * of a quoted attribute value.
  */
 export const scanHtmlBlockStart = (
 	source: string,
