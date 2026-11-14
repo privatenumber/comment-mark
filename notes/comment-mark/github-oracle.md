@@ -130,6 +130,8 @@ const random = (limit) => {
 }
 
 export const fragmentSets = {
+    refs: ['[', ']', '][', '[]', ']: /u\n', '\n\n[r]: /u\n', '[r]', '[R]', 'r', ' ', '\n', 'x <!-- a -->', 'x <!-- /a -->', '<!--', '-->', '!'],
+    links: ['[', '![', ']', '](', ')', '(', '<', '>', '"', "'", ' ', '\n', '`', '\\', 'x <!-- a -->', 'x <!-- /a -->', '<!--', '-->', 'u', '<u>', '"t"', '[x](', '![x](', '[x', '![x', '<!-- a -->', '<!-- /a -->'],
     autolink: ['x <!-- a -->', 'x <!-- /a -->', '<!--', '-->', '<', '>', '`', ' ', '\n', 'http', 'a', 'ab', ':', '@', '.', '-', 'b.c', 'x@', 'a.b-c', '<a@b.c>', '<http://x>', '<mailto:', '\\', '_', '+', 'a'.repeat(31), 'a'.repeat(63), '<a', '"', '=', '<!X', '<?', '<http://`', '<a`b@c.d>', '`', '``', '<ab:`>', '<a`@b>'],
     rich: ['x <!-- a -->', 'x <!-- /a -->', '<!-- a -->', '<!--', '-->', '<!-->', '<!--->', ' --->', '\n', '\n', '\n\n', ' ', 'text', '`', '``', '\n```\n', '\n~~~\n', '\n    ', '  ', '> ', '- ', '1. ', '2. ', '| - |', '|', '# ', '\n===\n', '\n---\n', '\n***\n', '\\', '<div>', '\n<div>\n', '<span>', '\n<span>\n', '<pre>', '</pre>', '<?x', '?>', '<!X', '>', '<a title="', '">', '\t', '[x]: ', '&lt;']
 }
@@ -281,8 +283,150 @@ console.log({
 })
 ```
 
+## Reference label case folding
+
+cmark-gfm matches a reference to its definition after `cmark_utf8proc_case_fold`, which uses the Unicode tables bundled with cmark-gfm 0.29.0.gfm.13. The scanner folds with JavaScript's `toLowerCase().toUpperCase()`, which uses the newer tables of the running Node. The two disagree on 185 scalars. Each of them folds to itself in cmark-gfm, but JavaScript merges it with another scalar, such as dotless `ı` with `I`. [reference-definition.ts](../../src/parser/scan-comments/block/reference-definition.ts) keeps these scalars unfolded.
+
+Measured on 2026-11-14 with Node 26.13.0 (Unicode 17.0). Of the 1,112,064 Unicode scalars, 2,767 change under either fold. After the exceptions, no scalar folds differently from cmark-gfm, and no two scalars that cmark-gfm keeps apart compare equal. Labels that combine each changed scalar with `̇`, `ͅ`, `Σ`, `I`, `ı`, `ß`, or `a` also agree. That is a sample, not proof for every label.
+
+Regenerate the table when Node's `process.versions.unicode` changes. Build `fold-scalars.c` in an empty directory against the [oracle build](#build), and run `compare-folds.mjs` beside it:
+
+```sh
+C=<path to cmark-gfm-0.29.0.gfm.13>
+cc -I $C/src -I $C/build/src -o fold-scalars fold-scalars.c $C/build/src/libcmark-gfm.a
+node compare-folds.mjs
+```
+
+It prints the exception count and the exceptions as `[start, end]` ranges in hexadecimal, for the table in `reference-definition.ts`. The other three counts must be 0: exceptions that cmark-gfm folds to another scalar, scalars whose key disagrees with cmark-gfm, and labels where neighboring scalars change the key.
+
+`fold-scalars.c` prints each scalar and its cmark-gfm fold as hexadecimal UTF-8:
+
+```c
+#include <stdio.h>
+#include "utf8.h"
+#include "buffer.h"
+
+int main(void) {
+  cmark_mem *mem = cmark_get_default_mem_allocator();
+  cmark_strbuf input = CMARK_BUF_INIT(mem);
+  cmark_strbuf output = CMARK_BUF_INIT(mem);
+  for (int cp = 0; cp <= 0x10ffff; cp++) {
+    if (cp >= 0xd800 && cp <= 0xdfff) continue;
+    cmark_strbuf_clear(&input);
+    cmark_strbuf_clear(&output);
+    if (cp == 0xfffe || cp == 0xffff) {
+      unsigned char bytes[] = {0xef, 0xbf, cp == 0xfffe ? 0xbe : 0xbf};
+      cmark_strbuf_put(&input, bytes, 3);
+    } else cmark_utf8proc_encode_char(cp, &input);
+    cmark_utf8proc_case_fold(&output, input.ptr, input.size);
+    printf("%x\t", cp);
+    for (int i = 0; i < output.size; i++) printf("%02x", output.ptr[i]);
+    putchar('\n');
+  }
+  cmark_strbuf_free(&input);
+  cmark_strbuf_free(&output);
+}
+```
+
+`compare-folds.mjs`:
+
+```js
+// Compares cmark-gfm's case fold with JavaScript's toLowerCase().toUpperCase()
+// on every Unicode scalar. Run beside a built fold-scalars.
+import { spawnSync } from 'node:child_process'
+
+const output = spawnSync('./fold-scalars', {
+    encoding: 'utf8',
+    maxBuffer: 50_000_000
+})
+if (output.status !== 0) {
+    throw new Error(output.stderr)
+}
+
+// utf8proc's fold rejects the noncharacters U+FFFE and U+FFFF, so fold-scalars
+// prints junk for them. In a label, cmark-gfm keeps each one distinct.
+const folds = new Map()
+const changed = []
+for (const line of output.stdout.trimEnd().split('\n')) {
+    const [point, hex] = line.split('\t')
+    const input = String.fromCodePoint(Number.parseInt(point, 16))
+    const folded = point === 'fffe' || point === 'ffff' ? input : Buffer.from(hex, 'hex').toString('utf8')
+    if (folded !== input) {
+        folds.set(input, folded)
+    }
+    if (folded !== input || input.toLowerCase().toUpperCase() !== input) {
+        changed.push(input)
+    }
+}
+
+const fold = text => Array.from(text, char => folds.get(char) ?? char).join('')
+const exceptions = new Set(changed.filter(
+    char => fold(char.toLowerCase().toUpperCase()) !== fold(char)
+))
+console.log('changed', changed.length, 'exceptions', exceptions.size)
+console.log('exceptions that cmark folds', [...exceptions].filter(char => fold(char) !== char).length)
+
+const ranges = []
+for (const char of exceptions) {
+    const code = char.codePointAt(0)
+    const previous = ranges.at(-1)
+    if (previous && previous[1] + 1 === code) {
+        previous[1] = code
+    } else {
+        ranges.push([code, code])
+    }
+}
+console.log('ranges', JSON.stringify(ranges.map(range => range.map(code => code.toString(16)))))
+
+// The scanner's key: exceptions stay as they are, and the rest is case-mapped.
+const key = text => Array.from(text, (char) => {
+    if (exceptions.has(char)) {
+        return char
+    }
+    return char.toLowerCase().toUpperCase()
+}).join('')
+
+// Two scalars must share a key exactly when cmark folds them alike.
+const classes = new Map()
+let collisions = 0
+for (const char of changed) {
+    const value = fold(char)
+    if (classes.has(key(char)) && classes.get(key(char)) !== value) {
+        collisions += 1
+    } else {
+        classes.set(key(char), value)
+    }
+}
+console.log('collisions', collisions)
+
+// The scanner case-maps each run between exceptions as one string, and case
+// mapping can depend on neighbors, such as a final sigma.
+const runKey = (text) => {
+    let result = ''
+    let run = ''
+    for (const char of text) {
+        if (exceptions.has(char)) {
+            result += run.toLowerCase().toUpperCase() + char
+            run = ''
+        } else {
+            run += char
+        }
+    }
+    return result + run.toLowerCase().toUpperCase()
+}
+let interactions = 0
+for (const a of changed) {
+    for (const b of ['̇', 'ͅ', 'Σ', 'I', 'ı', 'ß', 'a']) {
+        if (runKey(a + b) !== key(a) + key(b) || runKey(b + a) !== key(b) + key(a)) {
+            interactions += 1
+        }
+    }
+}
+console.log('interactions', interactions)
+```
+
 ## Results
 
-Run `node compare.mjs <scan-comments/index.ts> 20000 <seed> [rich|autolink]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
+Run `node compare.mjs <scan-comments/index.ts> 20000 <seed> [rich|autolink|links|refs]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
 
 The comparison numbers each generated marker, such as `<!-- a12 -->`, and each bare `<!--`, such as `<!--o12q`. A comment is identified by the number it starts with, which checks its opening, and the last marker number in it, which checks its closing. Where a comment has no number, as with `<!-->` or a `<!--` built from two fragments, its first or last 3 characters are compared after normalization: entities decoded, and tag-like sequences and whitespace dropped. A comment that spans chunks also holds markup that the renderer generates, so its full text cannot match. A few mismatches per seed remain as artifacts of this normalization, when generated markup such as `<hr />` or a setext underline falls in those last 3 characters. Use `show.mjs` to confirm each mismatch before treating it as a scanner bug.
