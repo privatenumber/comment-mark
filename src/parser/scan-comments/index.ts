@@ -1,4 +1,4 @@
-import { lexBlocks } from './block/index.ts';
+import { lexBlocks, type BlockHandlers } from './block/index.ts';
 import { normalizeLabel } from './block/reference-definition.ts';
 import { createHtmlTokenizer } from './html-tokenizer.ts';
 import { lexInline } from './inline-lexer.ts';
@@ -20,7 +20,7 @@ export type CommentVisitor = (
 
 /**
  * Finds the HTML comments that GitHub renders as comments, without building a
- * tree. It runs three phases in one pass over the source:
+ * tree. It runs three phases over the source:
  *
  * 1. The block phase finds the leaf blocks: paragraphs, headings, table cells,
  *    HTML blocks, and code, which never holds a comment.
@@ -36,37 +36,17 @@ export type CommentVisitor = (
 export const scanComments = (source: string, visit: CommentVisitor) => {
 	const tokenizer = createHtmlTokenizer(source, visit);
 	const findTagOpen = createForwardSearch(source, '<');
-	let labels: Set<string> | undefined;
+	const labels = new Set<string>();
 	const isDefinedLabel = (label: string) => {
-		if (!labels) {
-			labels = new Set();
-			if (source.includes(']:')) {
-				lexBlocks(source, {
-					text: () => {},
-					html: () => {},
-					definition: value => labels!.add(normalizeLabel(value)),
-				});
-			}
-		}
 		const normalized = normalizeLabel(label);
 		return normalized !== '' && labels.has(normalized);
 	};
 
-	lexBlocks(source, {
+	const handlers: BlockHandlers = {
 		html: (start, end, afterMarkup, continuation) => {
 			tokenizer.feed(start, end, afterMarkup, continuation, true);
 		},
 		text: (segments, continuation) => {
-			// Raw HTML starts with `<`, so text without one renders as text. A
-			// `<` between two segments only costs a needless inline pass.
-			if (segments.length === 0) {
-				return;
-			}
-			const open = findTagOpen(segments[0]);
-			if (open === -1 || open >= segments.at(-1)!) {
-				return;
-			}
-
 			// The inline phase reads the lines joined by line feeds. `textStarts`
 			// maps each line back to its source position.
 			let text = '';
@@ -97,5 +77,52 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 				}
 			}, isDefinedLabel);
 		},
+	};
+	const events: (
+		| {
+			type: 'text';
+			segments: number[];
+			continuation: string;
+		}
+		| {
+			type: 'html';
+			start: number;
+			end: number;
+			afterMarkup: boolean;
+			continuation: string;
+		}
+	)[] = [];
+	lexBlocks(source, {
+		text: (segments, continuation) => {
+			// Raw HTML starts with `<`, so text without one renders as text and
+			// needs no replay. A `<` between two segments only costs a needless
+			// inline pass.
+			if (segments.length === 0) {
+				return;
+			}
+			const open = findTagOpen(segments[0]);
+			if (open !== -1 && open < segments.at(-1)!) {
+				events.push({
+					type: 'text',
+					segments,
+					continuation,
+				});
+			}
+		},
+		html: (start, end, afterMarkup, continuation) => events.push({
+			type: 'html',
+			start,
+			end,
+			afterMarkup,
+			continuation,
+		}),
+		definition: label => labels.add(normalizeLabel(label)),
 	});
+	for (const event of events) {
+		if (event.type === 'text') {
+			handlers.text(event.segments, event.continuation);
+		} else {
+			handlers.html(event.start, event.end, event.afterMarkup, event.continuation);
+		}
+	}
 };
