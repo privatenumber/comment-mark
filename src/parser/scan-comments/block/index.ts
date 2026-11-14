@@ -1,5 +1,16 @@
-import { isAsciiAlphanumeric, isSpaceChar, scanHtmlTag } from './html-tag.ts';
-import { countDefinitionLines } from './reference-definition.ts';
+import { countDefinitionLines } from '../reference-definition.ts';
+import {
+	chopClosingSequence,
+	parseListMarker,
+	scanAtxHeadingStart,
+	scanCloseFence,
+	scanOpenFence,
+	scanSetextHeadingLine,
+	scanThematicBreak,
+} from './block-starts.ts';
+import { closesHtmlBlock, scanHtmlBlockStart } from './html-block.ts';
+import { charAt, isSpaceOrTab, lineFeed } from './line.ts';
+import { readTableRow, scanTableStart } from './table.ts';
 
 /**
  * The block phase: a port of the block parser in GitHub's renderer, cmark-gfm
@@ -76,91 +87,6 @@ type Target = 'container' | Leaf['type'] | 'row' | 'thematicBreak';
 const tabStop = 4;
 const codeIndent = 4;
 const maxListDepth = 100;
-const lineFeed = 10;
-
-const blockTagNames = new Set([
-	'address',
-	'article',
-	'aside',
-	'base',
-	'basefont',
-	'blockquote',
-	'body',
-	'caption',
-	'center',
-	'col',
-	'colgroup',
-	'dd',
-	'details',
-	'dialog',
-	'dir',
-	'div',
-	'dl',
-	'dt',
-	'fieldset',
-	'figcaption',
-	'figure',
-	'footer',
-	'form',
-	'frame',
-	'frameset',
-	'h1',
-	'h2',
-	'h3',
-	'h4',
-	'h5',
-	'h6',
-	'head',
-	'header',
-	'hr',
-	'html',
-	'iframe',
-	'legend',
-	'li',
-	'link',
-	'main',
-	'menu',
-	'menuitem',
-	'nav',
-	'noframes',
-	'ol',
-	'optgroup',
-	'option',
-	'p',
-	'param',
-	'section',
-	'source',
-	'title',
-	'summary',
-	'table',
-	'tbody',
-	'td',
-	'tfoot',
-	'th',
-	'thead',
-	'tr',
-	'track',
-	'ul',
-]);
-
-const rawTagNames = new Set(['script', 'pre', 'textarea', 'style']);
-
-// The text that ends an HTML block of types 2 to 5.
-const htmlBlockClosers: Record<number, string> = {
-	2: '-->',
-	3: '?>',
-	4: '>',
-	5: ']]>',
-};
-const rawTagClosers = ['</script>', '</pre>', '</textarea>', '</style>'];
-
-const isSpaceOrTab = (code: number) => code === 32 || code === 9;
-
-const isTrailingSpace = (code: number) => isSpaceOrTab(code) || code === 12;
-
-// `spacechar` in the table extension excludes LF and CR.
-const isTableSpace = (code: number) => code === 32 || code === 9 || code === 11 || code === 12;
-
 export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	const containers: Container[] = [];
 	let leaf: Leaf | undefined;
@@ -179,7 +105,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	let blank = false;
 	let partiallyConsumedTab = false;
 
-	const peek = (index: number) => (index < lineEnd ? source.charCodeAt(index) : lineFeed);
+	const peek = (index: number) => charAt(source, index, lineEnd);
 
 	const findFirstNonspace = () => {
 		let charsToTab = tabStop - (column % tabStop);
@@ -270,290 +196,6 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 		leaf = undefined;
 	};
 
-	// Block start scanners. Each reads from `index`, the first nonspace.
-
-	const scanAtxHeadingStart = (index: number) => {
-		let end = index;
-		while (peek(end) === 35 && end - index < 7) {
-			end += 1;
-		}
-		const level = end - index;
-		if (level < 1 || level > 6) {
-			return 0;
-		}
-		const after = peek(end);
-		if (after === lineFeed) {
-			return level + 1;
-		}
-		if (!isSpaceOrTab(after)) {
-			return 0;
-		}
-		while (isSpaceOrTab(peek(end))) {
-			end += 1;
-		}
-		return end - index;
-	};
-
-	const scanFenceRun = (index: number) => {
-		const char = peek(index);
-		if (char !== 96 && char !== 126) {
-			return 0;
-		}
-		let end = index;
-		while (peek(end) === char) {
-			end += 1;
-		}
-		return end - index;
-	};
-
-	const scanOpenFence = (index: number) => {
-		const length = scanFenceRun(index);
-		if (length < 3) {
-			return 0;
-		}
-		// A backtick fence's info string cannot hold a backtick.
-		if (peek(index) === 96) {
-			const backtick = source.indexOf('`', index + length);
-			if (backtick !== -1 && backtick < lineEnd) {
-				return 0;
-			}
-		}
-		return length;
-	};
-
-	const scanCloseFence = (index: number) => {
-		const length = scanFenceRun(index);
-		if (length < 3) {
-			return 0;
-		}
-		let end = index + length;
-		while (isSpaceOrTab(peek(end))) {
-			end += 1;
-		}
-		return end >= lineEnd ? length : 0;
-	};
-
-	const scanSetextHeadingLine = (index: number) => {
-		const char = peek(index);
-		if (char !== 61 && char !== 45) {
-			return false;
-		}
-		let end = index;
-		while (peek(end) === char) {
-			end += 1;
-		}
-		while (isSpaceOrTab(peek(end))) {
-			end += 1;
-		}
-		return end >= lineEnd;
-	};
-
-	const scanThematicBreak = (index: number) => {
-		const char = peek(index);
-		if (char !== 42 && char !== 95 && char !== 45) {
-			return false;
-		}
-		let count = 0;
-		for (let end = index; end < lineEnd; end += 1) {
-			const code = source.charCodeAt(end);
-			if (code === char) {
-				count += 1;
-			} else if (!isSpaceOrTab(code)) {
-				return false;
-			}
-		}
-		return count >= 3;
-	};
-
-	/** `_scan_html_block_start` and `_scan_html_block_start_7`. Returns the type or 0. */
-	const scanHtmlBlockStart = (index: number, interruptsParagraph: boolean) => {
-		if (peek(index) !== 60) {
-			return 0;
-		}
-		const next = peek(index + 1);
-		if (next === 33) {
-			const after = peek(index + 2);
-			if (after === 45 && peek(index + 3) === 45) {
-				return 2;
-			}
-			if (after >= 65 && after <= 90) {
-				return 4;
-			}
-			return index + 9 <= lineEnd && source.slice(index + 2, index + 9).toUpperCase() === '[CDATA[' ? 5 : 0;
-		}
-		if (next === 63) {
-			return 3;
-		}
-
-		const closing = next === 47;
-		const nameStart = index + (closing ? 2 : 1);
-		let nameEnd = nameStart;
-		while (isAsciiAlphanumeric(peek(nameEnd))) {
-			nameEnd += 1;
-		}
-		const name = source.slice(nameStart, nameEnd).toLowerCase();
-		const after = peek(nameEnd);
-		if (!closing && rawTagNames.has(name) && (isSpaceChar(after) || after === 62)) {
-			return 1;
-		}
-		if (
-			blockTagNames.has(name)
-			&& (isSpaceChar(after) || after === 62 || (after === 47 && peek(nameEnd + 1) === 62))
-		) {
-			return 6;
-		}
-		if (interruptsParagraph) {
-			return 0;
-		}
-
-		// Type 7: one complete open or closing tag, alone on its line.
-		let end = scanHtmlTag(source, index, lineEnd);
-		if (end === -1) {
-			return 0;
-		}
-		while (end < lineEnd && isTrailingSpace(source.charCodeAt(end))) {
-			end += 1;
-		}
-		return end === lineEnd ? 7 : 0;
-	};
-
-	const closesHtmlBlock = (kind: number) => {
-		const line = source.slice(firstNonspace, lineEnd);
-		if (kind === 1) {
-			const lower = line.toLowerCase();
-			return rawTagClosers.some(closer => lower.includes(closer));
-		}
-		return line.includes(htmlBlockClosers[kind]);
-	};
-
-	/** `parse_list_marker`. Returns the marker's length, or 0. */
-	const parseListMarker = (index: number, interruptsParagraph: boolean) => {
-		const start = index;
-		const char = peek(index);
-		if (char === 42 || char === 45 || char === 43) {
-			index += 1;
-		} else if (char >= 48 && char <= 57) {
-			let value = 0;
-			let digits = 0;
-			do {
-				value = (value * 10) + peek(index) - 48;
-				index += 1;
-				digits += 1;
-			} while (digits < 9 && peek(index) >= 48 && peek(index) <= 57);
-			if (interruptsParagraph && value !== 1) {
-				return 0;
-			}
-			const delimiter = peek(index);
-			if (delimiter !== 46 && delimiter !== 41) {
-				return 0;
-			}
-			index += 1;
-		} else {
-			return 0;
-		}
-
-		if (!isSpaceChar(peek(index))) {
-			return 0;
-		}
-		if (interruptsParagraph) {
-			// An item that interrupts a paragraph needs content after the marker.
-			let content = index;
-			while (isSpaceOrTab(peek(content))) {
-				content += 1;
-			}
-			if (content >= lineEnd) {
-				return 0;
-			}
-		}
-		return index - start;
-	};
-
-	// Table rows. `table_cell` is `(escaped_char|[^|\r\n])+`, and re2c takes the
-	// longest match, so a `|` after any backslash is escaped, even in `\\|`:
-	// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/extensions/ext_scanners.re#L32-L35
-	const scanTableCell = (index: number, end: number) => {
-		while (index < end) {
-			const code = source.charCodeAt(index);
-			if (code === 124 && source.charCodeAt(index - 1) !== 92) {
-				break;
-			}
-			index += 1;
-		}
-		return index;
-	};
-
-	const skipTableSpace = (index: number, end: number) => {
-		while (index < end && isTableSpace(source.charCodeAt(index))) {
-			index += 1;
-		}
-		return index;
-	};
-
-	/**
-	 * `row_from_string` for one line from `start` to `end`. Returns each cell as
-	 * a `[start, end]` pair, untrimmed, or undefined when the line is no row.
-	 */
-	const readTableRow = (start: number, end: number) => {
-		let index = start;
-		if (start < end && source.charCodeAt(start) === 124) {
-			index = skipTableSpace(start + 1, end);
-		}
-		const cells: number[] = [];
-		while (index <= end) {
-			const cellEnd = scanTableCell(index, end);
-			let pipeEnd = cellEnd;
-			if (cellEnd < end) {
-				pipeEnd = skipTableSpace(cellEnd + 1, end);
-			}
-			if (pipeEnd > index) {
-				cells.push(index, cellEnd);
-			}
-			index = pipeEnd;
-			if (pipeEnd === cellEnd) {
-				// The row must end here, after optional spaces.
-				const rowEnd = skipTableSpace(index, end);
-				return rowEnd === end && cells.length > 0 ? cells : undefined;
-			}
-		}
-		return undefined;
-	};
-
-	const scanTableMarker = (index: number) => {
-		index = skipTableSpace(index, lineEnd);
-		if (peek(index) === 58) {
-			index += 1;
-		}
-		if (peek(index) !== 45) {
-			return -1;
-		}
-		while (peek(index) === 45) {
-			index += 1;
-		}
-		if (peek(index) === 58) {
-			index += 1;
-		}
-		return skipTableSpace(index, lineEnd);
-	};
-
-	const scanTableStart = (index: number) => {
-		if (peek(index) === 124) {
-			index += 1;
-		}
-		index = scanTableMarker(index);
-		if (index === -1) {
-			return false;
-		}
-		while (peek(index) === 124) {
-			const next = scanTableMarker(index + 1);
-			if (next === -1) {
-				index += 1;
-				break;
-			}
-			index = next;
-		}
-		return skipTableSpace(index, lineEnd) === lineEnd;
-	};
-
 	const reportCells = (cells: number[], columns: number, prefix: string) => {
 		const end = Math.min(cells.length, columns * 2);
 		for (let index = 0; index < end; index += 2) {
@@ -566,15 +208,15 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	 * row when this line is a delimiter row with the same number of cells.
 	 */
 	const openTableHeader = (paragraph: TextLeaf) => {
-		if (paragraph.tableVisited || !scanTableStart(firstNonspace)) {
+		if (paragraph.tableVisited || !scanTableStart(source, firstNonspace, lineEnd)) {
 			return false;
 		}
-		const delimiters = readTableRow(firstNonspace, lineEnd);
+		const delimiters = readTableRow(source, firstNonspace, lineEnd);
 		if (!delimiters) {
 			return false;
 		}
 		const { segments } = paragraph;
-		const header = readTableRow(segments.at(-2)!, segments.at(-1)!);
+		const header = readTableRow(source, segments.at(-2)!, segments.at(-1)!);
 		if (!header || header.length !== delimiters.length) {
 			paragraph.tableVisited = true;
 			return false;
@@ -638,7 +280,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 					if (
 						indent <= 3
 						&& peek(firstNonspace) === leaf.char
-						&& scanCloseFence(firstNonspace) >= leaf.length
+						&& scanCloseFence(source, firstNonspace, lineEnd) >= leaf.length
 					) {
 						// The closing fence ends the line.
 						leaf = undefined;
@@ -669,7 +311,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 					break;
 				}
 				case 'table': {
-					leafMatched = readTableRow(firstNonspace, lineEnd) !== undefined;
+					leafMatched = readTableRow(source, firstNonspace, lineEnd) !== undefined;
 					break;
 				}
 				default: {
@@ -739,7 +381,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				return true;
 			}
 
-			const headingLength = scanAtxHeadingStart(firstNonspace);
+			const headingLength = scanAtxHeadingStart(source, firstNonspace, lineEnd);
 			if (headingLength) {
 				advance(firstNonspace + headingLength - offset, false);
 				addChild();
@@ -753,7 +395,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				return true;
 			}
 
-			const fenceLength = scanOpenFence(firstNonspace);
+			const fenceLength = scanOpenFence(source, firstNonspace, lineEnd);
 			if (fenceLength) {
 				const fenceOffset = firstNonspace - offset;
 				addChild();
@@ -769,7 +411,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				return true;
 			}
 
-			const htmlKind = scanHtmlBlockStart(firstNonspace, target === 'paragraph');
+			const htmlKind = scanHtmlBlockStart(source, firstNonspace, lineEnd, target === 'paragraph');
 			if (htmlKind) {
 				// Only the blocks that this closes write markup before it.
 				addChild(false);
@@ -782,7 +424,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				return true;
 			}
 
-			if (target === 'paragraph' && scanSetextHeadingLine(firstNonspace)) {
+			if (target === 'paragraph' && scanSetextHeadingLine(source, firstNonspace, lineEnd)) {
 				// When only definitions precede it, the underline is paragraph text.
 				const paragraph = leaf as TextLeaf;
 				if (resolveDefinitions(paragraph.segments)) {
@@ -793,7 +435,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				return true;
 			}
 
-			if (!(target === 'paragraph' && !allMatched) && scanThematicBreak(firstNonspace)) {
+			if (!(target === 'paragraph' && !allMatched) && scanThematicBreak(source, firstNonspace, lineEnd)) {
 				addChild();
 				advance(lineEnd - offset, false);
 				target = 'thematicBreak';
@@ -801,7 +443,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			}
 
 			const markerLength = depth < maxListDepth
-				? parseListMarker(firstNonspace, target === 'paragraph')
+				? parseListMarker(source, firstNonspace, lineEnd, target === 'paragraph')
 				: 0;
 			if (markerLength) {
 				const markerOffset = indent;
@@ -842,7 +484,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			}
 
 			if (target === 'table' && !blank) {
-				const cells = readTableRow(firstNonspace, lineEnd);
+				const cells = readTableRow(source, firstNonspace, lineEnd);
 				if (!cells) {
 					return false;
 				}
@@ -897,7 +539,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				const html = leaf as Extract<Leaf, { type: 'html' }>;
 				handlers.html(contentStart, lineEnd, markup, html.continuation);
 				markup = false;
-				if (html.kind <= 5 && closesHtmlBlock(html.kind)) {
+				if (html.kind <= 5 && closesHtmlBlock(source, firstNonspace, lineEnd, html.kind)) {
 					leaf = undefined;
 				}
 				return;
@@ -961,29 +603,4 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 		processLine(lineStart, source.length);
 	}
 	finalizeLeaf();
-};
-
-/**
- * `chop_trailing_hashtags`: drops trailing whitespace, and a closing sequence of
- * `#` that follows a space or tab. Returns the new end.
- */
-const chopClosingSequence = (source: string, start: number, end: number) => {
-	while (end > start && isSpaceChar(source.charCodeAt(end - 1))) {
-		end -= 1;
-	}
-	let hashes = end;
-	while (hashes > start && source.charCodeAt(hashes - 1) === 35) {
-		hashes -= 1;
-	}
-	if (hashes === start) {
-		// Only the closing sequence remains; the opening one was already skipped.
-		return start;
-	}
-	if (hashes === end || !isSpaceOrTab(source.charCodeAt(hashes - 1))) {
-		return end;
-	}
-	while (hashes > start && isSpaceChar(source.charCodeAt(hashes - 1))) {
-		hashes -= 1;
-	}
-	return hashes;
 };

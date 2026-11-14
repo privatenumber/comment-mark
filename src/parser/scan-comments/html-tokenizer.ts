@@ -1,4 +1,4 @@
-import type { CommentVisitor } from './scan-comments.ts';
+import type { CommentVisitor } from './index.ts';
 import { isAsciiLetter, isSpaceChar } from './html-tag.ts';
 import { createForwardSearch } from './utils/forward-search.ts';
 

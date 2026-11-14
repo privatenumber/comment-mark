@@ -4,7 +4,7 @@ import {
 	skipWhitespace,
 } from './characters.ts';
 import { type Attribute, parseAttributeNodes } from './parse-attributes.ts';
-import { scanComments } from './scan-comments.ts';
+import { scanComments } from './scan-comments/index.ts';
 
 export type MarkerNode = {
 	tagName: string;
