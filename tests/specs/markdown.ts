@@ -4,9 +4,35 @@ import {
 	getCommentMark,
 	getCommentMarkAll,
 } from '#comment-mark';
+import { scanComments } from '../../src/parser/scan-comments/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('comment and code boundaries', () => {
+	test('buffered HTML lines retain streamed comment positions and line context', () => {
+		for (const newline of ['\n', '\r\n', '\r']) {
+			for (const prefix of ['', '> ']) {
+				const suffix = [
+					'',
+					`${prefix}<div>`,
+					`${prefix}<span title="`,
+					`${prefix}<!-- not a comment -->`,
+					`${prefix}">`,
+					`${prefix}  <!-- a -->`,
+					`${prefix}old`,
+					`${prefix}<!-- /a -->`,
+					`${prefix}</div>`,
+				].join(newline);
+				const collect = (head: string) => {
+					const events: unknown[][] = [];
+					scanComments(head + newline + suffix, (...event) => events.push(event));
+					return events;
+				};
+				const streamed = collect('x abcdef <span>');
+				expect(streamed.length).toBe(2);
+				expect(collect('x [r](u) <span>')).toStrictEqual(streamed);
+			}
+		}
+	});
 	test('a fenced example containing <!-- does not hide the next marker', async () => {
 		const content = ['```html', '<!--', '```', createMarker('x', 'old')].join('\n');
 

@@ -81,7 +81,8 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		},
 	};
 	// Each event uses three numbers: text uses -1 and an index into textSegments;
-	// HTML uses start, end, and afterMarkup. The arrays retain source order.
+	// HTML uses start, end, and afterMarkup; adding 2 marks a run of lines.
+	// The arrays retain source order.
 	const positions: number[] = [];
 	const continuations: string[] = [];
 	const textSegments: number[][] = [];
@@ -114,6 +115,21 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		},
 		html: (start, end, afterMarkup, continuation) => {
 			if (buffering) {
+				const last = positions.length - 3;
+				const previousEnd = positions[last + 1];
+				if (
+					last >= 0 && positions[last] >= 0 && !afterMarkup
+					&& continuations.at(-1) === continuation
+					&& ((start - previousEnd === 1
+						&& (source.charCodeAt(previousEnd) === 10 || source.charCodeAt(previousEnd) === 13))
+						|| (start - previousEnd === 2 && source.startsWith('\r\n', previousEnd)))
+				) {
+					positions[last + 1] = end;
+					if (positions[last + 2] < 2) {
+						positions[last + 2] += 2;
+					}
+					return;
+				}
 				positions.push(start, end, Number(afterMarkup));
 				continuations.push(continuation);
 			} else {
@@ -122,13 +138,31 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 		},
 		definition: label => labels.add(normalizeLabel(label)),
 	});
+	const findLineFeed = createForwardSearch(source, '\n');
+	const findCarriageReturn = createForwardSearch(source, '\r');
 	for (let index = 0; index < continuations.length; index += 1) {
 		const start = positions[index * 3];
 		const end = positions[(index * 3) + 1];
 		if (start === -1) {
 			handlers.text(textSegments[end], continuations[index]);
 		} else {
-			handlers.html(start, end, positions[(index * 3) + 2] === 1, continuations[index]);
+			const flags = positions[(index * 3) + 2];
+			let lineStart = start;
+			let afterMarkup = flags === 1 || flags === 3;
+			if (flags >= 2) {
+				while (lineStart < end) {
+					const lf = findLineFeed(lineStart);
+					const cr = findCarriageReturn(lineStart);
+					const lineEnd = Math.min(lf === -1 ? end : lf, cr === -1 ? end : cr, end);
+					if (lineEnd === end) {
+						break;
+					}
+					handlers.html(lineStart, lineEnd, afterMarkup, continuations[index]);
+					afterMarkup = false;
+					lineStart = lineEnd + (source.startsWith('\r\n', lineEnd) ? 2 : 1);
+				}
+			}
+			handlers.html(lineStart, end, afterMarkup, continuations[index]);
 		}
 	}
 };
