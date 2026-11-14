@@ -549,7 +549,7 @@ Probed on 2026-11-14. In the table, D is `<![CDATA[ > <!-- a -->x<!-- /a --> ]]>
 | 14 | `- <svg>\n- D` | out | matches |
 | 15 | `> <svg>\n\nD` | out | matches |
 | 16 | `<em><svg></em>D` | out | matches |
-| 17 | `*<svg>* D` | out | differs |
+| 17 | `*<svg>* D` | out | matches |
 | 18 | `<svg><desc>D` | in | matches |
 | 19 | `<table><tr><td><svg></td></tr></table>D` | out | matches |
 | 20 | `<svg>\n</svg>\n\nD` | out | matches |

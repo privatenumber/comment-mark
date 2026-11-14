@@ -3,6 +3,35 @@ import { getCommentMarkAll } from '#comment-mark';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('parser scaling', () => {
+	for (const [name, input] of [
+		// No underscore closer has a matching opener.
+		['unmatched delimiter openers', (n: number) => '*a '.repeat(n) + 'b_ '.repeat(n)],
+		// Each match consumes only two characters from each long run.
+		['long delimiter runs', (n: number) => `${'*'.repeat(n)}x${'*'.repeat(n)}`],
+		// Every character starts a new delimiter run.
+		['alternating delimiters', (n: number) => '*_'.repeat(n)],
+	] as const) {
+		test(`${name} scale linearly`, () => {
+			const measure = (size: number) => {
+				const content = `x <svg/> <!-- a --> ${input(size)}`;
+				let best = Infinity;
+				for (let attempt = 0; attempt < 5; attempt += 1) {
+					const start = process.cpuUsage();
+					for (let iteration = 0; iteration < 8; iteration += 1) {
+						getCommentMarkAll(content);
+					}
+					const elapsed = process.cpuUsage(start);
+					best = Math.min(best, elapsed.user + elapsed.system);
+				}
+				return best;
+			};
+			measure(3000);
+			const small = measure(3000);
+			const large = measure(6000);
+			expect(large / small).toBeLessThan(3.2);
+		});
+	}
+
 	test('short table rows scale with source size', () => {
 		const measure = (size: number) => {
 			const content = `x [x] <svg> <!-- a -->\n\n${'|h'.repeat(size)}|\n${'|-'.repeat(size)}|\n${'| x |\n'.repeat(size)}`;

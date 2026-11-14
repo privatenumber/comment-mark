@@ -1024,6 +1024,24 @@ describe('table cells', () => {
 describe('foreign content', () => {
 	// GitHub /markdown renders both marker openers in these cases.
 	const wrapped = '<!-- a -->PRESERVE <![CDATA[ > <!-- a -->old ]]> tail<!-- /a -->';
+	for (const delimiter of ['*', '**', '~~']) {
+		test(`generated ${delimiter} closes foreign content`, async () => {
+			// GitHub /markdown probe 17 checks the `*` case; 2026-11-15 also
+			// confirmed the `**` and `~~` cases with both marker openers.
+			const source = `${delimiter}<svg>${delimiter} ${wrapped}`;
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', 'NEW'));
+		});
+	}
+	test('unmatched emphasis leaves foreign content open', async () => {
+		const source = `*<svg> ${wrapped}`;
+		expect(await commentMark(source, { a: 'NEW' })).toBe('*<svg> <!-- a -->NEW<!-- /a -->');
+	});
+	test('nested generated emphasis closes foreign content at the inner end tag', async () => {
+		// cmark-gfm 0.29.0.gfm.13 renders <strong><em><svg></em> before wrapped,
+		// and closes </strong> after it.
+		const source = `***<svg>* ${wrapped} x**`;
+		expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', 'NEW'));
+	});
 	test('resolved links close foreign content inside their labels', async () => {
 		// GitHub /markdown, 2026-11-15, renders both openers in each.
 		for (const source of [
@@ -1119,6 +1137,7 @@ describe('foreign content', () => {
 		[14, `- <svg>\n- ${declaration}`, true],
 		[15, `> <svg>\n\n${declaration}`, true],
 		[16, `<em><svg></em>${declaration}`, true],
+		[17, `*<svg>* ${declaration}`, true],
 		[18, `<svg><desc>${declaration}`, false],
 		[19, `<table><tr><td><svg></td></tr></table>${declaration}`, true],
 		[20, `<svg>\n</svg>\n\n${declaration}`, true],
@@ -1136,9 +1155,8 @@ describe('foreign content', () => {
 		[113, `<svg><noscript>${marker}</noscript> tail`, true],
 		[114, `<div><span><svg></div>${declaration}`, true],
 	];
-	// Approximations: probes 9 and 102 depend on foreignObject barriers; probe
-	// 17 depends on generated emphasis, and tight-list paragraphs still receive
-	// a virtual p.
+	// Approximations: probes 9 and 102 depend on foreignObject barriers, and
+	// tight-list paragraphs still receive a virtual p.
 	for (const [, source, found] of cases) {
 		test(`${found ? 'renders' : 'hides'} the marker in ${JSON.stringify(source)}`, async () => {
 			expect(getCommentMarkAll(source)).toStrictEqual(found

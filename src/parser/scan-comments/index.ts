@@ -41,20 +41,25 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 	}
 };
 
-// Search for the names, not for `<`: a document can hold a `<` at every other
-// position, and a search per `<` costs a native call each.
-const hasTagNamed = (lower: string, name: string) => {
-	for (let index = lower.indexOf(name); index !== -1; index = lower.indexOf(name, index + 1)) {
-		if (lower.charCodeAt(index - 1) === 60) {
-			return true;
+const scanDocument = (source: string, visit: CommentVisitor) => {
+	// One native search per `<` costs nothing measurable on real documents.
+	// Lowercasing a copy or searching for the names cost more; see the notes.
+	let hasForeignContent = false;
+	const asciiLower = (index: number) => {
+		const code = source.charCodeAt(index);
+		return code >= 65 && code <= 90 ? code + 32 : code;
+	};
+	for (let index = source.indexOf('<'); index !== -1; index = source.indexOf('<', index + 1)) {
+		const first = asciiLower(index + 1);
+		if (
+			(first === 115 && asciiLower(index + 2) === 118 && asciiLower(index + 3) === 103)
+			|| (first === 109 && asciiLower(index + 2) === 97
+				&& asciiLower(index + 3) === 116 && asciiLower(index + 4) === 104)
+		) {
+			hasForeignContent = true;
+			break;
 		}
 	}
-	return false;
-};
-
-const scanDocument = (source: string, visit: CommentVisitor) => {
-	const lower = source.toLowerCase();
-	const hasForeignContent = hasTagNamed(lower, 'svg') || hasTagNamed(lower, 'math');
 	const tokenizer = createHtmlTokenizer(source, visit, hasForeignContent);
 	const findTagOpen = createForwardSearch(source, '<');
 	const findOpenBracket = createForwardSearch(source, '[');
@@ -113,11 +118,11 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 					afterMarkup = false;
 				}
 			}, isDefinedLabel, hasForeignContent
-				? (open) => {
+				? (name, open) => {
 					if (open) {
-						tokenizer.open('a');
+						tokenizer.open(name);
 					} else {
-						tokenizer.close('a');
+						tokenizer.close(name);
 					}
 					afterMarkup = true;
 				}
