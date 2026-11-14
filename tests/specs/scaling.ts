@@ -47,6 +47,9 @@ describe('parser scaling', () => {
 
 	test('link tail and bracket scans scale linearly', () => {
 		const inputs = [
+			(n: number) => 'http: '.repeat(n),
+			(n: number) => 'www. '.repeat(n),
+			(n: number) => 'www._ '.repeat(n),
 			(n: number) => '['.repeat(n) + '](a "'.repeat(n),
 			(n: number) => '['.repeat(n) + "](a '".repeat(n),
 			(n: number) => '['.repeat(n) + '](a ('.repeat(n),
