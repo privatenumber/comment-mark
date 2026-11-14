@@ -107,7 +107,9 @@ describe('reference expansion budget', () => {
 
 	test('slow-path CPU time scales near linearly', () => {
 		const measure = (count: number) => {
-			const source = `${'[r] x\n\n'.repeat(count)}<!-- a -->old<!-- /a -->\n\n[r]: ${'u'.repeat(1000)}\n`;
+			// The first paragraph holds `<`, `[`, and `]`, so events are buffered
+			// and the budget's second block pass runs.
+			const source = `x [r] <!-- a -->old<!-- /a -->\n\n${'[r] x\n\n'.repeat(count)}[r]: ${'u'.repeat(1000)}\n`;
 			let best = Infinity;
 			for (let index = 0; index < 5; index += 1) {
 				const start = process.cpuUsage();
