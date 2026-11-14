@@ -20,31 +20,39 @@ import {
  * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L1064-L1102
  */
 const indexDestinations = (text: string) => {
-	const balances = new Int32Array(text.length + 1);
-	const levelCount = text.length * 2 + 2;
-	const upOffsets = new Int32Array(levelCount);
-	const downOffsets = new Int32Array(levelCount);
-	const spaces = new Int32Array(text.length);
+	let parenthesisCount = 0;
 	let spaceCount = 0;
-	let balance = 0;
 	for (let index = 0; index < text.length; index += 1) {
-		balances[index] = balance;
 		const code = text.charCodeAt(index);
 		if (code === 92 && isAsciiPunctuation(text.charCodeAt(index + 1))) {
-			balances[index + 1] = balance;
 			index += 1;
-		} else if (code === 40) {
-			balance += 1;
-			upOffsets[balance + text.length + 1] += 1;
-		} else if (code === 41) {
-			downOffsets[balance + text.length + 1] += 1;
-			balance -= 1;
+		} else if (code === 40 || code === 41) {
+			parenthesisCount += 1;
 		} else if (isSpaceChar(code) && code !== 11 && code !== 12) {
-			spaces[spaceCount] = index;
 			spaceCount += 1;
 		}
 	}
-	balances[text.length] = balance;
+	const levelCount = parenthesisCount * 2 + 2;
+	const upOffsets = new Int32Array(levelCount);
+	const downOffsets = new Int32Array(levelCount);
+	const spaces = new Int32Array(spaceCount);
+	let spaceIndex = 0;
+	let balance = 0;
+	for (let index = 0; index < text.length; index += 1) {
+		const code = text.charCodeAt(index);
+		if (code === 92 && isAsciiPunctuation(text.charCodeAt(index + 1))) {
+			index += 1;
+		} else if (code === 40) {
+			balance += 1;
+			upOffsets[balance + parenthesisCount + 1] += 1;
+		} else if (code === 41) {
+			downOffsets[balance + parenthesisCount + 1] += 1;
+			balance -= 1;
+		} else if (isSpaceChar(code) && code !== 11 && code !== 12) {
+			spaces[spaceIndex] = index;
+			spaceIndex += 1;
+		}
+	}
 	// Counting sort groups each level's positions while preserving source order.
 	for (let level = 1; level < levelCount; level += 1) {
 		upOffsets[level] += upOffsets[level - 1];
@@ -54,17 +62,21 @@ const indexDestinations = (text: string) => {
 	const downPositions = new Int32Array(downOffsets[levelCount - 1]);
 	const upCursors = upOffsets.slice();
 	const downCursors = downOffsets.slice();
+	balance = 0;
 	for (let index = 0; index < text.length; index += 1) {
-		const before = balances[index];
-		const after = balances[index + 1];
-		if (after > before) {
-			const level = after + text.length;
+		const code = text.charCodeAt(index);
+		if (code === 92 && isAsciiPunctuation(text.charCodeAt(index + 1))) {
+			index += 1;
+		} else if (code === 40) {
+			balance += 1;
+			const level = balance + parenthesisCount;
 			upPositions[upCursors[level]] = index;
 			upCursors[level] += 1;
-		} else if (after < before) {
-			const level = before + text.length;
+		} else if (code === 41) {
+			const level = balance + parenthesisCount;
 			downPositions[downCursors[level]] = index;
 			downCursors[level] += 1;
+			balance -= 1;
 		}
 	}
 	upCursors.set(upOffsets);
@@ -88,12 +100,24 @@ const indexDestinations = (text: string) => {
 		return cursor < end ? positions[cursor] : text.length;
 	};
 	let spaceCursor = 0;
+	let balanceCursor = 0;
+	let startBalance = 0;
 	return (start: number) => {
+		// Destination starts increase and cannot occur inside an escaped pair.
+		while (balanceCursor < start) {
+			const code = text.charCodeAt(balanceCursor);
+			if (code === 92 && isAsciiPunctuation(text.charCodeAt(balanceCursor + 1))) {
+				balanceCursor += 2;
+			} else {
+				startBalance += Number(code === 40) - Number(code === 41);
+				balanceCursor += 1;
+			}
+		}
 		while (spaceCursor < spaceCount && spaces[spaceCursor] < start) {
 			spaceCursor += 1;
 		}
 		const whitespace = spaceCursor < spaceCount ? spaces[spaceCursor] : text.length;
-		const level = balances[start] + text.length;
+		const level = startBalance + parenthesisCount;
 		const close = next(downPositions, downOffsets, downCursors, level, start);
 		const overflow = next(upPositions, upOffsets, upCursors, level + 33, start);
 		const end = Math.min(whitespace, close);
