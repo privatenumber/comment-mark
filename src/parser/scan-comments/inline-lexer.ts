@@ -5,6 +5,74 @@ import {
 	isSpaceChar,
 	scanHtmlTag,
 } from './html-tag.ts';
+import { scanDestination, scanTitle } from './block/reference-definition.ts';
+
+type PositionList = {
+	positions: number[];
+	cursor: number;
+};
+
+/**
+ * Indexes `manual_scan_link_url_2` boundaries for monotonic destination starts.
+ * A down-step at the starting balance closes the destination; an up-step 33
+ * levels above it exceeds cmark-gfm's nesting limit. Escapes have the same
+ * parity globally and within a destination, which starts after `(` or space.
+ * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L1064-L1102
+ */
+const indexDestinations = (text: string) => {
+	const balances = new Int32Array(text.length + 1);
+	const up = new Map<number, PositionList>();
+	const down = new Map<number, PositionList>();
+	const spaces: PositionList = {
+		positions: [],
+		cursor: 0,
+	};
+	const record = (map: Map<number, PositionList>, level: number, position: number) => {
+		let list = map.get(level);
+		if (!list) {
+			list = {
+				positions: [],
+				cursor: 0,
+			};
+			map.set(level, list);
+		}
+		list.positions.push(position);
+	};
+	let balance = 0;
+	for (let index = 0; index < text.length; index += 1) {
+		balances[index] = balance;
+		const code = text.charCodeAt(index);
+		if (code === 92 && isAsciiPunctuation(text.charCodeAt(index + 1))) {
+			balances[index + 1] = balance;
+			index += 1;
+		} else if (code === 40) {
+			balance += 1;
+			record(up, balance, index);
+		} else if (code === 41) {
+			record(down, balance, index);
+			balance -= 1;
+		} else if (isSpaceChar(code) && code !== 11 && code !== 12) {
+			spaces.positions.push(index);
+		}
+	}
+	balances[text.length] = balance;
+	const next = (list: PositionList | undefined, start: number) => {
+		if (!list) {
+			return text.length;
+		}
+		while (list.cursor < list.positions.length && list.positions[list.cursor] < start) {
+			list.cursor += 1;
+		}
+		return list.positions[list.cursor] ?? text.length;
+	};
+	return (start: number) => {
+		const whitespace = next(spaces, start);
+		const close = next(down.get(balances[start]), start);
+		const overflow = next(up.get(balances[start] + 33), start);
+		const end = Math.min(whitespace, close);
+		return end === text.length || overflow < end || whitespace === start ? -1 : end;
+	};
+};
 
 /**
  * The inline phase. It finds the raw HTML spans in the text of one paragraph,
@@ -12,8 +80,8 @@ import {
  * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L911-L1018
  *
  * Only the inline rules that decide where raw HTML can start are lexed:
- * backslash escapes, code spans, and autolinks. Everything else is text that
- * renders escaped, so it cannot open or close a comment.
+ * backslash escapes, code spans, autolinks, and inline links and images.
+ * Everything else is text that renders escaped, so it cannot open a comment.
  */
 
 // `MAXBACKTICKS`: a longer run is literal text.
@@ -249,10 +317,107 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 		return next === 47 || isAsciiLetter(next) ? scanHtmlTag(text, index, text.length) : -1;
 	};
 
+	// `scan_spacechars` differs from the whitespace in a reference definition.
+	const skipInlineSpaces = (start: number) => {
+		while (isSpaceChar(text.charCodeAt(start))) {
+			start += 1;
+		}
+		return start;
+	};
+	let destinationIndex: ReturnType<typeof indexDestinations> | undefined;
+	const matchLinkTail = (start: number) => {
+		if (text.charCodeAt(start) !== 40) {
+			return -1;
+		}
+		const destinationStart = skipInlineSpaces(start + 1);
+		let destinationEnd: number;
+		if (text.charCodeAt(destinationStart) === 60) {
+			destinationEnd = scanDestination(text, destinationStart);
+		} else {
+			destinationIndex ??= indexDestinations(text);
+			destinationEnd = destinationIndex(destinationStart);
+		}
+		if (destinationEnd === -1) {
+			return -1;
+		}
+		const titleStart = skipInlineSpaces(destinationEnd);
+		const title = titleStart === destinationEnd ? -1 : scanTitle(text, titleStart);
+		const end = skipInlineSpaces(title === -1 ? titleStart : title);
+		return text.charCodeAt(end) === 41 ? end + 1 : -1;
+	};
+
+	// `push_bracket`, `pop_bracket`, and `handle_close_bracket` keep only the
+	// most recent opener. A completed link deactivates older link openers.
+	// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L1136-L1349
+	const brackets: {
+		image: boolean;
+		spanStart: number;
+	}[] = [];
+	const spans: {
+		start: number;
+		end: number;
+	}[] = [];
+	let images = 0;
+	let noLinkOpeners = true;
+	const pushBracket = (image: boolean) => {
+		brackets.push({
+			image,
+			spanStart: spans.length,
+		});
+		if (image) {
+			images += 1;
+		} else {
+			noLinkOpeners = false;
+		}
+	};
+	const flushSpans = () => {
+		for (const span of spans) {
+			emit(span.start, span.end);
+		}
+		spans.length = 0;
+	};
+
 	let index = 0;
 	while (index < text.length) {
 		const code = text.charCodeAt(index);
 		switch (code) {
+			case 33: {
+				if (text.charCodeAt(index + 1) === 91) {
+					pushBracket(true);
+					index += 2;
+				} else {
+					index += 1;
+				}
+				break;
+			}
+			case 91: {
+				pushBracket(false);
+				index += 1;
+				break;
+			}
+			case 93: {
+				const opener = brackets.pop();
+				index += 1;
+				if (!opener) {
+					break;
+				}
+				const end = opener.image || !noLinkOpeners ? matchLinkTail(index) : -1;
+				if (end !== -1) {
+					index = end;
+					if (opener.image) {
+						spans.length = opener.spanStart;
+					} else {
+						noLinkOpeners = true;
+					}
+				}
+				if (opener.image) {
+					images -= 1;
+					if (images === 0) {
+						flushSpans();
+					}
+				}
+				break;
+			}
 			case 92: {
 				index += isAsciiPunctuation(text.charCodeAt(index + 1)) ? 2 : 1;
 
@@ -273,7 +438,14 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 				if (end === -1) {
 					index += 1;
 				} else {
-					emit(index, end);
+					if (images > 0) {
+						spans.push({
+							start: index,
+							end,
+						});
+					} else {
+						emit(index, end);
+					}
 					index = end;
 				}
 
@@ -284,4 +456,5 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 			}
 		}
 	}
+	flushSpans();
 };

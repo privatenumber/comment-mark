@@ -44,4 +44,33 @@ describe('parser scaling', () => {
 		expect(markers).toStrictEqual([]);
 		expect(elapsed).toBeLessThan(1500);
 	});
+
+	test('link tail and bracket scans scale linearly', () => {
+		const inputs = [
+			(n: number) => '['.repeat(n) + '](a "'.repeat(n),
+			(n: number) => '['.repeat(n) + "](a '".repeat(n),
+			(n: number) => '['.repeat(n) + '](a ('.repeat(n),
+			(n: number) => '['.repeat(n * 3) + '](a "](a \'](a ('.repeat(n),
+			(n: number) => '['.repeat(n) + '](<'.repeat(n),
+			(n: number) => '['.repeat(n) + '](a()'.repeat(n),
+			(n: number) => '['.repeat(n) + '![ '.repeat(n) + ']('.repeat(n),
+			(n: number) => '[[[['.repeat(n) + '[a](b)'.repeat(n),
+		];
+		for (const input of inputs) {
+			const measure = (size: number) => {
+				const content = `x <!-- a --> ${input(size)}`;
+				let best = Infinity;
+				for (let attempt = 0; attempt < 3; attempt += 1) {
+					const start = performance.now();
+					getCommentMarkAll(content);
+					best = Math.min(best, performance.now() - start);
+				}
+				return best;
+			};
+			measure(1000);
+			const small = measure(5000);
+			const large = measure(10_000);
+			expect(large).toBeLessThan(small * 3 + 20);
+		}
+	});
 });

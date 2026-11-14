@@ -90,7 +90,7 @@ const scanLabel = (text: string, index: number) => {
 };
 
 /** `manual_scan_link_url`: returns the index after the destination, or -1. */
-const scanDestination = (text: string, index: number) => {
+export const scanDestination = (text: string, index: number) => {
 	if (text.charCodeAt(index) === 60) {
 		for (index += 1; index < text.length;) {
 			const code = text.charCodeAt(index);
@@ -123,7 +123,7 @@ const scanDestination = (text: string, index: number) => {
 			}
 			depth -= 1;
 			index += 1;
-		} else if (isSpaceChar(code)) {
+		} else if (isSpaceChar(code) && code !== 11 && code !== 12) {
 			if (index === start) {
 				return -1;
 			}
@@ -140,7 +140,7 @@ const scanDestination = (text: string, index: number) => {
  * pattern takes the longest match, so an end delimiter after a backslash both
  * can end the title and can be passed over as an escape.
  */
-const scanTitle = (text: string, index: number) => {
+export const scanTitle = (text: string, index: number) => {
 	const open = text.charCodeAt(index);
 	if (open !== 34 && open !== 39 && open !== 40) {
 		return -1;

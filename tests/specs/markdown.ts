@@ -413,6 +413,90 @@ describe('inline code', () => {
 	});
 });
 
+describe('links and images', () => {
+	test('destinations and titles do not render comments', async () => {
+		const sources = [
+			'[x](<!-- a -->)<!-- /a -->',
+			'[x](u<!--a-->)<!-- /a -->',
+			'[x](u(a(b))<!--a-->)<!-- /a -->',
+			String.raw`[x](u\)<!--a-->)<!-- /a -->`,
+			String.raw`[x](u\(<!--a-->)<!-- /a -->`,
+			'[x](u "<!-- a -->")<!-- /a -->',
+			"[x](u '<!-- a -->')<!-- /a -->",
+			'[x](u (<!-- a -->))<!-- /a -->',
+			'[x](\v<!-- a -->)<!-- /a -->',
+			'[x](u\v<!--a-->)<!-- /a -->',
+			'[x](u\f<!--a-->)<!-- /a -->',
+			'[a [b]](<!-- a -->)<!-- /a -->',
+			'[a `]` b](<!-- a -->)<!-- /a -->',
+		];
+		for (const content of sources) {
+			expect(getCommentMarkAll(content)).toStrictEqual([]);
+		}
+		await expect(commentMark(sources[0], { a: 'NEW' }))
+			.rejects.toThrow('[comment-mark] Selector "a" matched no markers');
+	});
+
+	test('link text and literal links retain comments', () => {
+		for (const content of [
+			'[x <!-- a -->old<!-- /a -->](u)',
+			'[x](u <!-- a -->old<!-- /a -->)',
+			String.raw`\[x](<!-- a -->old<!-- /a -->)`,
+			'![<!-- a -->old<!-- /a -->',
+		]) {
+			expect(getCommentMarkAll(content)).toStrictEqual([{
+				tagName: 'a',
+				attributes: {},
+				content: 'old',
+			}]);
+		}
+	});
+
+	test('a link disables older link openers', () => {
+		const content = '[a [b](u)](<!-- a -->)<!-- /a -->';
+		expect(getCommentMarkAll(content)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: ')',
+		}]);
+	});
+
+	test('image alt text escapes comments, including nested links and images', () => {
+		for (const content of [
+			'![<!-- a -->old<!-- /a -->](u)',
+			'[a ![<!-- a -->old<!-- /a -->](u)](v)',
+			'![a [<!-- a -->old<!-- /a -->](u)](v)',
+			'![before ![<!-- a -->old<!-- /a -->](u) after',
+			'![before ![<!-- a -->old<!-- /a -->] after](u)',
+		]) {
+			expect(getCommentMarkAll(content)).toStrictEqual([]);
+		}
+	});
+
+	test('image spans are emitted in order when an image is literal', () => {
+		const content = '![<!-- a -->old<!-- /a -->] nope <!-- b -->yes<!-- /b -->';
+		expect(getCommentMarkAll(content)).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: 'old',
+			},
+			{
+				tagName: 'b',
+				attributes: {},
+				content: 'yes',
+			},
+		]);
+	});
+
+	test('reference destinations include vertical tab and form feed', () => {
+		for (const control of ['\v', '\f']) {
+			const content = `[r]: u${control}<!--a-->\n\n[r]\n<!-- /a -->`;
+			expect(getCommentMarkAll(content)).toStrictEqual([]);
+		}
+	});
+});
+
 describe('paragraph interruption', () => {
 	test('an ordered marker other than one does not interrupt a paragraph', async () => {
 		const content = ['paragraph', '2. ~~~', `   ${createMarker('x', 'real')}`, '   ~~~'].join('\n');
