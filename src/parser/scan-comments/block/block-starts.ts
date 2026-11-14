@@ -29,31 +29,6 @@ export const scanAtxHeadingStart = (source: string, index: number, lineEnd: numb
 	return end - index;
 };
 
-/**
- * `chop_trailing_hashtags`: drops trailing whitespace, and a closing sequence of
- * `#` that follows a space or tab. Returns the new end.
- */
-export const chopClosingSequence = (source: string, start: number, end: number) => {
-	while (end > start && isSpaceChar(source.charCodeAt(end - 1))) {
-		end -= 1;
-	}
-	let hashes = end;
-	while (hashes > start && source.charCodeAt(hashes - 1) === 35) {
-		hashes -= 1;
-	}
-	if (hashes === start) {
-		// Only the closing sequence remains; the opening one was already skipped.
-		return start;
-	}
-	if (hashes === end || !isSpaceOrTab(source.charCodeAt(hashes - 1))) {
-		return end;
-	}
-	while (hashes > start && isSpaceChar(source.charCodeAt(hashes - 1))) {
-		hashes -= 1;
-	}
-	return hashes;
-};
-
 const scanFenceRun = (source: string, index: number, lineEnd: number) => {
 	const char = charAt(source, index, lineEnd);
 	if (char !== 96 && char !== 126) {

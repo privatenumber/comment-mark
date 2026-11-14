@@ -1,6 +1,5 @@
-import { countDefinitionLines } from '../reference-definition.ts';
+import { isSpaceChar } from '../html-tag.ts';
 import {
-	chopClosingSequence,
 	parseListMarker,
 	scanAtxHeadingStart,
 	scanCloseFence,
@@ -10,6 +9,7 @@ import {
 } from './block-starts.ts';
 import { closesHtmlBlock, scanHtmlBlockStart } from './html-block.ts';
 import { charAt, isSpaceOrTab, lineFeed } from './line.ts';
+import { countDefinitionLines } from './reference-definition.ts';
 import { readTableRow, scanTableStart } from './table.ts';
 
 /**
@@ -603,4 +603,29 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 		processLine(lineStart, source.length);
 	}
 	finalizeLeaf();
+};
+
+/**
+ * `chop_trailing_hashtags`: drops trailing whitespace, and a closing sequence of
+ * `#` that follows a space or tab. Returns the new end.
+ */
+const chopClosingSequence = (source: string, start: number, end: number) => {
+	while (end > start && isSpaceChar(source.charCodeAt(end - 1))) {
+		end -= 1;
+	}
+	let hashes = end;
+	while (hashes > start && source.charCodeAt(hashes - 1) === 35) {
+		hashes -= 1;
+	}
+	if (hashes === start) {
+		// Only the closing sequence remains; the opening one was already skipped.
+		return start;
+	}
+	if (hashes === end || !isSpaceOrTab(source.charCodeAt(hashes - 1))) {
+		return end;
+	}
+	while (hashes > start && isSpaceChar(source.charCodeAt(hashes - 1))) {
+		hashes -= 1;
+	}
+	return hashes;
 };
