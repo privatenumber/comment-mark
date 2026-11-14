@@ -113,11 +113,11 @@ export const textOf = (html) => {
 export const githubComments = docs => render(docs).map(commentsOf)
 ```
 
-`compare.mjs` compares a scanner with the oracle. Pass the path of a checkout's `src/parser/scan-comments.ts`. Set `SHOW=n` to print the n shortest mismatching documents.
+`compare.mjs` compares a scanner with the oracle. Pass the path of a checkout's `src/parser/scan-comments/index.ts`. Set `SHOW=n` to print the n shortest mismatching documents.
 
 ```js
 // Compares a scanner's comments with the GitHub-like oracle on generated
-// documents. Usage: node compare.mjs <scan-comments.ts> <count> <seed> [fragment set]
+// documents. Usage: node compare.mjs <scan-comments/index.ts> <count> <seed> [fragment set]
 import { parseFragment } from 'parse5'
 import { render } from './oracle.mjs'
 
@@ -227,7 +227,7 @@ for (const [document, detail] of failures.slice(0, Number(process.env.SHOW ?? 25
 }
 ```
 
-`show.mjs` prints the rendered HTML and the scanner's comments for given documents. Run it as `SCANNER=<path to scan-comments.ts> node show.mjs -- '<JSON array of documents>'`.
+`show.mjs` prints the rendered HTML and the scanner's comments for given documents. Run it as `SCANNER=<path to scan-comments/index.ts> node show.mjs -- '<JSON array of documents>'`.
 
 ```js
 import { render } from './oracle.mjs'
@@ -283,6 +283,6 @@ console.log({
 
 ## Results
 
-Run `node compare.mjs <scan-comments.ts> 20000 <seed> [rich|autolink]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
+Run `node compare.mjs <scan-comments/index.ts> 20000 <seed> [rich|autolink]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
 
 The comparison numbers each generated marker, such as `<!-- a12 -->`, and each bare `<!--`, such as `<!--o12q`. A comment is identified by the number it starts with, which checks its opening, and the last marker number in it, which checks its closing. Where a comment has no number, as with `<!-->` or a `<!--` built from two fragments, its first or last 3 characters are compared after normalization: entities decoded, and tag-like sequences and whitespace dropped. A comment that spans chunks also holds markup that the renderer generates, so its full text cannot match. A few mismatches per seed remain as artifacts of this normalization, when generated markup such as `<hr />` or a setext underline falls in those last 3 characters. Use `show.mjs` to confirm each mismatch before treating it as a scanner bug.

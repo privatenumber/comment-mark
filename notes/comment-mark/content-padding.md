@@ -10,7 +10,7 @@ The marker's position decides how replacement content is laid out. If the openin
 Written by <!-- author -->Jane<!-- /author -->.
 ```
 
-- Rule: `setContent` in [`src/document.ts`](../../src/document.ts) reads the `startsLine` flag that the scanner records for each marker in [`src/parser/scan-comments.ts`](../../src/parser/scan-comments.ts).
+- Rule: `setContent` in [`src/document.ts`](../../src/document.ts) reads the `startsLine` flag that the scanner records for each marker in [`src/parser/scan-comments/index.ts`](../../src/parser/scan-comments/index.ts).
 - Contract: [`tests/specs/padding.ts`](../../tests/specs/padding.ts), and the rejection tests in [`tests/specs/replacement.ts`](../../tests/specs/replacement.ts).
 - Shipped in [#43](https://github.com/privatenumber/comment-mark/pull/43) with a `BREAKING CHANGE:` footer. It replaces the content-based rule of [#33](https://github.com/privatenumber/comment-mark/pull/33); see [rejected alternatives](#rejected-alternatives).
 - Checked against the #43 head `5140694` on 2026-11-11. The "starts its line" rules and the limits were rechecked on branch `refactor/two-phase-scanner` on 2026-11-13.

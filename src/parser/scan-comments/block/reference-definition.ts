@@ -1,4 +1,4 @@
-import { isAsciiPunctuation, isSpaceChar } from './html-tag.ts';
+import { isAsciiPunctuation, isSpaceChar } from '../html-tag.ts';
 
 /**
  * Link reference definitions, such as `[x]: <url> "title"`, as GitHub's

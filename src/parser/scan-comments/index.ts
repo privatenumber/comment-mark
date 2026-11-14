@@ -1,4 +1,4 @@
-import { lexBlocks } from './block-lexer.ts';
+import { lexBlocks } from './block/index.ts';
 import { createHtmlTokenizer } from './html-tokenizer.ts';
 import { lexInline } from './inline-lexer.ts';
 import { createForwardSearch } from './utils/forward-search.ts';
