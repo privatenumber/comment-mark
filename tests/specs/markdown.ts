@@ -1056,8 +1056,12 @@ describe('foreign content', () => {
 	});
 	test('generated markup that completes a raw tag opens no element', async () => {
 		// GitHub /markdown, mode=gfm, 2026-11-15 renders both openers.
-		const source = `<div>\n<p><svg\n\nx <x/>\n\n${wrapped}`;
-		expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', '\nNEW\n'));
+		// The paragraph without raw HTML matters too: its generated markup still
+		// completes the tag.
+		for (const paragraph of ['x <x/>', 'x']) {
+			const source = `<div>\n<p><svg\n\n${paragraph}\n\n${wrapped}`;
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', '\nNEW\n'));
+		}
 	});
 	test('select ignores unrelated tags until it closes', async () => {
 		// GitHub /markdown, mode=gfm, 2026-11-15 renders both openers.

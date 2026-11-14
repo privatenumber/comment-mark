@@ -493,6 +493,9 @@ export const lexInline = (
 		}
 	};
 	const flushSpans = () => {
+		if (spans.length === 0) {
+			return;
+		}
 		const parents: string[] = [];
 		// The renderer omits strong nodes whose immediate parent is also strong.
 		// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/html.c#L366-L374

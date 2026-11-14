@@ -145,12 +145,14 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 		text: (segments, continuation, unescapePipes, type) => {
 			// Raw HTML starts with `<`, so text without one renders as text and
 			// needs no replay. A `<` between two segments only costs a needless
-			// inline pass.
+			// inline pass. With element tracking, a paragraph's generated `<p>` and
+			// `</p>` still matter: they can complete an unfinished raw tag or close
+			// an outer paragraph.
 			if (segments.length === 0) {
 				return;
 			}
 			const open = findTagOpen(segments[0]);
-			if (open !== -1 && open < segments.at(-1)!) {
+			if ((open !== -1 && open < segments.at(-1)!) || (hasForeignContent && type === 'paragraph')) {
 				if (!buffering) {
 					const start = segments[0];
 					const end = segments.at(-1)!;
