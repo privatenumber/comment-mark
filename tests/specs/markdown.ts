@@ -36,7 +36,7 @@ describe('reference expansion budget', () => {
 		for (const code of [65_534, 65_535]) {
 			const source = `${'[r] '.repeat(150)}x <!-- a -->PRESERVE ![<!-- a -->inner][r] tail<!-- /a -->\n\n[r]: ${`&#${code};`.repeat(334)}`;
 			const updated = await commentMark(source, { a: 'NEW' });
-			expect(updated.includes('<!-- a -->NEW<!-- /a -->')).toBe(true);
+			expect(updated).toBe(source.replace('PRESERVE ![<!-- a -->inner][r] tail', 'NEW'));
 		}
 	});
 
