@@ -401,7 +401,10 @@ const checkDomain = (text: string, start: number, short: boolean) => {
 	// first character (NUL becomes U+FFFD), that is a UTF-8 continuation byte,
 	// which ends the scan.
 	const first = text.charCodeAt(start);
-	while (index < last && first < 128 && first !== 0) {
+	if (first >= 128 || first === 0) {
+		return short ? start + 1 : -1;
+	}
+	while (index < last) {
 		let code = text.charCodeAt(index);
 		if (code === 92 && index + 1 < last) {
 			index += 1;
@@ -457,12 +460,12 @@ export const matchBareAutolink = (text: string, start: number) => {
 	let end = domain;
 	let opening = 0;
 	let closing = 0;
+	// The domain holds no parentheses, so this loop sees every one that
+	// `autolink_delim` counts.
 	while (end < text.length && !isCmarkSpace(text.charCodeAt(end)) && text.charCodeAt(end) !== 60) {
+		opening += Number(text.charCodeAt(end) === 40);
+		closing += Number(text.charCodeAt(end) === 41);
 		end += 1;
-	}
-	for (let index = start; index < end; index += 1) {
-		opening += Number(text.charCodeAt(index) === 40);
-		closing += Number(text.charCodeAt(index) === 41);
 	}
 	while (end > start) {
 		const code = text.charCodeAt(end - 1);
@@ -492,5 +495,5 @@ export const matchBareAutolink = (text: string, start: number) => {
 			}
 		}
 	}
-	return end === start ? -1 : end;
+	return -1;
 };

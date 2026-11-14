@@ -282,7 +282,6 @@ export const lexInline = (
 	let runStarts: number[] | undefined;
 	const runLengths: number[] = [];
 	let currentRun = 0;
-	const nextRunOfLength = new Map<number, number>();
 	const lastBacktick = new Map<number, number>();
 	let scannedBackticks = false;
 
@@ -315,20 +314,20 @@ export const lexInline = (
 		if (scannedBackticks && (lastBacktick.get(length) ?? 0) <= index + length) {
 			return index + length;
 		}
-		let next = Math.max(nextRunOfLength.get(length) ?? 0, currentRun + 1);
+		// Like `scan_to_closing_backticks`, record every run passed. After one
+		// scan reaches the end, a scan runs only when the cache shows a closer, so
+		// scans never overlap.
+		let next = currentRun + 1;
 		while (next < runStarts.length && runLengths[next] !== length) {
+			lastBacktick.set(runLengths[next], runStarts[next]);
 			next += 1;
 		}
-		nextRunOfLength.set(length, next);
-		if (scannedBackticks || next === runStarts.length) {
-			for (let run = currentRun + 1; run <= next && run < runStarts.length; run += 1) {
-				lastBacktick.set(runLengths[run], runStarts[run]);
-			}
-			if (next === runStarts.length) {
-				scannedBackticks = true;
-			}
+		if (next === runStarts.length) {
+			scannedBackticks = true;
+			return index + length;
 		}
-		return next < runStarts.length ? runStarts[next] + length : index + length;
+		lastBacktick.set(length, runStarts[next]);
+		return runStarts[next] + length;
 	};
 
 	/** Returns the end of the raw HTML at the `<` at `index`, or -1. */
