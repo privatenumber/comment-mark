@@ -45,4 +45,14 @@ export default defineConfig([
 			],
 		},
 	},
+	{
+		// The Markdown lexers compare UTF-16 code units with ASCII codes, where
+		// `charCodeAt` and `codePointAt` agree. Past the end of the text,
+		// `charCodeAt` returns NaN, which matches no code, while `codePointAt`
+		// returns undefined, which every numeric read would have to guard.
+		files: ['src/parser/**/*.ts'],
+		rules: {
+			'unicorn/prefer-code-point': 'off',
+		},
+	},
 ]);

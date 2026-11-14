@@ -136,7 +136,7 @@ await commentMark('Items: <!-- item -->apple<!-- /item --><!-- item -->pear<!-- 
 // Items: <!-- item -->1. apple<!-- /item --><!-- item -->2. pear<!-- /item -->
 ```
 
-Indented code blocks and code spans that wrap across lines are not detected as code, so a marker placed there is treated as real. A marker inside indented code cannot render as if absent. Put active markers in prose, and put literal examples inside fenced code or single-line inline code.
+Markers inside code, such as fenced or indented code blocks and inline code spans, are skipped. Put active markers in prose. See [markers in code examples](./markers.md#markers-in-code-examples).
 
 ## `getCommentMark(input, selector)`
 

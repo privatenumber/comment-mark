@@ -495,6 +495,64 @@ describe('markers in headings', () => {
 	});
 });
 
+describe('GitHub rendering', () => {
+	// Each expectation was checked against GitHub's renderer, cmark-gfm
+	// 0.29.0.gfm.13, followed by a browser's HTML parser.
+	const marker = createMarker('a', 'old');
+	const cases: [name: string, source: string, rendered: boolean][] = [
+		['indented code holds no markers', `    ${marker}`, false],
+		['a tab-indented line is code', `\t${marker}`, false],
+		['an escaped <!-- does not open a comment', String.raw`\<!-- note ${marker}`, true],
+		['a processing instruction block hides a marker until its >', `<?x ${marker}`, false],
+		['a declaration block hides a marker until its >', `<!X x ${marker}`, false],
+		['a bogus comment continues into the next HTML block', `<div>\n<?x\n\n${marker}`, false],
+		['a paragraph between HTML blocks ends a bogus comment', `<div>\n<?x\n\ntext\n\n${marker}`, true],
+		['a link reference definition renders nothing', '[x]: <!-- a -->\n\nold\n\n<!-- /a -->', false],
+		['text after a link reference definition is a paragraph', `[x]: /url\ntext ${marker}`, true],
+		// The paragraph stays open, so the indented line continues it instead of
+		// opening indented code.
+		['an underline after only definitions is paragraph text', `[x]: /url\n===\n    ${marker}`, true],
+		['a table drops body cells past its header', `| a |\n| - |\n| x | ${marker} |`, false],
+		['a pipe after any backslash stays in its table cell', `| a | b |\n| - | - |\n| \`\\\\|${marker}\` | x |`, false],
+		// cmark-gfm limits a label to 1,000 bytes, and each character here is 3.
+		['a reference label over 1,000 UTF-8 bytes is text', `[${'あ'.repeat(334)}]: /u "${marker}"`, true],
+		['a run of more than 80 backticks is literal', `x ${'`'.repeat(81)}${marker}${'`'.repeat(81)}`, true],
+		// cmark-gfm stores a fence length of at most 255.
+		['a fence longer than 255 closes at 255', ['~'.repeat(256), 'code', '~'.repeat(255), '~'.repeat(256), marker, '~'.repeat(256)].join('\n'), false],
+		// cmark-gfm reads NUL as U+FFFD, which an autolink allows.
+		['NUL does not end an autolink', `x <ab:\0\`y> ${marker} \``, true],
+		// GitHub escapes the `<` of `<title>`, so its quote opens no attribute value.
+		['a filtered tag is text', `<div>\n<title a="\n\n${marker}`, true],
+		['an open attribute value continues into the next HTML block', `<div>\n<span a="\n\n${marker}`, false],
+		['noscript content is raw text', `<noscript>${marker}</noscript>`, false],
+	];
+
+	for (const [name, source, rendered] of cases) {
+		test(name, () => {
+			expect(getCommentMarkAll(source)).toStrictEqual(rendered
+				? [{
+					tagName: 'a',
+					attributes: {},
+					content: 'old',
+				}]
+				: []);
+		});
+	}
+
+	test('a comment-like line inside an attribute does not start the line', async () => {
+		const source = `<pre>\n<span title="\n    <!-- note -->">Value: ${marker}!</span>\n</pre>`;
+
+		expect(await commentMark(source, { a: 'new' })).toBe(source.replace(marker, createMarker('a', 'new')));
+	});
+
+	test('an indented comment on an HTML block line starts its line', async () => {
+		// The line is raw HTML, so indentation does not make it code.
+		const source = `<div>\n\t${marker}\n</div>`;
+
+		expect(await commentMark(source, { a: 'new' })).toBe(`<div>\n\t${createMarker('a', '\nnew\n')}\n</div>`);
+	});
+});
+
 describe('line endings', () => {
 	test('a marker after a closed fence is recognized in a CR-only document', async () => {
 		const content = ['~~~', 'code', '~~~', createMarker('x', 'real')].join('\r');

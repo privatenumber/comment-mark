@@ -1,99 +1,130 @@
 # Comment scanning
 
-comment-mark uses an in-house scanner rather than a third-party HTML or Markdown parser. The decision favors marker offsets and the project's Markdown-aware exclusions without imposing a full HTML grammar. The scanner was compared with regex and parser alternatives while [PR #13](https://github.com/privatenumber/comment-mark/pull/13) was developed. The historical measurements below support the performance tradeoff, not a claim about current timings.
+comment-mark finds markers with an in-house scanner that reports the HTML comments GitHub renders as comments, apart from the [known gaps](#known-gaps). It ports the parts of GitHub's renderer, [cmark-gfm 0.29.0.gfm.13](https://github.com/github/cmark-gfm/tree/0.29.0.gfm.13), that decide where raw HTML can appear, then reads that HTML as a browser would. It builds no syntax tree.
 
-Project behavior was checked against develop commit `d41c4a5` on 2026-11-08.
+Checked on branch `refactor/two-phase-scanner` (base `develop` at `5723ed5`) with Node 26.13.0 on 2026-11-13.
 
-## Current implementation and boundaries
+## Target: GitHub, not CommonMark
 
-- [parse-document.ts](../../src/parser/parse-document.ts) returns early when no comment opener exists, classifies comments, pairs matching tag names, and exposes only outermost matched pairs. Nested pairs remain content rather than raising an error; [marker tests](../../tests/specs/markers.ts) cover same-name and different-name nesting. [PR #32](https://github.com/privatenumber/comment-mark/pull/32) introduced this rule. PR #13 rejected nested markers with an error, which made any replacement that contained markers fail on the next parse.
-- [scan-comments.ts](../../src/parser/scan-comments.ts) scans lines, comments, and inline code together. [block-context.ts](../../src/parser/block-context.ts) tracks fenced blocks and their list and blockquote containers. A closer inside a fence does not close a marker, and a closing fence cannot have trailing text. See the [Markdown tests](../../tests/specs/markdown.ts).
-- [parse-attributes.ts](../../src/parser/parse-attributes.ts) scans names and values and rejects adjacent quoted attributes without whitespace. See the [marker tests](../../tests/specs/markers.ts).
+**Decision: match GitHub's rendering.** comment-mark documents are mostly READMEs on GitHub, so a marker must be a comment there. The target is cmark-gfm 0.29.0.gfm.13, the latest release on 2026-11-13, with the extensions GitHub enables: table, strikethrough, autolink, tagfilter, and tasklist. A browser's HTML tokenizer then reads the output. A comment is whatever that tokenizer reads as a comment that ends with `-->`.
 
-The previously reported quadratic search for distinct unmatched backtick runs has been addressed. [scan-comments.ts](../../src/parser/scan-comments.ts) links each run to the next run of equal length instead of searching the rest of the line for each opener. The [scaling test](../../tests/specs/scaling.ts) exercises 2,048 distinct run lengths. This resolves that specific reported search pattern, not a proof that every scanner path is linear.
+GitHub differs from CommonMark 0.31.2 (and so from micromark) in ways that change which comments render. The HTML block tag lists differ: cmark-gfm has `source` and not `search` ([`scanners.re`](https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/scanners.re#L40)). Type 4 blocks (`<!X`) need an uppercase letter, while `<![cdata[` is case-insensitive. The tagfilter extension escapes the `<` of `<title>`, `<script>`, and seven other tags, so their contents are ordinary HTML instead of raw text ([`tagfilter.c`](https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/extensions/tagfilter.c)).
 
-## Scanner invariants
+## Design: three phases in one pass
 
-**Decision: scan comments and Markdown code in one context-aware pass.** Independent comment and code scans allowed a literal `<!--` inside a code example to consume a later real marker. They also let backticks inside an HTML comment hide a real closing marker. [PR #13](https://github.com/privatenumber/comment-mark/pull/13) records the fix, and the `comment and code boundaries` group in the [Markdown tests](../../tests/specs/markdown.ts) locks both directions.
+[scan-comments.ts](../../src/parser/scan-comments.ts) runs three phases over the source in one pass:
 
-**Block precedence determines whether a fence is active.** Thematic breaks take precedence over list items. Headings and standalone HTML comments end paragraph state, while a comment inside paragraph text does not. Otherwise a following ordered list can be mistaken for paragraph text, exposing its fenced example to updates. The `fenced code blocks`, `heading context`, and `block comments` groups in the [Markdown tests](../../tests/specs/markdown.ts) cover these transitions.
+1. **Block phase,** [block-lexer.ts](../../src/parser/block-lexer.ts). A port of `check_open_blocks`, `open_new_blocks`, and `add_text_to_container` in [`blocks.c`](https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/blocks.c#L1044-L1518), plus the table extension. It keeps only the stack of open containers and the open leaf block, and reports the text of each paragraph, heading, and table cell, and each line of each HTML block. Code blocks report nothing, so they hold no markers.
+2. **Inline phase,** [inline-lexer.ts](../../src/parser/inline-lexer.ts). Within each text block, it finds raw HTML spans as `handle_pointy_brace` does. It lexes only what decides where raw HTML can start: backslash escapes, code spans, and `<…>` autolinks. All other text renders escaped and cannot open or close a comment.
+3. **Browser phase,** [html-tokenizer.ts](../../src/parser/html-tokenizer.ts). It feeds HTML block lines and raw HTML spans through the states of the [HTML tokenizer](https://html.spec.whatwg.org/multipage/parsing.html#tokenization) that decide where a comment starts and ends: data, tags, attribute values, bogus comments, comments, and raw text.
 
-**Keep partially consumed tab columns across containers.** A tab spans up to four rendered columns but has one source index. The [block cursor](../../src/parser/block-context.ts) retains the remaining columns so nested lists can consume them and over-indented fence closers stay inside code. The `fenced code blocks` tests cover nested-list tabs, mixed space and tab padding, and quote-prefixed blank lines.
+[reference-definition.ts](../../src/parser/reference-definition.ts) ports `cmark_parse_reference_inline`. The block phase drops link reference definitions from the start of a paragraph when it closes, and before a setext underline turns it into a heading, as `resolve_reference_link_definitions` does. A definition renders nothing, so a comment inside one is not a comment.
 
-**Treat inline opening and closing escapes differently.** An odd number of backslashes can prevent a backtick from opening a span, but backslash escapes do not apply inside a [CommonMark code span](https://spec.commonmark.org/0.31.2/#code-spans). A synthetic suffix of an escaped multi-backtick run may open a span but must not close one; otherwise an example marker is exposed. The `inline code` group in the [Markdown tests](../../tests/specs/markdown.ts) covers both escape directions and synthetic runs.
+**Why three phases.** The previous scanner mixed block and inline rules line by line. Every rule that spans lines needed its own state: paragraph extent, code spans that wrap lines, HTML blocks, table cells. Each fix added a case, and each case was a new place to disagree with GitHub. Following the renderer's own structure makes each rule a port of a cited function, so a disagreement points to one function.
 
-**Keep scan state local to each invocation.** A shared global regex's mutable scan position allowed a resolver's nested parse to restart the outer scan and apply a replacement more than once. The scanner now keeps positions local, and the `resolver reentrancy` group in the [resolver tests](../../tests/specs/resolvers.ts) checks nested reads and updates. The project enforces index-based scanning without regular expressions in `src/` through [eslint.config.ts](../../eslint.config.ts); lint, rather than a duplicate test, owns that restriction.
+**Why no tree.** Comments need only the open containers and the current leaf. A tree costs memory per node and a second walk, and the scanner must stay linear on adversarial input. The phases call each other through callbacks. What they keep is bounded by the current leaf block: the line ranges of the open paragraph, its joined text, and its backtick runs.
 
-## Where a comment ends
+### Where a comment ends
 
-**Decision: `<!-->` and `<!--->` are complete, empty comments.** [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/#html-comment) and GitHub both end a comment there. Before this fix, the scanner opened a comment at either one and ran to the next `-->`, so a following marker's opening comment was consumed and the marker disappeared. The scanner now skips them without visiting, because they cannot hold a tag. GitHub's `/markdown` API (`mode=gfm`) rendered `x <!--> y` as `x  y` on 2026-11-13.
+A comment ends at the first `-->` that the browser sees. What the browser sees between two raw HTML pieces decides whether an open comment, tag, or attribute value carries across:
 
-**Decision: a comment inside a paragraph spans only the lines that continue that paragraph.** An inline comment is paragraph text (raw inline HTML). When the paragraph ends before `-->`, the `<!--` was literal text. Before this fix, the scanner kept the comment open across any line, so a stray `<!--` in prose hid every marker up to the next `-->`. A line ends the paragraph when it is blank or starts an ATX heading, a setext underline (except on a lazy line), a thematic break, a blockquote, a list item that can interrupt a paragraph, a fence, or an HTML block of types 1 to 6. A lazy continuation line keeps the comment open. A comment left open in an ATX heading is dropped, because a heading is one line. The `comments that span lines` group in the [Markdown tests](../../tests/specs/markdown.ts) covers each ending and continuing line.
+- **Within an HTML block,** lines are separated by a line feed only.
+- **Between two raw HTML spans in one text block,** the text between them renders escaped, so it holds no `<` or `-->`.
+- **Where the renderer writes markup,** such as `<p>`, `</li>`, or `<hr />`, that markup ends with `>`. It ends an open tag or bogus comment, but an open comment, an open quoted attribute value, and raw text carry past it. The block phase sets a `markup` flag when a block opens or a container closes, and the browser phase resets tag states only when it is set. Two adjacent HTML blocks have no markup between them, so every state carries.
 
-**HTML block starts follow GitHub, not CommonMark 0.31.2.** `matchHtmlBlock` in [block-context.ts](../../src/parser/block-context.ts) follows `_scan_html_block_start` and `blocktagname` in [cmark-gfm 0.29.0.gfm.13](https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/scanners.re#L40), the latest release on 2026-11-13. The tag lists differ: cmark-gfm has `source` and not `search`, and 0.31.2 (and micromark) has the reverse. Type 4 (`<!X`) needs an uppercase ASCII letter in cmark-gfm. Its other start strings, such as `<![CDATA[` and the tag names, are single-quoted in re2c, which makes them case-insensitive, so GitHub also starts a block at `<![cdata[`; micromark does not. GitHub's API confirmed on 2026-11-13 that `<div>`, `<source>`, `<pre>`, `<?x`, and `<!X` lines end an inline comment, and `<search>`, `<span>`, and `2. i` lines do not.
+`<!-->` and `<!--->` end a comment at once, as both CommonMark and the HTML standard specify. They are empty, cannot hold a marker, and are not reported. Comments that end at `--!>` or at the end of the input are not reported either.
 
-**Decision: a comment opened anywhere inside an HTML block of types 1 to 6 is raw HTML.** It stays open until a line with `-->`, as a comment that starts a line does. The scanner tracks the open block only to classify comments: type 6 blocks end at a blank line, types 1 to 5 end after the line that holds their closer (such as `</pre>` or `?>`), and any block ends when one of its containers ends. Without this state, a comment opened on a later line of a `<div>` block was treated as paragraph text, so a Markdown-looking line inside the block, such as `# heading`, ended it and exposed a marker that GitHub and `develop` treat as commented out. Block parsing inside an HTML block is unchanged: the scanner still recognizes fences and headings there, as it did before.
+### Scanner invariants
 
-**Known gaps in the boundary checks.** Both also fail on `develop`. They were found in review on 2026-11-13 and left for the two-phase design below:
+- **Tabs.** A tab advances to the next multiple of four columns but is one source character. The block phase tracks a partially consumed tab, as cmark-gfm does, so list padding and indented code read the same columns GitHub reads.
+- **Limits and NUL.** cmark-gfm's limits apply as it counts them: 80 backticks per code span, 255 for a stored fence length, and 1,000 UTF-8 bytes per reference label. cmark-gfm reads NUL as U+FFFD, so NUL does not end an autolink and counts as 3 bytes in a label.
+- **Escapes.** A backslash escape stops `\<` from opening raw HTML and stops a backtick from opening a code span. Inside a code span, backslashes are literal.
+- **Linearity.** Each phase reads the source in order. A code span closer is found with one forward cursor per run length, and cmark-gfm's limit of 80 backticks per code span bounds the number of lengths. Searches that could rescan, such as the next `-->` or the next closing quote, use [forward-search.ts](../../src/parser/utils/forward-search.ts), which reuses a result until the scan moves past it. The scaling check below doubles each adversarial input and the time at most doubles.
+- **Local state.** Scan state lives in each call, so a resolver's nested parse cannot disturb an outer scan. The `resolver reentrancy` group in the [resolver tests](../../tests/specs/resolvers.ts) checks this. [eslint.config.ts](../../eslint.config.ts) bans regular expressions in `src/` so scans stay index-based. It also turns off `unicorn/prefer-code-point` in `src/parser/`, because the lexers compare UTF-16 code units with ASCII codes and rely on `charCodeAt` returning `NaN` past the end.
 
-- The block matchers that decide whether a line continues a paragraph read literal spaces, not a tab after a container prefix. In `> text <!-- note\n> \t# x <!-- a -->old<!-- /a -->`, the second line is a heading, so the comment ends and `a` is a marker, but the scanner keeps the comment open.
-- While a raw HTML comment is open, the scanner does not match containers. It reads blankness from column 0, so a quoted blank line such as `>` does not end a type 6 block. An HTML block can then stay open too long, and a later comment is classified as raw.
+## Behavior changes from the previous scanner
 
-**Known gap: type 7 HTML blocks.** A type 7 block is a lone complete tag, such as `<span>` or `<a href="x">`, on its own line outside a paragraph. Recognizing one needs a full tag and attribute matcher, so the scanner treats its later lines as paragraph text. A mid-line `<!--` on such a line ends at the next paragraph boundary, while GitHub keeps it open to `-->`. Fuzzing against `develop` found one such case in 100,000 documents, and no corpus file changed.
+Each was checked against the oracle below:
 
-## Differential testing against micromark
+- **Markers in indented code are skipped,** with four spaces or a tab, like fenced code.
+- **Escaped text, link reference definitions, and code spans that wrap lines or sit in table cells** are skipped.
+- **A comment that begins a later line of an HTML block starts its line at any indentation,** because the whole line is raw HTML. On the corpus below, 20 of 5,141 files differ only in this flag, such as READMEs with a tab-indented `<!-- prettier-ignore-start -->` inside `<p align="center">`.
+- **A marker on a lazy blockquote or list line gets the container prefix.** `commentMark('> text\nmore <!-- a -->old<!-- /a -->', { a: 'x\ny' })` returns `"> text\nmore <!-- a -->x\n> y<!-- /a -->"`.
 
-The [reference parser spec](../../tests/specs/reference-parser.ts) generates 5,000 documents from a fixed seed and compares the markers that `getCommentMarkAll` returns with markers built from micromark 4.0.3 with GFM tables. Micromark follows CommonMark 0.31.2, so its HTML block start rules differ from GitHub as described above. The generated fragments avoid the tags and forms that differ.
+## Known gaps
 
-The spec's scope excludes known gaps, so a failure means a regression rather than a known limit:
+These forms are still read differently than GitHub reads them. A gap can hide a rendered comment or expose an unrendered one:
 
-- Every comment fragment follows text, so no line starts with a comment. Block comments are covered by the explicit tests.
-- There is no inline code, indentation, backslash, or multi-line raw HTML block.
-- Content is compared with `>` and spaces removed on both sides, because marker content strips container prefixes and micromark's raw slices do not.
+- **Inline link destinations.** `[x](<!-- a -->)` renders as a link to `!--%20a%20--`, but the scanner reports the comment. Links are not lexed.
+- **Bare-URL autolinks.** The autolink extension links bare `http://` and `www.` URLs in `url_match` and `www_match`, and email addresses in `postprocess_text` ([`autolink.c`](https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/extensions/autolink.c#L168-L460)). A backtick or backslash inside such a URL is link text, not a code span opener or escape, so it shifts code span pairing. `\<http://x>`aaa x <!-- a -->+`` renders the comment, but the scanner pairs the backticks and hides it.
+- **Rendered text and markup inside an open tag.** When raw HTML leaves a tag or attribute value open, the browser reads the rendered output that follows as part of it, until a character ends it. The browser phase models only that generated markup ends with `>`. It ignores that rendered text can hold a `'`, which closes a single-quoted value, and that generated markup can hold quotes, such as `<ol start="2">`, `<td align="left">`, `<pre lang="js">`, and the tasklist `<input>`. In `<div>\n<a b='\n\n'\n\n<!-- a -->old<!-- /a -->`, the lone `'` paragraph closes the value, so GitHub renders the marker, but the scanner keeps the value open and misses it.
+- **Tight lists.** A paragraph in a tight list renders without `<p>`, but the block phase assumes generated markup before every text block. When nothing else is generated there, an open tag or bogus comment from earlier raw HTML carries into the paragraph in the browser, while the scanner resets it. In `- <!-- n --><?x\n  text <!-- a -->old<!-- /a -->`, the `<?x` bogus comment hides `<!-- a -->` on GitHub, but the scanner reports it.
+- **Browser context.** The browser phase has no tree, so it does not know the insertion mode. It reads `<noscript>` content as raw text everywhere, but inside `<select>` the browser ignores `<noscript>`, so `<select><noscript><!-- a -->old<!-- /a --></noscript></select>` renders the marker that the scanner skips. CDATA in SVG and MathML content is also not modeled: `<svg><text><![CDATA[ > <!-- a -->old<!-- /a --> ]]></text></svg>` holds no comment, but the scanner reports one.
+- **Footnotes** are not recognized.
 
-Observed with Node 26.13.0 on 2026-11-13:
+### Observations
 
-- **Fuzzing within the spec's scope:** 0 disagreements in 500,000 documents (seeds 1, 99, 12345, 777, 31337). `develop` at `dd89524` disagreed on about 1% of documents. Against `develop`'s build, the reference spec and 10 of the 14 new explicit tests fail. The other 4 tests check lines that must continue a comment, so they pass on both builds.
-- **Real documents:** 5,141 unique `.md` files (39.6 MB, 2,769 comments) from a local `node_modules` tree agreed with micromark on every comment, before and after the fix. The fixed scanner and `develop` gave identical output on every file.
-- **Remaining disagreements outside the scope** all existed before the fix: indented code blocks, `\<!--`, code spans that wrap lines, code spans in table cells, a table delimiter row after a paragraph line with an open comment (the row makes that line a table header, which ends the comment), a link reference definition such as `[x]:<!---->`, raw content inside HTML blocks, a block comment whose opening line already contains `-->`, and multiline opening comments inside containers.
-
-## Scanner extraction
-
-**Decision (2026-11-13): do not publish the scanner as its own package yet.** It is fast: about 270 times faster than micromark on a 10.7 MB input (89 ms against 24.4 s, Node 26.13.0). But it has the known gaps above and no confirmed consumer. [mdeval](https://github.com/privatenumber/mdeval) was the candidate. It parses with micromark and GFM tables to find code ranges, and separately with `mdast-util-from-markdown` to find rendered leaks, so a switch would speed up only one of its two parses. Revisit in this order: close the gaps above, extract the scanner, then adopt it in mdeval if its parse cost is measured to matter.
-
-**Candidate design for closing the gaps: two phases, still without a tree.** Most known gaps share one cause: the scanner mixes block and inline rules line by line, so every rule that spans lines needs extra state. The paragraph extent, multi-line code spans, HTML blocks, and table cells are examples. A block lexer could instead emit leaf-block ranges (paragraph, heading, code, HTML block types 1 to 7, table cell) with container prefixes removed. A small inline lexer would then run only on paragraph, heading, and cell text, and handle backslashes, code spans, tags, and comments. A comment's extent would follow from its leaf block. Both phases stay linear. The reference spec and the corpus comparison above can verify such a rewrite.
-
-## Supported limits and observed gaps
-
-Fenced code blocks, including fences in list and blockquote contexts, and single-line inline code spans are protected, except some code spans in GFM table cells (see below). Ordinary indented code blocks and inline code spans that wrap across lines are not detected as code. Markers there can be treated as active. The [markers doc](../../docs/markers.md#markers-in-code-examples) documents this boundary. Revisit the scanner or a parser dependency if full CommonMark protection becomes a requirement or further block-context bugs make the bounded scanner too costly to maintain. Re-measure alternatives against current offset and throughput requirements before changing the implementation.
-
-The following observations are not claims of full Markdown or HTML parsing. They were re-established with Node 26.13.0 on 2026-11-12, after the invalid-attribute error was limited to the text up to the next whitespace inside the opening comment. Run this command from the repository root:
+Run from the repository root:
 
 ```sh
-fnm exec --using=26.13.0 node --input-type=module-typescript -e 'import { getCommentMarkAll } from "./src/index.ts"; const cases = { escaped: "\\<!-- a -->old<!-- /a -->", script: "<script>\n<!-- a -->old<!-- /a -->\n</script>", blockquote: "> <!-- a\n> -->q<!-- /a -->", sameName: "<!-- a -->outer <!-- a -->inner<!-- /a --> tail", fence: "<!-- a -->\n```\n<!-- /a -->" }; for (const [name, input] of Object.entries(cases)) { try { console.log(name, JSON.stringify(getCommentMarkAll(input))); } catch (error) { console.log(name, error.message); } }'
+node --input-type=module-typescript -e 'import { getCommentMarkAll } from "./src/index.ts"; const cases = { escaped: "\\<!-- a -->old<!-- /a -->", script: "<script>\n<!-- a -->old<!-- /a -->\n</script>", blockquote: "> <!-- a\n> -->q<!-- /a -->", sameName: "<!-- a -->outer <!-- a -->inner<!-- /a --> tail", fence: "<!-- a -->\n```\n<!-- /a -->", table: "| a | b |\n| - | - |\n| `literal | `<!-- a -->old<!-- /a -->` |" }; for (const [name, input] of Object.entries(cases)) { try { console.log(name, JSON.stringify(getCommentMarkAll(input))); } catch (error) { console.log(name, error.message); } }'
 ```
 
 Observed output:
 
 ```text
-escaped [{"tagName":"a","attributes":{},"content":"old"}]
+escaped []
 script [{"tagName":"a","attributes":{},"content":"old"}]
 blockquote [comment-mark] Invalid marker attribute: ">"
 sameName [{"tagName":"a","attributes":{},"content":"inner"}]
 fence []
+table []
 ```
 
-- **Escaped opener:** the scanner recognizes `\<!-- a -->` as a marker opener. Under [CommonMark backslash escapes](https://spec.commonmark.org/0.31.2/#backslash-escapes), `<` is escapable ASCII punctuation, so this example is not an HTML comment opener in rendered Markdown.
-- **HTML context:** the scanner recognizes a marker-looking string inside `<script>`. The scanner is Markdown-oriented; its HTML context support is limited. This observation does not decide a fix.
-- **Multiline opening comment in a blockquote:** the continuation prefix is read as marker attribute text and throws. [PR #37](https://github.com/privatenumber/comment-mark/pull/37) fixed continuation of marker content, not parsing of a multiline opening comment.
-- **Unbalanced same-name opener:** the only closer pairs with the later opener, so `inner` becomes the recognized content instead of `outer`. **Unclosed fence:** a fence inside the section hides the later closer, so the reader returns no marker. See [marker pairing](./markers-and-selectors.md) for the pairing rule. These describe reading a document that already has such content. Since #43, an update that would produce either one is rejected; see [structure validation](./content-padding.md#structure-validation).
-- **Code spans in GFM table cells:** the scanner matches backticks across a whole line, but GFM splits a table row into cells first. In the table below, GitHub renders the second cell as inline code, while the scanner pairs the first cell's unmatched backtick with the second cell's opening backtick. `getCommentMarkAll` then returns the marker, and `commentMark(s, { a: "new" })` changes `old` to `new`. Observed with Node 26.13.0 at `d41c4a5` and GitHub's `/markdown` API (`mode=gfm`) on 2026-11-08.
+- **Escaped opener** and **table cell code span:** skipped, as GitHub renders them as text. Both were reported as markers before.
+- **`<script>`:** the marker is found. This matches GitHub, because tagfilter escapes `<script>`, so its content is ordinary HTML.
+- **Multiline opening comment in a blockquote:** the scanner finds the comment, but [parse-attributes.ts](../../src/parser/parse-attributes.ts) reads the `>` on the second line as attribute text and throws. [PR #37](https://github.com/privatenumber/comment-mark/pull/37) fixed continuation of marker content, not of a multiline opening comment.
+- **Unbalanced same-name opener** and **unclosed fence:** the closer pairs with the later opener, and a fence inside the section hides the closer. See [marker pairing](./markers-and-selectors.md). Since #43, an update that would produce either one is rejected; see [structure validation](./content-padding.md#structure-validation).
 
-  ```md
-  | a | b |
-  | - | - |
-  | `literal | `<!-- a -->old<!-- /a -->` |
-  ```
+[parse-document.ts](../../src/parser/parse-document.ts) pairs the scanned comments into markers and exposes only outermost pairs; [PR #32](https://github.com/privatenumber/comment-mark/pull/32) introduced that rule. [parse-attributes.ts](../../src/parser/parse-attributes.ts) parses each opening comment's attributes.
+
+## Verification
+
+### GitHub oracle
+
+The primary check compares the scanner with a local stand-in for GitHub: cmark-gfm 0.29.0.gfm.13 built from source with GitHub's extensions, followed by parse5 8.1.1 as the browser. [github-oracle.md](./github-oracle.md) has the build recipe and scripts.
+
+**Oracle validation.** The oracle's visible text matched GitHub's `/markdown` API (`mode=gfm`) on all 180 generated documents tried on 2026-11-13. GitHub's API output has no comment nodes to compare, so the check compares visible text: text that one side hides in a comment and the other shows is a difference. It cannot tell apart two comments that hide the same text with different boundaries.
+
+**Comparison.** `compare.mjs` generates documents from fragments with a seeded random generator, and compares the comments each side finds. Each generated `<!--` gets a unique number, such as `<!-- a12 -->` or `<!--o12q`. A comment is identified by the number it starts with and the last marker number in it, so a match means the same opening and closing on both sides. Where a comment has no number, its first or last 3 characters are compared after both sides are normalized the same way, because a comment that spans chunks also holds generated markup in the oracle's output. Results on 20,000 documents per seed, at the head of this branch on 2026-11-14, each mismatch checked with `show.mjs`:
+
+| Fragment set | Seed | Mismatches | Cause |
+| --- | --- | --- | --- |
+| `rich` | 1 | 2 | 1 normalization artifact (`<hr />`), 1 quote in generated markup (`<ol start="2">`) |
+| `rich` | 2 | 0 | |
+| `rich` | 99 | 5 | normalization artifacts |
+| `rich` | 12345 | 3 | artifacts |
+| `autolink` | 1 | 2 | bare-URL autolinks |
+| `autolink` | 2 | 2 | bare-URL autolinks |
+| `autolink` | 3 | 0 | |
+
+A mutant with `<…>` autolinks disabled gives 590 to 650 mismatches per `autolink` seed, so the fuzz detects autolink bugs. The `GitHub rendering` group in the [Markdown tests](../../tests/specs/markdown.ts) locks one case per rule, each checked against the oracle.
+
+### micromark differential spec
+
+The [reference parser spec](../../tests/specs/reference-parser.ts) compares `getCommentMarkAll` with markers built from micromark 4.0.3 with GFM tables on 5,000 seeded documents in `pnpm test`. It needs no C build, so it runs in CI. Its fragments avoid the forms where CommonMark and GitHub differ, so it guards only CommonMark-equivalent behavior. It passes on this branch.
+
+### Corpus and performance
+
+The corpus is 5,141 unique `.md` files (39.6 MB, 2,769 comments) from a local `node_modules` tree. Against `develop` at `5723ed5`, every comment start, inner range, and container prefix is the same, and the 20 files listed in [behavior changes](#behavior-changes-from-the-previous-scanner) differ only in the `startsLine` flag.
+
+Scanning the whole corpus as one string with `mitata` on an Apple M2 Max: this scanner 227 ms per iteration, `develop` 392 ms. Both find 2,769 comments.
+
+Scaling: each adversarial input below was scanned at 20,000 and 40,000 repetitions, and the time ratio stayed at or below 2: repeated definitions and failing definitions, long labels and escaped titles, open comments, backtick runs, open attribute values, table rows, HTML blocks, nested lists, `< ` and `<!` runs.
+
+## Scanner extraction
+
+**Decision (2026-11-13): do not publish the scanner as its own package yet.** It now follows GitHub closely, but it has no confirmed consumer. [mdeval](https://github.com/privatenumber/mdeval) was the candidate. It parses with micromark and GFM tables to find code ranges, and separately with `mdast-util-from-markdown` to find rendered leaks, so a switch would speed up only one of its two parses. Revisit when a consumer needs GitHub-faithful comment or raw HTML positions without a tree, or when mdeval's parse cost is measured to matter. An earlier measurement of the previous scanner, about 270 times faster than micromark on a 10.7 MB input, was not repeated for this one.
 
 ## Parser alternatives
 

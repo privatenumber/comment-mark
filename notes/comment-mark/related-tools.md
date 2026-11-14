@@ -9,7 +9,7 @@ Sources were checked on 2026-11-08 at the versions or commits named in the linke
 comment-mark combines four properties. No inspected tool has all of them:
 
 - **Content between paired markers.** The section is cached between an opening and a closing comment, so the same file is both the template and the output. See [markers and selectors](./markers-and-selectors.md).
-- **Code examples stay literal.** Markers inside fenced code and single-line inline code spans are ignored. Indented code, inline spans that wrap across lines, and some code spans in GFM table cells are not protected; see the [scanner gaps](./comment-scanning.md#supported-limits-and-observed-gaps). See [comment scanning](./comment-scanning.md).
+- **Code examples stay literal.** Markers inside fenced and indented code, inline code spans, escaped text, and link reference definitions are ignored, because the scanner finds only the comments GitHub renders. A few rare forms are still misread; see the [known gaps](./comment-scanning.md#known-gaps).
 - **Selection by tag name and attributes.** A selector can target one of several markers with the same tag name. See [markers and selectors](./markers-and-selectors.md).
 - **Position-based layout.** A marker that starts its line gets content on its own lines, and a marker inside a line gets content inserted as written, with container prefixes in both cases. Updates that would change the document's markers are rejected. See [content layout](./content-padding.md).
 
@@ -25,7 +25,7 @@ These tools write generated content between paired comment markers, which is com
 | all-contributors CLI | Writes a contributor table between markers | Always uses its own fixed layout. Precedent for [content layout](./content-padding.md#precedent). |
 | cog | Runs Python generators between marker lines in any text file | Line-oriented, so no inline values. Its final-newline rule exists for idempotency, the same reason comment-mark pads block content. |
 | mdsh | Runs shell commands and inserts their output | Copies bytes without a trailing line break before the closing marker, the case that can leave a fence open. See [content layout](./content-padding.md#rejected-a-byte-exact-insertion-mode). |
-| [mdeval](https://github.com/privatenumber/mdeval) | Evaluates JavaScript or TypeScript in Markdown comments and inserts the results | Sibling project by the same author. It finds code ranges with micromark events, including indented code ([`src/parse-markdown.ts#L37-L60`](https://github.com/privatenumber/mdeval/blob/v1.6.0/src/parse-markdown.ts#L37-L60) at v1.6.0). comment-mark uses a smaller scanner that does not protect indented code; see [comment scanning](./comment-scanning.md#supported-limits-and-observed-gaps). |
+| [mdeval](https://github.com/privatenumber/mdeval) | Evaluates JavaScript or TypeScript in Markdown comments and inserts the results | Sibling project by the same author. It finds code ranges with micromark events, including indented code ([`src/parse-markdown.ts#L37-L60`](https://github.com/privatenumber/mdeval/blob/v1.6.0/src/parse-markdown.ts#L37-L60) at v1.6.0). comment-mark ports the cmark-gfm block and inline rules it needs instead of building an AST, and it protects indented code too; see [comment scanning](./comment-scanning.md). |
 
 ## File inclusion
 

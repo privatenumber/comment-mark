@@ -55,7 +55,7 @@ The line breaks are needed because a line that starts with `<!--` begins an HTML
 
 How the rule applies:
 
-- **First thing on its line** ignores any list or blockquote prefix and up to three columns of indentation, where a tab advances to the next multiple of four. With four or more columns, the line is indented code or continues the paragraph above it, so the marker is inline. A marker after a comment that begins the line, such as `a` in `<!-- note --> text <!-- a -->`, counts as a block marker because the whole line is an HTML block.
+- **First thing on its line** ignores any list or blockquote prefix and up to three columns of indentation, where a tab advances to the next multiple of four. With four or more columns, the line is indented code, where markers are skipped, or it continues the paragraph above it, so the marker is inline. Inside an HTML block, such as the lines after `<div>`, indentation does not matter, because those lines are HTML. A marker after a comment that begins the line, such as `a` in `<!-- note --> text <!-- a -->`, counts as a block marker because the whole line is an HTML block.
 - **Added line breaks match the document:** the first line break outside the markers' opening comments and content, CRLF, LF, or CR. A document without one gets LF.
 - **In lists and blockquotes,** each line break in the content is followed by the container's prefix, so the content and the closing comment stay in the container. This applies to inline markers too.
 - **Reading a section** returns the added line breaks as part of its content. Rerunning an update with the same static content, or with a resolver that returns its input, leaves the document unchanged, and the CLI reports `Unchanged`, as long as the update does not change an attribute that its own selector tests.
@@ -64,7 +64,6 @@ Pitfalls:
 
 - **Inline content that ends with a line break.** The closing comment is then the first thing on its line and begins an HTML block, so the rest of that line is not rendered as Markdown. This is the main case where an inline marker does not render as if it were absent.
 - **A code block in an inline marker.** If the content ends with the closing fence, the fence shares a line with the closing comment and cannot close, so the update is rejected. Content that ends with a line break after the fence, as in `\n```js\nx\n```\n`, is accepted, but a block marker is simpler. Any update that would change the document's markers is rejected the same way.
-- **Lazy blockquote lines.** A marker on unprefixed text that continues a `>` paragraph is not recognized as inside the blockquote. Its content gets no prefix and can end up outside the quote.
 - **HTML.** Added line breaks can be visible, for example inside `<pre>`.
 
 ### What counts as a marker
@@ -98,14 +97,14 @@ An unclosed opening comment with the section's own tag name changes the section.
 
 ### Markers in code examples
 
-Markers shown as examples in code are skipped, so a document can show marker syntax without updating it.
+Markers shown as examples in code are skipped, so a document can show marker syntax without updating it. comment-mark reads a comment as a marker only where GitHub renders it as a comment, so it skips comments in:
 
-- **Skipped:** fenced code blocks, with backticks or tildes, including fences inside lists and blockquotes, and inline code spans on one line.
-- **Not skipped, so a marker there is treated as real:**
-	- indented code blocks, and inline code spans that wrap across lines
-	- in a GFM table row, a code span whose opening backtick pairs with an unmatched backtick in an earlier cell
+- fenced and indented code blocks, including code inside lists and blockquotes
+- inline code spans, including spans that wrap across lines and spans in table cells
+- escaped text, such as `\<!-- a -->`
+- link reference definitions, such as `[x]: <!-- a -->`, which render nothing
 
-To keep an example literal, put it in a fenced code block. Inline code on one line also works outside tables.
+A few rare forms are still read differently than GitHub reads them, such as a comment used as a link destination, `[x](<!-- a -->)`, or a backtick inside a bare URL, `` https://example.com/`a ``.
 
 ### Compared with HTML and XML
 
