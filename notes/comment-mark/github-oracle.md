@@ -446,7 +446,7 @@ console.log('interactions', interactions)
 node generate-entities.mjs <cmark-gfm>/src/entities.inc src/parser/scan-comments/entities.ts
 ```
 
-The script fails if the table does not have 2,125 entries, or if decoding any entity grows it by more than 1 byte, which the budget's fast bound relies on. On 2026-11-14 the output also matched `character-entities` 2.0.2 in every name and decoded byte length.
+The script stores each entity's decoded byte length and, when it is ASCII, its first decoded byte, which can complete a backslash escape, as `=` does in `\&bne;`. It fails if the table does not have 2,125 entries, if decoding any entity grows it by more than 1 byte, which the budget's fast bound relies on, or if a multi-byte entity decodes to a backslash. On 2026-11-14 the output also matched `character-entities` 2.0.2 in every name and decoded byte length.
 
 `generate-entities.mjs`:
 
@@ -461,37 +461,45 @@ if (entries.length !== 2125) {
     throw new Error(`Expected 2125 entries, got ${entries.length}`)
 }
 
-// A single ASCII byte is stored as its negated code, so the scanner can see
-// a decoded backslash or punctuation. Anything longer is stored as its length.
+// Each entity is stored with its decoded byte length and, if it is ASCII, its
+// first decoded byte. Backslash removal after decoding needs that byte, as in
+// `\&bne;`, which decodes to `=` and a combining character.
 const groups = new Map()
 for (const [, name, raw] of entries) {
     const bytes = raw.split(',').map(Number).filter(byte => byte !== 0)
     if (bytes.length > name.length + 3) {
         throw new Error(`Decoding grows ${name} by more than 1 byte`)
     }
-    const value = bytes.length === 1 ? -bytes[0] : bytes.length
-    groups.set(value, [...groups.get(value) ?? [], name])
+    // The scanner tracks a decoded backslash only as a whole entity, `&bsol;`.
+    if (bytes.length > 1 && bytes.includes(92)) {
+        throw new Error(`${name} decodes to a backslash among other bytes`)
+    }
+    const key = `${bytes.length}, ${bytes[0] < 128 ? bytes[0] : -1}`
+    groups.set(key, [...groups.get(key) ?? [], name])
 }
 
 const lines = [...groups]
-    .sort((a, b) => a[0] - b[0])
-    .map(([value, names]) => `\t[${value}, '${names.join(' ')}'],`)
+    .sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true }))
+    .map(([key, names]) => `\t[${key}, '${names.join(' ')}'],`)
 
 fs.writeFileSync(process.argv[3], `// Generated from src/entities.inc in cmark-gfm 0.29.0.gfm.13. To regenerate,
 // see "Entity table" in notes/comment-mark/github-oracle.md.
-// Negative values encode single ASCII bytes; positive values are decoded byte lengths.
-const groups: [number, string][] = [
+// Each group holds the decoded byte length, the first decoded byte if it is
+// ASCII or -1, and the entity names.
+type Entity = [bytes: number, first: number, names: string];
+
+const groups: Entity[] = [
 ${lines.join('\n')}
 ];
 
-let entities: Map<string, number> | undefined;
+let entities: Map<string, Entity> | undefined;
 
 export const namedEntity = (name: string) => {
 \tif (!entities) {
 \t\tentities = new Map();
-\t\tfor (const [value, names] of groups) {
-\t\t\tfor (const entry of names.split(' ')) {
-\t\t\t\tentities.set(entry, value);
+\t\tfor (const group of groups) {
+\t\t\tfor (const entry of group[2].split(' ')) {
+\t\t\t\tentities.set(entry, group);
 \t\t\t}
 \t\t}
 \t}
