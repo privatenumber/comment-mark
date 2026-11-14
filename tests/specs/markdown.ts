@@ -414,6 +414,45 @@ describe('inline code', () => {
 });
 
 describe('links and images', () => {
+	test('reference links preserve nested marker boundaries', async () => {
+		for (const [content, old, updated] of [
+			['x <!-- a -->old [outer [ref]](<!-- /a -->) PRESERVE <!-- /a -->\n\n[ref]: /u', 'old [outer [ref]](', 'x <!-- a -->NEW<!-- /a -->) PRESERVE <!-- /a -->\n\n[ref]: /u'],
+			['x <!-- a -->outer [a [b][r]](<!-- a -->) tail<!-- /a -->\n\n[r]: /url', ') tail', 'x <!-- a -->outer [a [b][r]](<!-- a -->NEW<!-- /a -->\n\n[r]: /url'],
+		] as const) {
+			expect(getCommentMarkAll(content)).toStrictEqual([{
+				tagName: 'a',
+				attributes: {},
+				content: old,
+			}]);
+			expect(await commentMark(content, { a: 'NEW' })).toBe(updated);
+		}
+	});
+
+	test('reference links and images resolve definitions after their use', () => {
+		const marker = '<!-- a -->old<!-- /a -->';
+		for (const suffix of ['[r]', '[]', '[ ]', '']) {
+			const label = suffix === '[r]' ? 'r' : marker;
+			for (const image of [false, true]) {
+				const prefix = image ? '!' : '';
+				const content = `x ${prefix}[${marker}]${suffix}`;
+				const literal = [{
+					tagName: 'a',
+					attributes: {},
+					content: 'old',
+				}];
+				expect(getCommentMarkAll(content)).toStrictEqual(literal);
+				expect(getCommentMarkAll(`${content}\n\n[${label}]: /u`)).toStrictEqual(image ? [] : literal);
+			}
+		}
+		for (const content of [
+			'![<!-- a -->old<!-- /a -->][r]\n\n[r]: /url',
+			'![<!-- a -->old<!-- /a -->][SS]\n\n[ß]: /url',
+			'x [text][<!-- a -->old<!-- /a -->]\n\n[<!-- a -->old<!-- /a -->]: /u',
+		]) {
+			expect(getCommentMarkAll(content)).toStrictEqual([]);
+		}
+	});
+
 	test('destinations and titles do not render comments', async () => {
 		const sources = [
 			'[x](<!-- a -->)<!-- /a -->',
@@ -502,6 +541,17 @@ describe('links and images', () => {
 		for (const control of ['\v', '\f']) {
 			const content = `[r]: u${control}<!--a-->\n\n[r]\n<!-- /a -->`;
 			expect(getCommentMarkAll(content)).toStrictEqual([]);
+		}
+	});
+
+	test('labels keep vertical tab and form feed', () => {
+		// cmark trims and collapses labels with `cmark_isspace`, which excludes
+		// `\v` and `\f`, so a label of only `\v` is neither blank nor defined.
+		expect(getCommentMarkAll('[\v]: <!-- a -->\n\n<!-- /a -->')).toStrictEqual([]);
+		expect(getCommentMarkAll('[a\vb]: <!-- a -->\n\n[a b]\n<!-- /a -->')).toStrictEqual([]);
+		for (const control of ['\v', '\f']) {
+			const content = `![x <!-- a -->][${control}]<!-- /a -->\n\n[x <!-- a -->]: /u`;
+			expect(getCommentMarkAll(content).map(marker => marker.content)).toStrictEqual([`][${control}]`]);
 		}
 	});
 });

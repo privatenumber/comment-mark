@@ -39,6 +39,7 @@ export type BlockHandlers = {
 	 * between the previous HTML block line and this one.
 	 */
 	html: (start: number, end: number, afterMarkup: boolean, continuation: string) => void;
+	definition?: (label: string) => void;
 };
 
 type Container =
@@ -181,7 +182,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			for (let index = 0; index < segments.length; index += 2) {
 				text += `${source.slice(segments[index], segments[index + 1])}\n`;
 			}
-			segments.splice(0, countDefinitionLines(text) * 2);
+			segments.splice(0, countDefinitionLines(text, handlers.definition) * 2);
 		}
 		return segments.length > 0;
 	};

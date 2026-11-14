@@ -104,7 +104,7 @@ Markers shown as examples in code are skipped, so a document can show marker syn
 - escaped text, such as `\<!-- a -->`
 - link reference definitions, such as `[x]: <!-- a -->`, which render nothing
 
-A few rare forms are still read differently than GitHub reads them, such as a comment in a reference link's or reference image's text or destination, or a backtick inside a bare URL, `` https://example.com/`a ``.
+A few rare forms are still read differently than GitHub reads them, such as footnotes or a backtick inside a bare URL, `` https://example.com/`a ``.
 
 ### Compared with HTML and XML
 

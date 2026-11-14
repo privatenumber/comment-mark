@@ -5,7 +5,12 @@ import {
 	isSpaceChar,
 	scanHtmlTag,
 } from './html-tag.ts';
-import { scanDestination, scanTitle } from './block/reference-definition.ts';
+import {
+	isCmarkSpace,
+	scanDestination,
+	scanLabel,
+	scanTitle,
+} from './block/reference-definition.ts';
 
 /**
  * Indexes `manual_scan_link_url_2` boundaries for monotonic destination starts.
@@ -102,8 +107,8 @@ const indexDestinations = (text: string) => {
  * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L911-L1018
  *
  * It lexes the inline rules that decide where raw HTML can start: backslash
- * escapes, code spans, `<…>` autolinks, and inline links and images. Reference
- * links and images, footnotes, and bare-URL autolinks are not lexed yet.
+ * escapes, code spans, `<…>` autolinks, and links and images. Footnotes and
+ * bare-URL autolinks are not lexed yet.
  * Everything else renders as escaped text or renderer-generated markup, neither
  * of which can open a comment.
  */
@@ -235,7 +240,11 @@ const skipProcessingInstruction = (text: string, index: number) => {
 /**
  * Calls `emit` with the start and end of each raw HTML span in `text`, in order.
  */
-export const lexInline = (text: string, emit: (start: number, end: number) => void) => {
+export const lexInline = (
+	text: string,
+	emit: (start: number, end: number) => void,
+	isDefinedLabel: (label: string) => boolean,
+) => {
 	// Once a kind of construct fails to close, cmark-gfm stops matching that
 	// kind for the rest of the text. An unclosed comment disables every `<!`
 	// construct, including empty comments.
@@ -411,6 +420,8 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 	const brackets: {
 		image: boolean;
 		spanStart: number;
+		position: number;
+		bracketAfter: boolean;
 	}[] = [];
 	const spans: {
 		start: number;
@@ -419,9 +430,14 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 	let images = 0;
 	let noLinkOpeners = true;
 	const pushBracket = (image: boolean) => {
+		if (brackets.length > 0) {
+			brackets.at(-1)!.bracketAfter = true;
+		}
 		brackets.push({
 			image,
 			spanStart: spans.length,
+			position: index + (image ? 2 : 1),
+			bracketAfter: false,
 		});
 		if (image) {
 			images += 1;
@@ -460,7 +476,22 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 				if (!opener) {
 					break;
 				}
-				const end = opener.image || !noLinkOpeners ? matchLinkTail(index) : -1;
+				let end = opener.image || !noLinkOpeners ? matchLinkTail(index) : -1;
+				if (end === -1 && (opener.image || !noLinkOpeners)) {
+					const labelEnd = text.charCodeAt(index) === 91 ? scanLabel(text, index, true) : -1;
+					let label = labelEnd === -1 ? '' : text.slice(index + 1, labelEnd - 1);
+					let labelStart = 0;
+					while (labelStart < label.length && isCmarkSpace(label.charCodeAt(labelStart))) {
+						labelStart += 1;
+					}
+					const empty = labelStart === label.length;
+					if ((labelEnd === -1 || empty) && !opener.bracketAfter) {
+						label = text.slice(opener.position, index - 1);
+					}
+					if ((labelEnd !== -1 || !opener.bracketAfter) && isDefinedLabel(label)) {
+						end = labelEnd === -1 ? index : labelEnd;
+					}
+				}
 				if (end !== -1) {
 					index = end;
 					if (opener.image) {

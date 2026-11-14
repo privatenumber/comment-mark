@@ -1,4 +1,4 @@
-import { isAsciiPunctuation, isSpaceChar } from '../html-tag.ts';
+import { isAsciiPunctuation } from '../html-tag.ts';
 
 /**
  * Link reference definitions, such as `[x]: <url> "title"`, as GitHub's
@@ -10,6 +10,15 @@ import { isAsciiPunctuation, isSpaceChar } from '../html-tag.ts';
 
 // In UTF-8 bytes, as cmark-gfm reads its input.
 const maxLabelLength = 1000;
+
+/**
+ * `cmark_isspace`: tab, line feed, carriage return, and space. Unlike the HTML
+ * whitespace in `isSpaceChar`, it excludes `\v` and `\f`:
+ * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/cmark_ctype.c#L7-L11
+ */
+export const isCmarkSpace = (code: number) => (
+	code === 32 || code === 9 || code === 10 || code === 13
+);
 
 const isHighSurrogate = (code: number) => code >= 0xD8_00 && code <= 0xDB_FF;
 const isLowSurrogate = (code: number) => code >= 0xDC_00 && code <= 0xDF_FF;
@@ -65,7 +74,7 @@ const skipSpacesAndLineEnd = (text: string, index: number) => {
 };
 
 /** `link_label`: returns the index after the `]`, or -1. */
-const scanLabel = (text: string, index: number) => {
+export const scanLabel = (text: string, index: number, allowBlank = false) => {
 	let length = 0;
 	let blank = true;
 	for (index += 1; index < text.length; index += 1) {
@@ -74,9 +83,9 @@ const scanLabel = (text: string, index: number) => {
 			return -1;
 		}
 		if (code === 93) {
-			return blank ? -1 : index + 1;
+			return blank && !allowBlank ? -1 : index + 1;
 		}
-		blank &&= isSpaceChar(code);
+		blank &&= isCmarkSpace(code);
 		if (code === 92 && isAsciiPunctuation(text.charCodeAt(index + 1))) {
 			index += 1;
 			length += 1;
@@ -87,6 +96,31 @@ const scanLabel = (text: string, index: number) => {
 		}
 	}
 	return -1;
+};
+
+// cmark folds Unicode case, trims, and collapses ASCII whitespace. Like
+// micromark's normalizeIdentifier, this approximates full case folding:
+// https://github.com/micromark/micromark/blob/4.0.3/packages/micromark-util-normalize-identifier/index.js
+export const normalizeLabel = (label: string) => {
+	let normalized = '';
+	let space = false;
+	let length = 0;
+	for (let index = 0; index < label.length; index += 1) {
+		length += utf8Length(label, index);
+		if (length > maxLabelLength) {
+			return '';
+		}
+		if (isCmarkSpace(label.charCodeAt(index))) {
+			space = normalized.length > 0;
+		} else {
+			if (space) {
+				normalized += ' ';
+				space = false;
+			}
+			normalized += label[index];
+		}
+	}
+	return normalized.toLowerCase().toUpperCase();
 };
 
 /** `manual_scan_link_url`: returns the index after the destination, or -1. */
@@ -123,7 +157,7 @@ export const scanDestination = (text: string, index: number) => {
 			}
 			depth -= 1;
 			index += 1;
-		} else if (isSpaceChar(code) && code !== 11 && code !== 12) {
+		} else if (isCmarkSpace(code)) {
 			if (index === start) {
 				return -1;
 			}
@@ -190,13 +224,17 @@ const scanDefinition = (text: string, index: number) => {
  * start of a paragraph. `text` holds the paragraph's lines, each followed by a
  * line feed.
  */
-export const countDefinitionLines = (text: string) => {
+export const countDefinitionLines = (text: string, onLabel?: (label: string) => void) => {
 	let index = 0;
 	let lines = 0;
 	while (text.charCodeAt(index) === 91) {
 		const end = scanDefinition(text, index);
 		if (end === -1) {
 			break;
+		}
+		if (onLabel) {
+			const labelEnd = scanLabel(text, index);
+			onLabel(text.slice(index + 1, labelEnd - 1));
 		}
 		for (; index < end; index += 1) {
 			if (text.charCodeAt(index) === 10) {

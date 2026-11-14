@@ -1,4 +1,5 @@
 import { lexBlocks } from './block/index.ts';
+import { normalizeLabel } from './block/reference-definition.ts';
 import { createHtmlTokenizer } from './html-tokenizer.ts';
 import { lexInline } from './inline-lexer.ts';
 import { createForwardSearch } from './utils/forward-search.ts';
@@ -35,6 +36,21 @@ export type CommentVisitor = (
 export const scanComments = (source: string, visit: CommentVisitor) => {
 	const tokenizer = createHtmlTokenizer(source, visit);
 	const findTagOpen = createForwardSearch(source, '<');
+	let labels: Set<string> | undefined;
+	const isDefinedLabel = (label: string) => {
+		if (!labels) {
+			labels = new Set();
+			if (source.includes(']:')) {
+				lexBlocks(source, {
+					text: () => {},
+					html: () => {},
+					definition: value => labels!.add(normalizeLabel(value)),
+				});
+			}
+		}
+		const normalized = normalizeLabel(label);
+		return normalized !== '' && labels.has(normalized);
+	};
 
 	lexBlocks(source, {
 		html: (start, end, afterMarkup, continuation) => {
@@ -79,7 +95,7 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 					tokenizer.feed(partStart, partEnd, afterMarkup, continuation, false);
 					afterMarkup = false;
 				}
-			});
+			}, isDefinedLabel);
 		},
 	});
 };
