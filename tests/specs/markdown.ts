@@ -513,6 +513,10 @@ describe('GitHub rendering', () => {
 		// opening indented code.
 		['an underline after only definitions is paragraph text', `[x]: /url\n===\n    ${marker}`, true],
 		['a table drops body cells past its header', `| a |\n| - |\n| x | ${marker} |`, false],
+		['a pipe after any backslash stays in its table cell', `| a | b |\n| - | - |\n| \`\\\\|${marker}\` | x |`, false],
+		// cmark-gfm limits a label to 1,000 bytes, and each character here is 3.
+		['a reference label over 1,000 UTF-8 bytes is text', `[${'あ'.repeat(334)}]: /u "${marker}"`, true],
+		['a run of more than 80 backticks is literal', `x ${'`'.repeat(81)}${marker}${'`'.repeat(81)}`, true],
 		// GitHub escapes the `<` of `<title>`, so its quote opens no attribute value.
 		['a filtered tag is text', `<div>\n<title a="\n\n${marker}`, true],
 		['an open attribute value continues into the next HTML block', `<div>\n<span a="\n\n${marker}`, false],

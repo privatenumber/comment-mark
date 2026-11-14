@@ -167,13 +167,6 @@ const isAsciiAlphanumeric = (code: number) => (
 	(code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
 );
 
-const isAsciiPunctuation = (code: number) => (
-	(code >= 33 && code <= 47)
-	|| (code >= 58 && code <= 64)
-	|| (code >= 91 && code <= 96)
-	|| (code >= 123 && code <= 126)
-);
-
 export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	const containers: Container[] = [];
 	let leaf: Leaf | undefined;
@@ -481,18 +474,16 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 		return index - start;
 	};
 
-	// Table rows. `table_cell` runs to an unescaped `|`.
-
+	// Table rows. `table_cell` is `(escaped_char|[^|\r\n])+`, and re2c takes the
+	// longest match, so a `|` after any backslash is escaped, even in `\\|`:
+	// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/extensions/ext_scanners.re#L32-L35
 	const scanTableCell = (index: number, end: number) => {
 		while (index < end) {
 			const code = source.charCodeAt(index);
-			if (code === 92 && index + 1 < end && isAsciiPunctuation(source.charCodeAt(index + 1))) {
-				index += 2;
-			} else if (code === 124) {
+			if (code === 124 && source.charCodeAt(index - 1) !== 92) {
 				break;
-			} else {
-				index += 1;
 			}
+			index += 1;
 		}
 		return index;
 	};

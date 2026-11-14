@@ -1,6 +1,6 @@
 # Comment scanning
 
-comment-mark finds markers with an in-house scanner that reports exactly the HTML comments GitHub renders as comments. It ports the parts of GitHub's renderer, [cmark-gfm 0.29.0.gfm.13](https://github.com/github/cmark-gfm/tree/0.29.0.gfm.13), that decide where raw HTML can appear, then reads that HTML as a browser would. It builds no syntax tree.
+comment-mark finds markers with an in-house scanner that reports the HTML comments GitHub renders as comments, apart from the [known gaps](#known-gaps). It ports the parts of GitHub's renderer, [cmark-gfm 0.29.0.gfm.13](https://github.com/github/cmark-gfm/tree/0.29.0.gfm.13), that decide where raw HTML can appear, then reads that HTML as a browser would. It builds no syntax tree.
 
 Checked on branch `refactor/two-phase-scanner` (base `develop` at `5723ed5`) with Node 26.13.0 on 2026-11-13.
 
@@ -22,7 +22,7 @@ GitHub differs from CommonMark 0.31.2 (and so from micromark) in ways that chang
 
 **Why three phases.** The previous scanner mixed block and inline rules line by line. Every rule that spans lines needed its own state: paragraph extent, code spans that wrap lines, HTML blocks, table cells. Each fix added a case, and each case was a new place to disagree with GitHub. Following the renderer's own structure makes each rule a port of a cited function, so a disagreement points to one function.
 
-**Why no tree.** Comments need only the open containers and the current leaf. A tree costs memory per node and a second walk, and the scanner must stay linear on adversarial input. The phases call each other through callbacks, so text flows from block to inline to browser without being stored.
+**Why no tree.** Comments need only the open containers and the current leaf. A tree costs memory per node and a second walk, and the scanner must stay linear on adversarial input. The phases call each other through callbacks. What they keep is bounded by the current leaf block: the line ranges of the open paragraph, its joined text, and its backtick runs.
 
 ### Where a comment ends
 
@@ -38,7 +38,7 @@ A comment ends at the first `-->` that the browser sees. What the browser sees b
 
 - **Tabs.** A tab advances to the next multiple of four columns but is one source character. The block phase tracks a partially consumed tab, as cmark-gfm does, so list padding and indented code read the same columns GitHub reads.
 - **Escapes.** A backslash escape stops `\<` from opening raw HTML and stops a backtick from opening a code span. Inside a code span, backslashes are literal.
-- **Linearity.** Each phase moves forward only. Searches that could rescan, such as the next `-->` or the next closing quote, use [forward-search.ts](../../src/parser/utils/forward-search.ts), which reuses a result until the scan moves past it. The scaling check below doubles each adversarial input and the time at most doubles.
+- **Linearity.** Each phase reads the source in order. A code span closer is found with one forward cursor per run length, and cmark-gfm's limit of 80 backticks per code span bounds the number of lengths. Searches that could rescan, such as the next `-->` or the next closing quote, use [forward-search.ts](../../src/parser/utils/forward-search.ts), which reuses a result until the scan moves past it. The scaling check below doubles each adversarial input and the time at most doubles.
 - **Local state.** Scan state lives in each call, so a resolver's nested parse cannot disturb an outer scan. The `resolver reentrancy` group in the [resolver tests](../../tests/specs/resolvers.ts) checks this. [eslint.config.ts](../../eslint.config.ts) bans regular expressions in `src/` so scans stay index-based. It also turns off `unicorn/prefer-code-point` in `src/parser/`, because the lexers compare UTF-16 code units with ASCII codes and rely on `charCodeAt` returning `NaN` past the end.
 
 ## Behavior changes from the previous scanner
@@ -56,8 +56,8 @@ These forms are still read differently than GitHub reads them. A gap can hide a 
 
 - **Inline link destinations.** `[x](<!-- a -->)` renders as a link to `!--%20a%20--`, but the scanner reports the comment. Links are not lexed.
 - **Bare-URL autolinks.** The autolink extension links bare `http://` and `www.` URLs in `url_match` and `www_match`, and email addresses in `postprocess_text` ([`autolink.c`](https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/extensions/autolink.c#L168-L460)). A backtick or backslash inside such a URL is link text, not a code span opener or escape, so it shifts code span pairing. `\<http://x>`aaa x <!-- a -->+`` renders the comment, but the scanner pairs the backticks and hides it.
-- **Quotes in generated markup.** Markup the renderer writes can contain quotes, such as `<ol start="2">`, `<td align="left">`, `<pre lang="js">`, and the tasklist `<input>`. Inside an open attribute value, such a quote closes the value. The browser phase assumes generated markup holds no quote.
-- **Tight lists.** A paragraph in a tight list renders without `<p>`, but the block phase assumes generated markup before every text block. When nothing else is generated there, an open tag or bogus comment from earlier raw HTML carries into the paragraph in the browser, while the scanner resets it.
+- **Rendered text and markup inside an open tag.** When raw HTML leaves a tag or attribute value open, the browser reads the rendered output that follows as part of it, until a character ends it. The browser phase models only that generated markup ends with `>`. It ignores that rendered text can hold a `'`, which closes a single-quoted value, and that generated markup can hold quotes, such as `<ol start="2">`, `<td align="left">`, `<pre lang="js">`, and the tasklist `<input>`. In `<div>\n<a b='\n\n'\n\n<!-- a -->old<!-- /a -->`, the lone `'` paragraph closes the value, so GitHub renders the marker, but the scanner keeps the value open and misses it.
+- **Tight lists.** A paragraph in a tight list renders without `<p>`, but the block phase assumes generated markup before every text block. When nothing else is generated there, an open tag or bogus comment from earlier raw HTML carries into the paragraph in the browser, while the scanner resets it. In `- <!-- n --><?x\n  text <!-- a -->old<!-- /a -->`, the `<?x` bogus comment hides `<!-- a -->` on GitHub, but the scanner reports it.
 - **Footnotes** are not recognized, and **CDATA** in SVG and MathML content is not modeled.
 
 ### Observations
@@ -92,15 +92,15 @@ table []
 
 The primary check compares the scanner with a local stand-in for GitHub: cmark-gfm 0.29.0.gfm.13 built from source with GitHub's extensions, followed by parse5 8.1.1 as the browser. [github-oracle.md](./github-oracle.md) has the build recipe and scripts.
 
-**Oracle validation.** The oracle's visible text matched GitHub's `/markdown` API (`mode=gfm`) on all 180 generated documents tried on 2026-11-13, so it stands in for GitHub on these forms.
+**Oracle validation.** The oracle's visible text matched GitHub's `/markdown` API (`mode=gfm`) on all 180 generated documents tried on 2026-11-13. GitHub's API output has no comment nodes to compare, so the check compares visible text: text that one side hides in a comment and the other shows is a difference. It cannot tell apart two comments that hide the same text with different boundaries.
 
-**Comparison.** `compare.mjs` generates documents from fragments with a seeded random generator, and compares the comments each side finds. Both sides are normalized the same way, because a comment that spans chunks also holds generated markup in the oracle's output. Results on 20,000 documents per seed:
+**Comparison.** `compare.mjs` generates documents from fragments with a seeded random generator, and compares the comments each side finds. Each generated marker gets a unique number, such as `<!-- a12 -->`, and a comment that holds one is identified by its last marker number, so a match means the same comment on both sides. Other comments are compared by their last 3 characters after both sides are normalized the same way, because a comment that spans chunks also holds generated markup in the oracle's output. Results on 20,000 documents per seed, at the head of this branch on 2026-11-14:
 
 | Fragment set | Seed | Mismatches | Cause |
 | --- | --- | --- | --- |
 | `rich` | 1 | 2 | normalization artifacts (`<hr />`, setext `===`) |
 | `rich` | 2 | 0 | |
-| `rich` | 99 | 4 | 3 artifacts, 1 quote in generated markup |
+| `rich` | 99 | 4 | normalization artifacts |
 | `rich` | 12345 | 3 | artifacts |
 | `autolink` | 1 | 2 | bare-URL autolinks |
 | `autolink` | 2 | 2 | bare-URL autolinks |

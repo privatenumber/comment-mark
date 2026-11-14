@@ -137,6 +137,10 @@ const fragments = fragmentSets[process.argv[5] ?? 'rich']
 
 // A comment that spans chunks also holds the markup and escaped text that the
 // renderer generates between them, so tags and entities are dropped on both sides.
+// Each generated marker has a unique number, such as `a12` or `/a12`, so the
+// last one in a comment identifies it. Other comments compare by their end.
+const key = text => [...text.matchAll(/\/?a\d+/g)].at(-1)?.[0] ?? text.slice(-3)
+
 const normalize = text => text
     .replaceAll('&gt;', '>').replaceAll('&lt;', '<').replaceAll('&quot;', '"').replaceAll('&amp;', '&')
     .replaceAll(/<\/?[a-z][a-z\d]*\/?/gi, '')
@@ -154,7 +158,7 @@ const oracleComments = (html) => {
         if (node.content) { walk(node.content) }
     }
     walk(parseFragment(html, { sourceCodeLocationInfo: true }))
-    return comments.map(normalize).filter(text => text !== '' && text !== '-').map(text => text.slice(-3))
+    return comments.map(normalize).filter(text => text !== '' && text !== '-').map(key)
 }
 
 const scannerComments = (document) => {
@@ -162,7 +166,7 @@ const scannerComments = (document) => {
     scanComments(document, (start, innerStart, innerEnd) => {
         comments.push(document.slice(innerStart, innerEnd))
     })
-    return comments.map(normalize).filter(text => text !== '' && text !== '-').map(text => text.slice(-3))
+    return comments.map(normalize).filter(text => text !== '' && text !== '-').map(key)
 }
 
 const docs = []
@@ -170,7 +174,11 @@ for (let i = 0; i < count; i += 1) {
     let document = ''
     const length = 2 + random(14)
     for (let j = 0; j < length; j += 1) { document += fragments[random(fragments.length)] }
-    docs.push(document)
+    let marker = 0
+    docs.push(document.replaceAll(/(<!-- \/?a)( -->)/g, (_, open, close) => {
+        marker += 1
+        return `${open}${marker}${close}`
+    }))
 }
 
 const failures = []
@@ -221,7 +229,7 @@ for (const [i, html] of render(docs).entries()) {
 }
 ```
 
-`validate.mjs` checks the oracle itself against GitHub's `/markdown` API with the `gh` CLI. It compares visible text, which shows whether comments were removed in the same places. Each document is one API request, so keep the count small.
+`validate.mjs` checks the oracle itself against GitHub's `/markdown` API with the `gh` CLI. GitHub's output has no comment nodes to compare, so it compares visible text: text that one side hides in a comment and the other shows is a difference. Two comments that hide the same text with different boundaries look the same. Each document is one API request, so keep the count small.
 
 ```js
 // Compares the oracle's visible text with GitHub's rendering for generated
@@ -263,4 +271,4 @@ console.log({
 
 Run `node compare.mjs <scan-comments.ts> 20000 <seed> [rich|autolink]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
 
-The comparison normalizes both sides: it decodes entities, drops tag-like sequences and whitespace, and compares the last 3 characters of each comment. A comment that spans chunks also holds markup that the renderer generates, so the full text cannot match. A few mismatches per seed remain as artifacts of this normalization, when generated markup such as `<hr />` or a setext underline falls in those last 3 characters. Use `show.mjs` to confirm each mismatch before treating it as a scanner bug.
+The comparison numbers each generated marker, such as `<!-- a12 -->`, and identifies a comment by the last marker number in it, so equal results mean the same comments. Other comments, such as a stray `<!--` that runs to a later `-->`, are compared by their last 3 characters after normalization: entities decoded, and tag-like sequences and whitespace dropped. A comment that spans chunks also holds markup that the renderer generates, so its full text cannot match. A few mismatches per seed remain as artifacts of this normalization, when generated markup such as `<hr />` or a setext underline falls in those last 3 characters. Use `show.mjs` to confirm each mismatch before treating it as a scanner bug.

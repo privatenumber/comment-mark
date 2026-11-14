@@ -8,7 +8,19 @@ import { isSpaceChar } from './html-tag.ts';
  * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L1567-L1627
  */
 
+// In UTF-8 bytes, as cmark-gfm reads its input.
 const maxLabelLength = 1000;
+
+// The UTF-8 length of a UTF-16 code unit. A surrogate pair is 4 bytes in all.
+const utf8Length = (code: number) => {
+	if (code < 0x80) {
+		return 1;
+	}
+	if (code < 0x8_00 || (code >= 0xD8_00 && code <= 0xDF_FF)) {
+		return 2;
+	}
+	return 3;
+};
 const maxDestinationParentheses = 32;
 
 // `cmark_ispunct`: ASCII punctuation.
@@ -60,7 +72,7 @@ const scanLabel = (text: string, index: number) => {
 			index += 1;
 			length += 1;
 		}
-		length += 1;
+		length += utf8Length(code);
 		if (length > maxLabelLength) {
 			return -1;
 		}

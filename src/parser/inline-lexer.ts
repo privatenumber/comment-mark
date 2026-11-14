@@ -10,7 +10,9 @@ import { isAsciiLetter, isSpaceChar, scanHtmlTag } from './html-tag.ts';
  * renders escaped, so it cannot open or close a comment.
  */
 
-const maxBacktickRun = 1000;
+// `MAXBACKTICKS`: a longer run is literal text.
+// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L34
+const maxBacktickRun = 80;
 
 const isAsciiPunctuation = (code: number) => (
 	(code >= 33 && code <= 47)
