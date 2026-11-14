@@ -1,4 +1,4 @@
-import { isSpaceChar } from './html-tag.ts';
+import { isAsciiPunctuation, isSpaceChar } from './html-tag.ts';
 
 /**
  * Link reference definitions, such as `[x]: <url> "title"`, as GitHub's
@@ -39,14 +39,6 @@ const utf8Length = (text: string, index: number) => {
 	return 3;
 };
 const maxDestinationParentheses = 32;
-
-// `cmark_ispunct`: ASCII punctuation.
-const isAsciiPunctuation = (code: number) => (
-	(code >= 33 && code <= 47)
-	|| (code >= 58 && code <= 64)
-	|| (code >= 91 && code <= 96)
-	|| (code >= 123 && code <= 126)
-);
 
 const skipSpaces = (text: string, index: number) => {
 	while (text.charCodeAt(index) === 32 || text.charCodeAt(index) === 9) {

@@ -16,6 +16,16 @@ export const isAsciiLetter = (code: number) => (
 
 const isDigit = (code: number) => code >= 48 && code <= 57;
 
+export const isAsciiAlphanumeric = (code: number) => isAsciiLetter(code) || isDigit(code);
+
+/** `cmark_ispunct`: ASCII punctuation. */
+export const isAsciiPunctuation = (code: number) => (
+	(code >= 33 && code <= 47)
+	|| (code >= 58 && code <= 64)
+	|| (code >= 91 && code <= 96)
+	|| (code >= 123 && code <= 126)
+);
+
 const isTagNameChar = (code: number) => isAsciiLetter(code) || isDigit(code) || code === 45;
 
 const isAttributeNameStart = (code: number) => isAsciiLetter(code) || code === 95 || code === 58;

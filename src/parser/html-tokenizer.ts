@@ -1,5 +1,5 @@
 import type { CommentVisitor } from './scan-comments.ts';
-import { isAsciiLetter } from './html-tag.ts';
+import { isAsciiLetter, isSpaceChar } from './html-tag.ts';
 import { createForwardSearch } from './utils/forward-search.ts';
 
 /**
@@ -47,9 +47,6 @@ const filteredTagNames = ['title', 'textarea', 'style', 'xmp', 'iframe', 'noembe
 const isHtmlWhitespace = (code: number) => (
 	code === 32 || code === 9 || code === 10 || code === 12 || code === 13
 );
-
-// `cmark_isspace`: space, tab, LF, VT, FF, and CR.
-const isCmarkSpace = (code: number) => code === 32 || (code >= 9 && code <= 13);
 
 export type HtmlTokenizer = {
 
@@ -109,7 +106,7 @@ export const createHtmlTokenizer = (source: string, visit: CommentVisitor): Html
 			}
 			if (matches) {
 				const after = peek(nameStart + name.length);
-				return isCmarkSpace(after)
+				return isSpaceChar(after)
 					|| after === 62
 					|| (after === 47 && peek(nameStart + name.length + 1) === 62);
 			}

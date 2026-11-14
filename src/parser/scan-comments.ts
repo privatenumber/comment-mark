@@ -41,19 +41,13 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 			tokenizer.feed(start, end, afterMarkup, continuation, true);
 		},
 		text: (segments, continuation) => {
-			// Raw HTML starts with `<`, so text without one renders as text.
-			let hasTagOpen = false;
-			for (let index = 0; index < segments.length; index += 2) {
-				const open = findTagOpen(segments[index]);
-				if (open === -1) {
-					return;
-				}
-				if (open < segments[index + 1]) {
-					hasTagOpen = true;
-					break;
-				}
+			// Raw HTML starts with `<`, so text without one renders as text. A
+			// `<` between two segments only costs a needless inline pass.
+			if (segments.length === 0) {
+				return;
 			}
-			if (!hasTagOpen) {
+			const open = findTagOpen(segments[0]);
+			if (open === -1 || open >= segments.at(-1)!) {
 				return;
 			}
 

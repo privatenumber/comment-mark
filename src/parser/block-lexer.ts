@@ -1,4 +1,4 @@
-import { isSpaceChar, scanHtmlTag } from './html-tag.ts';
+import { isAsciiAlphanumeric, isSpaceChar, scanHtmlTag } from './html-tag.ts';
 import { countDefinitionLines } from './reference-definition.ts';
 
 /**
@@ -44,8 +44,6 @@ type Leaf =
 		type: 'paragraph' | 'heading';
 		segments: number[];
 		continuation: string;
-		// A heading opened by `#` drops its closing `#` sequence.
-		atx: boolean;
 		// Set when the paragraph failed to become a table header.
 		tableVisited: boolean;
 	}
@@ -162,10 +160,6 @@ const isTrailingSpace = (code: number) => isSpaceOrTab(code) || code === 12;
 
 // `spacechar` in the table extension excludes LF and CR.
 const isTableSpace = (code: number) => code === 32 || code === 9 || code === 11 || code === 12;
-
-const isAsciiAlphanumeric = (code: number) => (
-	(code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
-);
 
 export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	const containers: Container[] = [];
@@ -703,7 +697,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 
 		let target: Target = leafMatched ? leaf!.type : 'container';
 		let opened = false;
-		const addChild = () => {
+		const addChild = (writesMarkup = true) => {
 			closeUnmatched();
 			if (target !== 'container') {
 				finalizeLeaf();
@@ -714,7 +708,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			}
 			opened = true;
 			target = 'container';
-			markup = true;
+			markup ||= writesMarkup;
 		};
 
 		// open_new_blocks: `openBlock` tries each block start in order, and
@@ -753,7 +747,6 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 					type: 'heading',
 					segments: [],
 					continuation: continuation(),
-					atx: true,
 					tableVisited: false,
 				};
 				target = 'heading';
@@ -779,10 +772,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			const htmlKind = scanHtmlBlockStart(firstNonspace, target === 'paragraph');
 			if (htmlKind) {
 				// Only the blocks that this closes write markup before it.
-				const markupBefore = markup;
-				const openContainers = containers.length;
-				addChild();
-				markup = markupBefore || containers.length < openContainers;
+				addChild(false);
 				leaf = {
 					type: 'html',
 					kind: htmlKind,
@@ -922,10 +912,11 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 
 		if (target === 'paragraph' || target === 'heading') {
 			const text = leaf as TextLeaf;
-			let textEnd = lineEnd;
-			if (text.atx) {
-				textEnd = chopClosingSequence(source, firstNonspace, lineEnd);
-			}
+			// Only an ATX heading line reaches here as a heading: a setext
+			// underline is blank by now. It drops its closing `#` sequence.
+			const textEnd = target === 'heading'
+				? chopClosingSequence(source, firstNonspace, lineEnd)
+				: lineEnd;
 			text.segments.push(firstNonspace, textEnd);
 			return;
 		}
@@ -935,7 +926,6 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			type: 'paragraph',
 			segments: [firstNonspace, lineEnd],
 			continuation: continuation(),
-			atx: false,
 			tableVisited: false,
 		};
 	};

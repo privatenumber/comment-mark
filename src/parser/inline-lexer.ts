@@ -1,4 +1,10 @@
-import { isAsciiLetter, isSpaceChar, scanHtmlTag } from './html-tag.ts';
+import {
+	isAsciiAlphanumeric,
+	isAsciiLetter,
+	isAsciiPunctuation,
+	isSpaceChar,
+	scanHtmlTag,
+} from './html-tag.ts';
 
 /**
  * The inline phase. It finds the raw HTML spans in the text of one paragraph,
@@ -14,16 +20,7 @@ import { isAsciiLetter, isSpaceChar, scanHtmlTag } from './html-tag.ts';
 // https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L34
 const maxBacktickRun = 80;
 
-const isAsciiPunctuation = (code: number) => (
-	(code >= 33 && code <= 47)
-	|| (code >= 58 && code <= 64)
-	|| (code >= 91 && code <= 96)
-	|| (code >= 123 && code <= 126)
-);
-
 const isAsciiUppercase = (code: number) => code >= 65 && code <= 90;
-
-const isAsciiAlphanumeric = (code: number) => isAsciiLetter(code) || (code >= 48 && code <= 57);
 
 // `scheme`: a letter, then letters, digits, `+`, `.`, or `-`, 2 to 32 in all.
 const isSchemeChar = (code: number) => (
@@ -268,11 +265,17 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 			}
 			case 60: {
 				const autolinkEnd = matchAutolink(text, index);
-				const end = autolinkEnd === -1 ? matchRawHtml(index) : -1;
-				if (end !== -1) {
-					emit(index, end);
+				if (autolinkEnd !== -1) {
+					index = autolinkEnd;
+					break;
 				}
-				index = autolinkEnd === -1 ? (end === -1 ? index + 1 : end) : autolinkEnd;
+				const end = matchRawHtml(index);
+				if (end === -1) {
+					index += 1;
+				} else {
+					emit(index, end);
+					index = end;
+				}
 
 				break;
 			}
