@@ -116,10 +116,11 @@ const cleanSize = (text: string) => {
 				end += 1;
 			}
 			if (end - index >= 3 && text.charCodeAt(end) === 59) {
-				const value = namedEntity(text.slice(index + 1, end));
-				if (value !== undefined) {
-					code = value < 0 ? -value : -1;
-					bytes = value < 0 ? 1 : value;
+				const entity = namedEntity(text.slice(index + 1, end));
+				if (entity) {
+					// The first decoded byte can complete a backslash escape, as
+					// `=` does in `\&bne;`.
+					[bytes, code] = entity;
 					index = end;
 				}
 			}

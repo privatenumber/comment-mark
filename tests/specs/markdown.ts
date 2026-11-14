@@ -62,9 +62,26 @@ describe('reference expansion budget', () => {
 	});
 
 	test('a failed large lookup does not consume the remaining budget', () => {
-		const source = `${'[r] '.repeat(99)}![<!-- a -->old][large] ![<!-- /a -->x][small]\n\n`
+		// cmark-gfm 0.29.0.gfm.13 renders `![<!-- a -->old][large]` as text and
+		// resolves `![<!-- b -->x][small]`, so only the `a` marker is visible.
+		const source = `${'[r] '.repeat(99)}![<!-- a -->old<!-- /a -->][large] ![<!-- b -->x<!-- /b -->][small]\n\n`
 			+ `[r]: ${'u'.repeat(1000)}\n[large]: ${'u'.repeat(1001)}\n[small]: /x`;
-		expect(getCommentMarkAll(source).length).toBe(0);
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'old',
+		}]);
+	});
+
+	test('a decoded entity completes a backslash escape', async () => {
+		// `\&bne;` decodes to `\=` and a combining character, and cmark-gfm then
+		// removes the backslash, so `[r]` costs 801 bytes. All 100 uses fit, 33
+		// `[t]` uses fill the budget, and `![…][s]` renders as text. cmark-gfm
+		// 0.29.0.gfm.13 renders both `<!-- a -->` openers.
+		const source = `${'[r] '.repeat(100)}${'[t] '.repeat(40)}x <!-- a -->PRESERVE ![<!-- a -->old][s] tail<!-- /a -->\n\n[r]: `
+			+ `${String.raw`\&bne;`.repeat(200)}u\n[t]: ${'t'.repeat(600)}\n[s]: ${'s'.repeat(200)}`;
+		const updated = await commentMark(source, { a: 'NEW' });
+		expect(updated).toBe(source.replace('old][s] tail', 'NEW'));
 	});
 
 	test('counts decoded numeric entities and normalized title line endings', () => {
