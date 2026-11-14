@@ -143,6 +143,120 @@ const skipProcessingInstruction = (text: string, index: number) => {
 /**
  * Calls `emit` with the start and end of each raw HTML span in `text`, in order.
  */
+
+const isSpaceOrTab = (code: number) => code === 32 || code === 9;
+
+const isLineEnding = (code: number) => code === 10 || code === 13;
+
+/** `spnl`: spaces and tabs around at most one line ending. */
+const skipLinkWhitespace = (text: string, index: number) => {
+	while (isSpaceOrTab(text.charCodeAt(index))) {
+		index += 1;
+	}
+	if (isLineEnding(text.charCodeAt(index))) {
+		index += 1;
+		while (isSpaceOrTab(text.charCodeAt(index))) {
+			index += 1;
+		}
+	}
+	return index;
+};
+
+/**
+ * `scan_link_url`: returns the index after a link destination, or -1. An
+ * angle-bracket destination may hold spaces and ends at `>`; a bare one ends at
+ * whitespace or an unbalanced `)`.
+ */
+const scanLinkUrl = (text: string, index: number) => {
+	if (text.charCodeAt(index) === 60) {
+		let cursor = index + 1;
+		while (cursor < text.length) {
+			const code = text.charCodeAt(cursor);
+			if (code === 62) {
+				return cursor + 1;
+			}
+			if (code === 92 && cursor + 1 < text.length) {
+				cursor += 2;
+				continue;
+			}
+			if (isLineEnding(code)) {
+				return -1;
+			}
+			cursor += 1;
+		}
+		return -1;
+	}
+
+	let cursor = index;
+	let depth = 0;
+	while (cursor < text.length) {
+		const code = text.charCodeAt(cursor);
+		if (code === 92 && cursor + 1 < text.length) {
+			cursor += 2;
+			continue;
+		}
+		if (code === 40) {
+			depth += 1;
+		} else if (code === 41) {
+			if (depth === 0) {
+				return cursor;
+			}
+			depth -= 1;
+		} else if (isSpaceOrTab(code) || isLineEnding(code)) {
+			return cursor;
+		}
+		cursor += 1;
+	}
+	return -1;
+};
+
+/** `scan_link_title`: returns the index after a quoted or parenthesized title. */
+const scanLinkTitle = (text: string, index: number) => {
+	const opener = text.charCodeAt(index);
+	if (opener !== 34 && opener !== 39 && opener !== 40) {
+		return -1;
+	}
+	const closer = opener === 40 ? 41 : opener;
+	let cursor = index + 1;
+	while (cursor < text.length) {
+		const code = text.charCodeAt(cursor);
+		if (code === 92 && cursor + 1 < text.length) {
+			cursor += 2;
+			continue;
+		}
+		if (code === closer) {
+			return cursor + 1;
+		}
+		cursor += 1;
+	}
+	return -1;
+};
+
+/**
+ * `handle_close_bracket` for an inline link: returns the index after the `)` of
+ * the destination at the `]` at `index`, or -1 when no inline link closes.
+ */
+const matchInlineLink = (text: string, index: number) => {
+	if (text.charCodeAt(index + 1) !== 40) {
+		return -1;
+	}
+	let cursor = skipLinkWhitespace(text, index + 2);
+	cursor = scanLinkUrl(text, cursor);
+	if (cursor === -1) {
+		return -1;
+	}
+	cursor = skipLinkWhitespace(text, cursor);
+	if (text.charCodeAt(cursor) === 41) {
+		return cursor + 1;
+	}
+	cursor = scanLinkTitle(text, cursor);
+	if (cursor === -1) {
+		return -1;
+	}
+	cursor = skipLinkWhitespace(text, cursor);
+	return text.charCodeAt(cursor) === 41 ? cursor + 1 : -1;
+};
+
 export const lexInline = (text: string, emit: (start: number, end: number) => void) => {
 	// Once a kind of construct fails to close, cmark-gfm stops matching that
 	// kind for the rest of the text. An unclosed comment disables every `<!`
@@ -250,9 +364,31 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 	};
 
 	let index = 0;
+	// `[` opens link text; the matching `]` may start an inline destination,
+	// which renders as raw text and holds no raw HTML.
+	let bracketDepth = 0;
 	while (index < text.length) {
 		const code = text.charCodeAt(index);
 		switch (code) {
+			case 91: {
+				bracketDepth += 1;
+				index += 1;
+
+				break;
+			}
+			case 93: {
+				if (bracketDepth > 0) {
+					bracketDepth -= 1;
+					const linkEnd = matchInlineLink(text, index);
+					if (linkEnd !== -1) {
+						index = linkEnd;
+						break;
+					}
+				}
+				index += 1;
+
+				break;
+			}
 			case 92: {
 				index += isAsciiPunctuation(text.charCodeAt(index + 1)) ? 2 : 1;
 
