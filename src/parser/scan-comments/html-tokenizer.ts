@@ -13,7 +13,7 @@ import { createForwardSearch } from './utils/forward-search.ts';
  * browser sees a line feed, escaped text, markup that the renderer generates,
  * such as `</p>` or `<li>`, or nothing, as between two raw HTML spans that
  * touch. Thematic breaks and code blocks provide generated markup exactly, except that
- * non-ASCII named entity values in fence languages become U+FFFD.
+ * the non-ASCII part of a named entity value in a fence language becomes U+FFFD.
  * Other generated markup is approximated by `afterMarkup`, `open`, and `close`:
  * only an open comment, quoted attribute value, or CDATA carries past it.
  * Without markup, as between two HTML blocks, every state carries.
