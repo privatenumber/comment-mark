@@ -13,6 +13,7 @@ describe('parser scaling', () => {
 				generated: (block) => {
 					if (block.type === 'code') {
 						expect(block.lines).toStrictEqual([]);
+						expect(block.tabSpaces).toStrictEqual([]);
 					}
 				},
 			});

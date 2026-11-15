@@ -141,6 +141,7 @@ const walk = (node, html, comments) => {
     if (
         node.nodeName === '#comment'
         && html.startsWith('<!--', location.startOffset)
+        && location.endOffset - 3 >= location.startOffset + 4
         && html.slice(location.endOffset - 3, location.endOffset) === '-->'
     ) {
         comments.push([location.startOffset, node.data])

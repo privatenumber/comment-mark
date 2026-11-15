@@ -72,10 +72,17 @@ export const renderGeneratedBlock = (source: string, block: GeneratedBlock) => {
 	}
 	const language = codeLanguage(normalizeInput(source.slice(block.infoStart, block.infoEnd)));
 	const content: string[] = [];
-	for (let index = 0; index < block.lines.length; index += 3) {
+	let tabIndex = 0;
+	for (let index = 0; index < block.lines.length; index += 1) {
 		const start = block.lines[index];
-		const end = block.lines[index + 1];
-		const spaces = block.lines[index + 2];
+		let end = start;
+		while (end < source.length && source.charCodeAt(end) !== 10 && source.charCodeAt(end) !== 13) {
+			end += 1;
+		}
+		const spaces = block.tabSpaces[tabIndex] === index ? block.tabSpaces[tabIndex + 1] : 0;
+		if (spaces) {
+			tabIndex += 2;
+		}
 		content.push(' '.repeat(spaces), source.slice(start, end), '\n');
 	}
 	const opening = language ? `<pre lang="${escapeHtml(language)}"><code>` : '<pre><code>';

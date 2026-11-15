@@ -52,8 +52,9 @@ export type GeneratedBlock =
 		type: 'code';
 		infoStart: number;
 		infoEnd: number;
-		// Each line is a source range followed by its partially consumed tab's spaces.
+		// Each line is a source start; partial tabs are [line index, spaces] pairs.
 		lines: number[];
+		tabSpaces: number[];
 		indented: boolean;
 		lastNonblank: number;
 	};
@@ -236,6 +237,11 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 		if ((leaf?.type === 'fence' || leaf?.type === 'indentedCode') && leaf.code) {
 			if (leaf.code.indented) {
 				leaf.code.lines.length = leaf.code.lastNonblank;
+				while (
+					leaf.code.tabSpaces.length && leaf.code.tabSpaces.at(-2)! >= leaf.code.lastNonblank
+				) {
+					leaf.code.tabSpaces.length -= 2;
+				}
 			}
 			handlers.generated!(leaf.code, markup);
 			markup = false;
@@ -464,6 +470,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 							infoStart: 0,
 							infoEnd: 0,
 							lines: [],
+							tabSpaces: [],
 							indented: true,
 							lastNonblank: 0,
 						}
@@ -523,6 +530,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 							infoStart: firstNonspace + fenceLength,
 							infoEnd: lineEnd,
 							lines: [],
+							tabSpaces: [],
 							indented: false,
 							lastNonblank: 0,
 						}
@@ -677,8 +685,10 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			case 'indentedCode': {
 				const { code } = (leaf as Extract<Leaf, { type: 'fence' | 'indentedCode' }>);
 				if (code && retainCodeLines && (target === 'indentedCode' || !opened)) {
-					const spaces = partiallyConsumedTab ? tabStop - (column % tabStop) : 0;
-					code.lines.push(contentStart, lineEnd, spaces);
+					if (partiallyConsumedTab) {
+						code.tabSpaces.push(code.lines.length, tabStop - (column % tabStop));
+					}
+					code.lines.push(contentStart);
 					if (!blank) {
 						code.lastNonblank = code.lines.length;
 					}
