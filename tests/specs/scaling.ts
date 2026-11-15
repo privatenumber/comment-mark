@@ -126,8 +126,9 @@ describe('parser scaling', () => {
 			(n: number) => '<svg>'.repeat(n) + '</svg>'.repeat(n),
 			(n: number) => '<svg>'.repeat(n),
 			(n: number) => '<svg>'.repeat(n) + '</missing>'.repeat(n),
-			// A native terminator search is much faster than the other cases.
-			(n: number) => `<svg>${'<![CDATA['.repeat(n * 80)}`,
+			// A native terminator search is much faster than the other cases, so this
+			// input is larger to keep its timing above runner noise.
+			(n: number) => `<svg>${'<![CDATA['.repeat(n * 400)}`,
 			(n: number) => 'x <svg>\n\ntext\n\n'.repeat(n),
 		]) {
 			const measure = (size: number) => {
