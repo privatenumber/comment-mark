@@ -1,8 +1,23 @@
 import { describe, test, expect } from 'manten';
 import { getCommentMarkAll } from '#comment-mark';
+import { lexBlocks } from '../../src/parser/scan-comments/block/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('parser scaling', () => {
+	test('does not retain unneeded code lines', () => {
+		for (const content of [`\`\`\`\n${'x\n'.repeat(1000)}\`\`\`\n`, '    x\n'.repeat(1000)]) {
+			lexBlocks(content, {
+				text: () => {},
+				html: () => {},
+				wantsCode: () => false,
+				generated: (block) => {
+					if (block.type === 'code') {
+						expect(block.lines).toStrictEqual([]);
+					}
+				},
+			});
+		}
+	});
 	for (const [name, input] of [
 		// No underscore closer has a matching opener.
 		['unmatched delimiter openers', (n: number) => '*a '.repeat(n) + 'b_ '.repeat(n)],
@@ -15,13 +30,13 @@ describe('parser scaling', () => {
 			const measure = (size: number) => {
 				const content = `x <svg/> <!-- a --> ${input(size)}`;
 				let best = Infinity;
-				for (let attempt = 0; attempt < 5; attempt += 1) {
-					const start = process.cpuUsage();
+				for (let attempt = 0; attempt < 10; attempt += 1) {
+					const start = performance.now();
 					for (let iteration = 0; iteration < 8; iteration += 1) {
 						getCommentMarkAll(content);
 					}
-					const elapsed = process.cpuUsage(start);
-					best = Math.min(best, elapsed.user + elapsed.system);
+					const elapsed = (performance.now() - start) * 1000;
+					best = Math.min(best, elapsed);
 				}
 				return best;
 			};
@@ -36,17 +51,17 @@ describe('parser scaling', () => {
 		const measure = (size: number) => {
 			const content = `x [x] <svg> <!-- a -->\n\n${'|h'.repeat(size)}|\n${'|-'.repeat(size)}|\n${'| x |\n'.repeat(size)}`;
 			let best = Infinity;
-			for (let attempt = 0; attempt < 5; attempt += 1) {
-				const start = process.cpuUsage();
+			for (let attempt = 0; attempt < 7; attempt += 1) {
+				const start = performance.now();
 				getCommentMarkAll(content);
-				const elapsed = process.cpuUsage(start);
-				best = Math.min(best, elapsed.user + elapsed.system);
+				const elapsed = (performance.now() - start) * 1000;
+				best = Math.min(best, elapsed);
 			}
 			return best;
 		};
-		measure(1000);
-		const small = measure(2000);
-		const large = measure(4000);
+		measure(1500);
+		const small = measure(3000);
+		const large = measure(6000);
 		expect(large / small).toBeLessThan(3);
 	});
 
@@ -72,10 +87,10 @@ describe('parser scaling', () => {
 			const content = `<!-- a -->\n<div>\n<svg/>\n${Array.from({ length: size }, (_, index) => `<${prefix}${pairs.map((pair, bit) => pair[Math.floor(index / 2 ** bit) % 2]).join('')}>`).join('')}`;
 			let best = Infinity;
 			for (let attempt = 0; attempt < 2; attempt += 1) {
-				const start = process.cpuUsage();
+				const start = performance.now();
 				getCommentMarkAll(content);
-				const elapsed = process.cpuUsage(start);
-				best = Math.min(best, elapsed.user + elapsed.system);
+				const elapsed = (performance.now() - start) * 1000;
+				best = Math.min(best, elapsed);
 			}
 			return best;
 		};
@@ -91,10 +106,10 @@ describe('parser scaling', () => {
 			const content = `<!-- a -->\n<div>\n<svg/>\n${Array.from({ length: size }, (_, index) => `<${prefix}${String(index).padStart(5, '0')}>`).join('\n')}`;
 			let best = Infinity;
 			for (let attempt = 0; attempt < 2; attempt += 1) {
-				const start = process.cpuUsage();
+				const start = performance.now();
 				getCommentMarkAll(content);
-				const elapsed = process.cpuUsage(start);
-				best = Math.min(best, elapsed.user + elapsed.system);
+				const elapsed = (performance.now() - start) * 1000;
+				best = Math.min(best, elapsed);
 			}
 			return best;
 		};
@@ -117,10 +132,10 @@ describe('parser scaling', () => {
 				const content = `<!-- a -->${input(size)}`;
 				let best = Infinity;
 				for (let attempt = 0; attempt < 5; attempt += 1) {
-					const start = process.cpuUsage();
+					const start = performance.now();
 					getCommentMarkAll(content);
-					const elapsed = process.cpuUsage(start);
-					best = Math.min(best, elapsed.user + elapsed.system);
+					const elapsed = (performance.now() - start) * 1000;
+					best = Math.min(best, elapsed);
 				}
 				return best;
 			};
@@ -192,10 +207,10 @@ describe('parser scaling', () => {
 				const content = `x <!-- a --> ${input(size)}`;
 				let best = Infinity;
 				for (let attempt = 0; attempt < 5; attempt += 1) {
-					const start = process.cpuUsage();
+					const start = performance.now();
 					getCommentMarkAll(content);
-					const elapsed = process.cpuUsage(start);
-					best = Math.min(best, elapsed.user + elapsed.system);
+					const elapsed = (performance.now() - start) * 1000;
+					best = Math.min(best, elapsed);
 				}
 				return best;
 			};
@@ -216,10 +231,10 @@ describe('parser scaling', () => {
 				const content = `x <!-- a --> ${input(size)}`;
 				let best = Infinity;
 				for (let attempt = 0; attempt < 5; attempt += 1) {
-					const start = process.cpuUsage();
+					const start = performance.now();
 					getCommentMarkAll(content);
-					const elapsed = process.cpuUsage(start);
-					best = Math.min(best, elapsed.user + elapsed.system);
+					const elapsed = (performance.now() - start) * 1000;
+					best = Math.min(best, elapsed);
 				}
 				return best;
 			};

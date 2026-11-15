@@ -16,8 +16,10 @@ const escapeHtml = (text: string) => text
 
 // cmark decodes entities, trims the result, then removes backslash escapes.
 // The entity table keeps only each value's first ASCII byte, which is enough:
-// tokenizer states treat every non-ASCII character alike, and `&fjlig;` is the
-// only value with more than one ASCII character.
+// the language is written inside a quoted `lang` attribute. Its characters can
+// only be attribute value text, attribute names, or unquoted values after a raw
+// quote closes; those states do not compare non-ASCII characters. `&fjlig;` is
+// the only value with more than one ASCII character.
 const codeLanguage = (raw: string) => {
 	let decoded = '';
 	for (let index = 0; index < raw.length; index += 1) {

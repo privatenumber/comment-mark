@@ -42,6 +42,7 @@ export type BlockHandlers = {
 	 */
 	html: (start: number, end: number, afterMarkup: boolean, continuation: string) => void;
 	generated?: (block: GeneratedBlock, afterMarkup: boolean) => void;
+	wantsCode?: () => boolean;
 	definition?: (label: string, destination: string, title: string) => void;
 };
 
@@ -134,6 +135,7 @@ const trimTableText = (source: string, segments: number[]) => {
 export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	const containers: Container[] = [];
 	let leaf: Leaf | undefined;
+	let retainCodeLines = true;
 	// Whether the renderer has written markup since the last HTML block line.
 	// Opening or closing any block other than an HTML block writes markup.
 	let markup = false;
@@ -262,7 +264,8 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	const reportCells = (cells: number[], columns: number, prefix: string, type: 'th' | 'td') => {
 		const end = Math.min(cells.length, columns * 2);
 		// Generated empty cells follow a closed cell, so their adjacent open and
-		// close cannot change the tokenizer state or element stack.
+		// close cannot change the element stack. An alignment attribute has quotes,
+		// which are part of the generated-attribute gap.
 		for (let index = 0; index < end; index += 2) {
 			handlers.open?.(type);
 			const segments = trimTableText(source, [cells[index], cells[index + 1]]);
@@ -452,6 +455,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				}
 				advance(codeIndent, true);
 				addChild(!handlers.generated);
+				retainCodeLines = handlers.wantsCode?.() ?? true;
 				leaf = {
 					type: 'indentedCode',
 					code: handlers.generated
@@ -506,6 +510,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			if (fenceLength) {
 				const fenceOffset = firstNonspace - offset;
 				addChild(!handlers.generated);
+				retainCodeLines = handlers.wantsCode?.() ?? true;
 				leaf = {
 					type: 'fence',
 					char,
@@ -671,7 +676,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			case 'fence':
 			case 'indentedCode': {
 				const { code } = (leaf as Extract<Leaf, { type: 'fence' | 'indentedCode' }>);
-				if (code && (target === 'indentedCode' || !opened)) {
+				if (code && retainCodeLines && (target === 'indentedCode' || !opened)) {
 					const spaces = partiallyConsumedTab ? tabStop - (column % tabStop) : 0;
 					code.lines.push(contentStart, lineEnd, spaces);
 					if (!blank) {

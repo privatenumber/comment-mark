@@ -12,7 +12,8 @@ import { createForwardSearch } from './utils/forward-search.ts';
  * of an HTML block or of an inline raw HTML span. Between two segments the
  * browser sees a line feed, escaped text, markup that the renderer generates,
  * such as `</p>` or `<li>`, or nothing, as between two raw HTML spans that
- * touch. Thematic breaks and code blocks provide their exact generated markup.
+ * touch. Thematic breaks and code blocks provide generated markup exactly, except that
+ * non-ASCII named entity values in fence languages become U+FFFD.
  * Other generated markup is approximated by `afterMarkup`, `open`, and `close`:
  * only an open comment, quoted attribute value, or CDATA carries past it.
  * Without markup, as between two HTML blocks, every state carries.
@@ -76,6 +77,7 @@ export type HtmlTokenizer = {
 		inHtmlBlock: boolean,
 	) => void;
 	generated: (afterMarkup: boolean, code: boolean, render: () => string) => void;
+	wantsCode: () => boolean;
 	open: (name: string) => string;
 	close: (name: string | undefined) => void;
 };
@@ -296,7 +298,7 @@ export const createHtmlTokenizer = (
 		}
 		if (closing) {
 			closeElement(name);
-		} else if ((name.length > 10 || !voidTagNames.has(name)) && !(selfClosed && (elements.at(-1)?.foreign || name === 'svg' || name === 'math'))) {
+		} else if ((name.length > 10 || !voidTagNames.has(name) || elements.at(-1)?.foreign) && !(selfClosed && (elements.at(-1)?.foreign || name === 'svg' || name === 'math'))) {
 			push(name);
 		}
 	};
@@ -568,6 +570,7 @@ export const createHtmlTokenizer = (
 	};
 
 	return {
+		wantsCode: () => state !== State.Data,
 		generated: (afterMarkup, code, render) => {
 			separate(afterMarkup);
 			if (state === State.Data) {

@@ -147,6 +147,7 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 	const containerNames = ['blockquote', 'li', 'ul', 'ol', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td'] as const;
 	let buffering = false;
 	lexBlocks(source, {
+		wantsCode: () => buffering || tokenizer.wantsCode(),
 		generated: (block, afterMarkup) => {
 			if (buffering) {
 				positions.push(-4, generatedBlocks.length, Number(afterMarkup));

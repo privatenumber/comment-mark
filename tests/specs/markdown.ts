@@ -6,7 +6,6 @@ import {
 } from '#comment-mark';
 import { lexBlocks } from '../../src/parser/scan-comments/block/index.ts';
 import { renderGeneratedBlock } from '../../src/parser/scan-comments/generated-block.ts';
-import { createHtmlTokenizer } from '../../src/parser/scan-comments/html-tokenizer.ts';
 import { scanComments } from '../../src/parser/scan-comments/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
@@ -177,17 +176,17 @@ describe('reference expansion budget', () => {
 		}
 	});
 
-	test('slow-path CPU time scales near linearly', () => {
+	test('slow-path time scales near linearly', () => {
 		const measure = (count: number) => {
 			// The first paragraph holds `<`, `[`, and `]`, so events are buffered
 			// and the budget's second block pass runs.
 			const source = `x [r] <!-- a -->old<!-- /a -->\n\n${'[r] x\n\n'.repeat(count)}[r]: ${'u'.repeat(1000)}\n`;
 			let best = Infinity;
 			for (let index = 0; index < 5; index += 1) {
-				const start = process.cpuUsage();
+				const start = performance.now();
 				getCommentMarkAll(source);
-				const elapsed = process.cpuUsage(start);
-				best = Math.min(best, elapsed.user + elapsed.system);
+				const elapsed = performance.now() - start;
+				best = Math.min(best, elapsed);
 			}
 			return best;
 		};
@@ -1046,31 +1045,30 @@ describe('generated block markup', () => {
 	});
 
 	test('reports only comments with source positions', () => {
-		for (const [generated, between] of [["'><!-- generated -->", ''], ["'><!-- generated", '-->']] as const) {
-			const source = `<a x='\n${between}<!-- a -->old<!-- /a -->`;
-			const comments: string[] = [];
-			const tokenizer = createHtmlTokenizer(source, (_start, start, end) => {
-				comments.push(source.slice(start, end));
-			}, false);
-			tokenizer.feed(0, 6, false, '', true);
-			tokenizer.generated(false, true, () => generated);
-			tokenizer.feed(7, source.length, false, '', true);
-			expect(comments).toStrictEqual([' a ', ' /a ']);
-		}
+		// cmark-gfm 0.29.0.gfm.13 with --github-pre-lang and parse5 reports
+		// only the source marker after the code block.
+		const source = "<!--><a x='\n\n```\n'<!-- a -->bogus<!-- /a -->\n```\n\n<!-- a -->old<!-- /a -->";
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'old',
+		}]);
 	});
 
-	test('does not render generated code while the tokenizer is in data state', () => {
-		const tokenizer = createHtmlTokenizer('', () => {}, true);
-		tokenizer.generated(false, true, () => {
-			throw new Error('Unexpected rendering');
-		});
+	test('ignores code block markers while the tokenizer is in data state', () => {
+		const source = '<!-- a -->old<!-- /a -->\n\n```\n<!-- a -->bogus<!-- /a -->\n```\n';
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'old',
+		}]);
 	});
 
 	test('task-list checkboxes do not end an open attribute value', async () => {
 		// GitHub /markdown, 2026-11-15: task syntax hides the first marker like an
 		// ordinary item, and only a literal input closes the attribute value.
-		// GitHub adds checkboxes after rendering, so cmark-gfm's <input> never
-		// reaches the HTML parser.
+		// The archived task_list filter supports a post-parse insertion inference;
+		// the observed boundary does not establish GitHub's current pipeline.
 		const markers = '<!-- a -->BEFORE<!-- /a --><i title="v">AFTER</i><!-- a -->VISIBLE<!-- /a -->';
 		for (const [fragment, replaced] of [
 			['[x] item', 'VISIBLE'],
@@ -1099,6 +1097,21 @@ describe('generated block markup', () => {
 describe('foreign content', () => {
 	// GitHub /markdown renders both marker openers in these cases.
 	const wrapped = '<!-- a -->PRESERVE <![CDATA[ > <!-- a -->old ]]> tail<!-- /a -->';
+	test('tracks void names in foreign content', async () => {
+		// GitHub /markdown, mode=gfm, 2026-11-15: source remains foreign.
+		// The br case needs a matching stack entry; an unmatched </br> leaves SVG open.
+		for (const [prefix, inner] of [
+			['<svg><source><svg></source></svg>', true],
+			['<svg><source></source>', false],
+			['<svg><br><svg></br></svg>', true],
+			['<svg></br>', false],
+		] as const) {
+			const source = prefix + wrapped;
+			expect(await commentMark(source, { a: 'NEW' })).toBe(inner
+				? source.replace('old ]]> tail', 'NEW')
+				: `${prefix}<!-- a -->NEW<!-- /a -->`);
+		}
+	});
 	for (const [name, prefix] of [
 		['thematic break', '<div>\n<svg\n\n---\n\n'],
 		['fenced code', '<div>\n<pre><svg\n\n```\nx\n```\n\n'],

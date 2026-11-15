@@ -494,7 +494,7 @@ console.log('interactions', interactions)
 node generate-entities.mjs <cmark-gfm>/src/entities.inc src/parser/scan-comments/entities.ts
 ```
 
-The script replaces only the `groups` entries and leaves the numeric decoder and lookup code intact. Pass `--check` after the two paths to verify the current table without writing. Each group stores the decoded byte length and the first decoded byte when that byte is ASCII. The first byte can complete a backslash escape, as `=` does in `\&bne;`. The script fails if the table does not have 2,125 unique entries, if decoding any entity grows it by more than 1 byte, which the budget's fast bound relies on, or if a multi-byte entity decodes to a backslash. It also compares every name and decoded value byte-for-byte with the installed `character-entities` package, which supplies the full values for fence languages. On 2026-11-15, all 2,125 names and values matched version 2.0.2.
+The script replaces only the `groups` entries and leaves the numeric decoder and lookup code intact. Pass `--check` after the two paths to verify the current table without writing. Each group stores the decoded byte length and the first decoded byte when that byte is ASCII. The first byte can complete a backslash escape, as `=` does in `\&bne;`. The script fails if the table does not have 2,125 unique entries, if decoding any entity grows it by more than 1 byte, which the budget's fast bound relies on, or if a multi-byte entity decodes to a backslash. The source table itself supplies the decoded bytes; the scanner stores only the metadata it needs.
 
 `generate-entities.mjs`:
 
@@ -502,15 +502,14 @@ The script replaces only the `groups` entries and leaves the numeric decoder and
 // Updates the groups in entities.ts from cmark-gfm's entities.inc.
 // Usage: node generate-entities.mjs <entities.inc> <entities.ts> [--check]
 import fs from 'node:fs'
-import { characterEntities } from 'character-entities'
 
 const source = fs.readFileSync(process.argv[2], 'utf8')
 const entries = [...source.matchAll(/\{\(unsigned char\*\)"([^"]+)", \{([^}]+)\}\}/g)]
 const names = new Set(entries.map(([, name]) => name))
 if (
-    entries.length !== 2125 || names.size !== 2125 || Object.keys(characterEntities).length !== 2125
+    entries.length !== 2125 || names.size !== 2125
 ) {
-    throw new Error('Expected 2125 unique names in each table')
+    throw new Error('Expected 2125 unique names')
 }
 
 // Each entity is stored with its decoded byte length and, if it is ASCII, its
@@ -519,12 +518,6 @@ if (
 const groups = new Map()
 for (const [, name, raw] of entries) {
     const bytes = raw.split(',').map(Number).filter(byte => byte !== 0)
-    if (
-        !Object.hasOwn(characterEntities, name)
-        || !Buffer.from(characterEntities[name]).equals(Buffer.from(bytes))
-    ) {
-        throw new Error(`character-entities differs for ${name}`)
-    }
     if (bytes.length > name.length + 3) {
         throw new Error(`Decoding grows ${name} by more than 1 byte`)
     }
@@ -556,7 +549,7 @@ if (process.argv[4] === '--check') {
 } else {
     fs.writeFileSync(path, updated)
 }
-console.log(`Checked ${entries.length} names and values; groups ${process.argv[4] === '--check' ? 'match' : 'updated'}`)
+console.log(`Checked ${entries.length} names and decoded byte metadata; groups ${process.argv[4] === '--check' ? 'match' : 'updated'}`)
 ```
 
 ## Results
@@ -671,7 +664,7 @@ Additional `/markdown` probes on 2026-11-15 distinguish task syntax from a liter
 | `- [x] item\n\n[x]: /url` | `<ul>\n<li><a href="/url">x</a> item</li>\n</ul>` |
 | The attribute-boundary input above with `[x] item` and a later `[x]: /url` definition | `x item BEFORE<i title="v">AFTER</i>VISIBLE\n` |
 
-For the next two probes, let `W` be `<!-- a -->PRESERVE <![CDATA[ > <!-- a -->old ]]> tail<!-- /a -->`:
+For the next five probes, let `W` be `<!-- a -->PRESERVE <![CDATA[ > <!-- a -->old ]]> tail<!-- /a -->`:
 
 | Markdown | GitHub output |
 | --- | --- |
