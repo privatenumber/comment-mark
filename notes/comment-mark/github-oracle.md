@@ -130,6 +130,9 @@ const random = (limit) => {
 }
 
 export const fragmentSets = {
+    tables: ['| x |\n| - |\n| ', ' |', String.raw`\|`, '<!-- a -->', '<!-- /a -->', '`', String.raw`[x][r\|s]`, `\n\n${String.raw`[r\|s]: /u`}\n`, ' ', '\n', 'x', '<a title="', '">'],
+    refs: ['[', ']', '][', '[]', ']: /u\n', '\n\n[r]: /u\n', '[r]', '[R]', 'r', ' ', '\n', 'x <!-- a -->', 'x <!-- /a -->', '<!--', '-->', '!'],
+    links: ['[', '![', ']', '](', ')', '(', '<', '>', '"', "'", ' ', '\n', '`', '\\', 'x <!-- a -->', 'x <!-- /a -->', '<!--', '-->', 'u', '<u>', '"t"', '[x](', '![x](', '[x', '![x', '<!-- a -->', '<!-- /a -->'],
     autolink: ['x <!-- a -->', 'x <!-- /a -->', '<!--', '-->', '<', '>', '`', ' ', '\n', 'http', 'a', 'ab', ':', '@', '.', '-', 'b.c', 'x@', 'a.b-c', '<a@b.c>', '<http://x>', '<mailto:', '\\', '_', '+', 'a'.repeat(31), 'a'.repeat(63), '<a', '"', '=', '<!X', '<?', '<http://`', '<a`b@c.d>', '`', '``', '<ab:`>', '<a`@b>'],
     rich: ['x <!-- a -->', 'x <!-- /a -->', '<!-- a -->', '<!--', '-->', '<!-->', '<!--->', ' --->', '\n', '\n', '\n\n', ' ', 'text', '`', '``', '\n```\n', '\n~~~\n', '\n    ', '  ', '> ', '- ', '1. ', '2. ', '| - |', '|', '# ', '\n===\n', '\n---\n', '\n***\n', '\\', '<div>', '\n<div>\n', '<span>', '\n<span>\n', '<pre>', '</pre>', '<?x', '?>', '<!X', '>', '<a title="', '">', '\t', '[x]: ', '&lt;']
 }
@@ -281,8 +284,232 @@ console.log({
 })
 ```
 
+## Reference label case folding
+
+cmark-gfm matches a reference to its definition after `cmark_utf8proc_case_fold`, which uses the Unicode tables bundled with cmark-gfm 0.29.0.gfm.13. The scanner folds with JavaScript's `toLowerCase().toUpperCase()`, which uses the newer tables of the running Node. The two disagree on 185 scalars. Each of them folds to itself in cmark-gfm, but JavaScript merges it with another scalar, such as dotless `ı` with `I`. [reference-definition.ts](../../src/parser/scan-comments/block/reference-definition.ts) keeps these scalars unfolded.
+
+Measured on 2026-11-14 with Node 26.13.0 (Unicode 17.0). Of the 1,112,064 Unicode scalars, 2,767 change under either fold. The scanner keys a label instead of folding it, so `A` keys as `A` where cmark-gfm folds it to `a`. What must agree is which labels match. After the exceptions, every scalar has the same key as its cmark-gfm fold, so labels that cmark-gfm folds alike match, and no two scalars that cmark-gfm folds apart share a key. Labels that combine each changed scalar with `̇`, `ͅ`, `Σ`, `I`, `ı`, `ß`, or `a` also agree. That is a sample, not proof for every label.
+
+Regenerate the table when Node's `process.versions.unicode` changes. Build `fold-scalars.c` in an empty directory against the [oracle build](#build), and run `compare-folds.mjs` beside it:
+
+```sh
+C=<path to cmark-gfm-0.29.0.gfm.13>
+cc -I $C/src -I $C/build/src -o fold-scalars fold-scalars.c $C/build/src/libcmark-gfm.a
+node compare-folds.mjs
+```
+
+It prints the exception count and the exceptions as `[start, end]` ranges in hexadecimal, for the table in `reference-definition.ts`. The other four counts must be 0: exceptions that cmark-gfm folds to another scalar, scalars whose key differs from the key of their cmark-gfm fold, keys shared by scalars that cmark-gfm folds apart, and labels where neighboring scalars change the key.
+
+`fold-scalars.c` prints each scalar and its cmark-gfm fold as hexadecimal UTF-8:
+
+```c
+#include <stdio.h>
+#include "utf8.h"
+#include "buffer.h"
+
+int main(void) {
+  cmark_mem *mem = cmark_get_default_mem_allocator();
+  cmark_strbuf input = CMARK_BUF_INIT(mem);
+  cmark_strbuf output = CMARK_BUF_INIT(mem);
+  for (int cp = 0; cp <= 0x10ffff; cp++) {
+    if (cp >= 0xd800 && cp <= 0xdfff) continue;
+    cmark_strbuf_clear(&input);
+    cmark_strbuf_clear(&output);
+    if (cp == 0xfffe || cp == 0xffff) {
+      unsigned char bytes[] = {0xef, 0xbf, cp == 0xfffe ? 0xbe : 0xbf};
+      cmark_strbuf_put(&input, bytes, 3);
+    } else cmark_utf8proc_encode_char(cp, &input);
+    cmark_utf8proc_case_fold(&output, input.ptr, input.size);
+    printf("%x\t", cp);
+    for (int i = 0; i < output.size; i++) printf("%02x", output.ptr[i]);
+    putchar('\n');
+  }
+  cmark_strbuf_free(&input);
+  cmark_strbuf_free(&output);
+}
+```
+
+`compare-folds.mjs`:
+
+```js
+// Compares cmark-gfm's case fold with JavaScript's toLowerCase().toUpperCase()
+// on every Unicode scalar. Run beside a built fold-scalars.
+import { spawnSync } from 'node:child_process'
+
+const output = spawnSync('./fold-scalars', {
+    encoding: 'utf8',
+    maxBuffer: 50_000_000
+})
+if (output.status !== 0) {
+    throw new Error(output.stderr)
+}
+
+// cmark-gfm's encoder writes U+FFFE and U+FFFF as the single bytes 0xFE and
+// 0xFF (utf8.c:202-207), which do not decode as UTF-8. Each folds to itself.
+const folds = new Map()
+const changed = []
+for (const line of output.stdout.trimEnd().split('\n')) {
+    const [point, hex] = line.split('\t')
+    const input = String.fromCodePoint(Number.parseInt(point, 16))
+    const folded = point === 'fffe' || point === 'ffff' ? input : Buffer.from(hex, 'hex').toString('utf8')
+    if (folded !== input) {
+        folds.set(input, folded)
+    }
+    if (folded !== input || input.toLowerCase().toUpperCase() !== input) {
+        changed.push(input)
+    }
+}
+
+const fold = text => Array.from(text, char => folds.get(char) ?? char).join('')
+const exceptions = new Set(changed.filter(
+    char => fold(char.toLowerCase().toUpperCase()) !== fold(char)
+))
+console.log('changed', changed.length, 'exceptions', exceptions.size)
+console.log('exceptions that cmark folds', [...exceptions].filter(char => fold(char) !== char).length)
+
+const ranges = []
+for (const char of exceptions) {
+    const code = char.codePointAt(0)
+    const previous = ranges.at(-1)
+    if (previous && previous[1] + 1 === code) {
+        previous[1] = code
+    } else {
+        ranges.push([code, code])
+    }
+}
+console.log('ranges', JSON.stringify(ranges.map(range => range.map(code => code.toString(16)))))
+
+// The scanner's key: exceptions stay as they are, and the rest is case-mapped.
+const key = text => Array.from(text, (char) => {
+    if (exceptions.has(char)) {
+        return char
+    }
+    return char.toLowerCase().toUpperCase()
+}).join('')
+
+// The key of a whole label, as normalizeLabel computes it: each run between
+// exceptions is case-mapped as one string.
+const runKey = (text) => {
+    let result = ''
+    let run = ''
+    for (const char of text) {
+        if (exceptions.has(char)) {
+            result += run.toLowerCase().toUpperCase() + char
+            run = ''
+        } else {
+            run += char
+        }
+    }
+    return result + run.toLowerCase().toUpperCase()
+}
+
+// Labels that cmark folds alike must share a key: a scalar and its cmark fold,
+// such as `ß` and `ss`, must have the same key.
+let mismatches = 0
+for (const char of changed) {
+    if (key(char) !== runKey(fold(char))) {
+        mismatches += 1
+    }
+}
+console.log('mismatches', mismatches)
+
+// Labels that cmark folds apart must have different keys.
+const classes = new Map()
+let collisions = 0
+for (const char of changed) {
+    const value = fold(char)
+    if (classes.has(key(char)) && classes.get(key(char)) !== value) {
+        collisions += 1
+    } else {
+        classes.set(key(char), value)
+    }
+}
+console.log('collisions', collisions)
+
+// Case mapping can depend on neighbors, such as a final sigma.
+let interactions = 0
+for (const a of changed) {
+    for (const b of ['̇', 'ͅ', 'Σ', 'I', 'ı', 'ß', 'a']) {
+        if (runKey(a + b) !== key(a) + key(b) || runKey(b + a) !== key(b) + key(a)) {
+            interactions += 1
+        }
+    }
+}
+console.log('interactions', interactions)
+```
+
+## Entity table
+
+[entities.ts](../../src/parser/scan-comments/entities.ts) holds the decoded byte length of each named entity in cmark-gfm 0.29.0.gfm.13, for the [reference expansion budget](./comment-scanning.md#reference-expansion-budget). Regenerate it when the scanner ports a new cmark-gfm tag, from that tag's `src/entities.inc`:
+
+```sh
+node generate-entities.mjs <cmark-gfm>/src/entities.inc src/parser/scan-comments/entities.ts
+```
+
+The script stores each entity's decoded byte length and, when it is ASCII, its first decoded byte, which can complete a backslash escape, as `=` does in `\&bne;`. It fails if the table does not have 2,125 entries, if decoding any entity grows it by more than 1 byte, which the budget's fast bound relies on, or if a multi-byte entity decodes to a backslash. On 2026-11-14 the output also matched `character-entities` 2.0.2 in every name and decoded byte length.
+
+`generate-entities.mjs`:
+
+```js
+// Generates src/parser/scan-comments/entities.ts from cmark-gfm's entities.inc.
+// Usage: node generate-entities.mjs <entities.inc> <entities.ts>
+import fs from 'node:fs'
+
+const source = fs.readFileSync(process.argv[2], 'utf8')
+const entries = [...source.matchAll(/\{\(unsigned char\*\)"([^"]+)", \{([^}]+)\}\}/g)]
+if (entries.length !== 2125) {
+    throw new Error(`Expected 2125 entries, got ${entries.length}`)
+}
+
+// Each entity is stored with its decoded byte length and, if it is ASCII, its
+// first decoded byte. Backslash removal after decoding needs that byte, as in
+// `\&bne;`, which decodes to `=` and a combining character.
+const groups = new Map()
+for (const [, name, raw] of entries) {
+    const bytes = raw.split(',').map(Number).filter(byte => byte !== 0)
+    if (bytes.length > name.length + 3) {
+        throw new Error(`Decoding grows ${name} by more than 1 byte`)
+    }
+    // The scanner tracks a decoded backslash only as a whole entity, `&bsol;`.
+    if (bytes.length > 1 && bytes.includes(92)) {
+        throw new Error(`${name} decodes to a backslash among other bytes`)
+    }
+    const key = `${bytes.length}, ${bytes[0] < 128 ? bytes[0] : -1}`
+    groups.set(key, [...groups.get(key) ?? [], name])
+}
+
+const lines = [...groups]
+    .sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true }))
+    .map(([key, names]) => `\t[${key}, '${names.join(' ')}'],`)
+
+fs.writeFileSync(process.argv[3], `// Generated from src/entities.inc in cmark-gfm 0.29.0.gfm.13. To regenerate,
+// see "Entity table" in notes/comment-mark/github-oracle.md.
+// Each group holds the decoded byte length, the first decoded byte if it is
+// ASCII or -1, and the entity names.
+type Entity = [bytes: number, first: number, names: string];
+
+const groups: Entity[] = [
+${lines.join('\n')}
+];
+
+let entities: Map<string, Entity> | undefined;
+
+export const namedEntity = (name: string) => {
+\tif (!entities) {
+\t\tentities = new Map();
+\t\tfor (const group of groups) {
+\t\t\tfor (const entry of group[2].split(' ')) {
+\t\t\t\tentities.set(entry, group);
+\t\t\t}
+\t\t}
+\t}
+\treturn entities.get(name);
+};
+`)
+```
+
 ## Results
 
-Run `node compare.mjs <scan-comments/index.ts> 20000 <seed> [rich|autolink]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
+Run `node compare.mjs <scan-comments/index.ts> 20000 <seed> [rich|autolink|links|refs|tables]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
 
 The comparison numbers each generated marker, such as `<!-- a12 -->`, and each bare `<!--`, such as `<!--o12q`. A comment is identified by the number it starts with, which checks its opening, and the last marker number in it, which checks its closing. Where a comment has no number, as with `<!-->` or a `<!--` built from two fragments, its first or last 3 characters are compared after normalization: entities decoded, and tag-like sequences and whitespace dropped. A comment that spans chunks also holds markup that the renderer generates, so its full text cannot match. A few mismatches per seed remain as artifacts of this normalization, when generated markup such as `<hr />` or a setext underline falls in those last 3 characters. Use `show.mjs` to confirm each mismatch before treating it as a scanner bug.

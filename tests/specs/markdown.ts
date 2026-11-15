@@ -4,9 +4,161 @@ import {
 	getCommentMark,
 	getCommentMarkAll,
 } from '#comment-mark';
+import { scanComments } from '../../src/parser/scan-comments/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
+describe('reference expansion budget', () => {
+	test('uses decoded named entity sizes at the budget boundary', async () => {
+		// cmark-gfm 0.29.0.gfm.13 renders only the outer comments in each case.
+		for (const destination of [
+			'&amp;'.repeat(200),
+			'&nGt;'.repeat(100),
+			`${'u'.repeat(994)}&nGt;`,
+			`${'u'.repeat(987)}&notanentity;`,
+			`${'u'.repeat(996)}&amp`,
+			`${'u'.repeat(999)}&bsol;&excl;`,
+		]) {
+			const source = `${'[r] '.repeat(99)}x <!-- a -->PRESERVE ![<!-- a -->inner][r] tail<!-- /a -->\n\n[r]: ${destination}`;
+			const updated = await commentMark(source, { a: 'NEW' });
+			expect(updated).toBe(source.replace('PRESERVE ![<!-- a -->inner][r] tail', 'NEW'));
+		}
+	});
+
+	test('leaves the image literal just beyond the entity-sized boundary', () => {
+		for (const extra of [0, 1]) {
+			const source = `${'[r] '.repeat(99)}![<!-- a -->inner][s] <!-- /a -->\n\n[r]: ${'u'.repeat(1000)}\n[s]: ${'u'.repeat(994 + extra)}&nGt;`;
+			expect(getCommentMarkAll(source).length).toBe(extra);
+		}
+	});
+
+	test('counts numeric noncharacters as one byte', async () => {
+		// cmark-gfm 0.29.0.gfm.13 renders only the outer comments.
+		for (const code of [65_534, 65_535]) {
+			const source = `${'[r] '.repeat(150)}x <!-- a -->PRESERVE ![<!-- a -->inner][r] tail<!-- /a -->\n\n[r]: ${`&#${code};`.repeat(334)}`;
+			const updated = await commentMark(source, { a: 'NEW' });
+			expect(updated).toBe(source.replace('PRESERVE ![<!-- a -->inner][r] tail', 'NEW'));
+		}
+	});
+
+	test('charges a rewound title without consuming its paragraph', async () => {
+		// cmark-gfm 0.29.0.gfm.13 renders both opening comments.
+		const source = `${'[r] '.repeat(99)}x <!-- a -->PRESERVE ![<!-- a -->inner][r] tail<!-- /a -->\n\n[r]: /u\n"${'t'.repeat(1000)}" trailing`;
+		const updated = await commentMark(source, { a: 'NEW' });
+		expect(updated.includes('PRESERVE ![<!-- a -->NEW<!-- /a -->')).toBe(true);
+		expect(updated.endsWith(`"${'t'.repeat(1000)}" trailing`)).toBe(true);
+	});
+
+	test('preserves text when an image exceeds the budget', async () => {
+		// GitHub /markdown probe, Sat Nov 14: 98 references resolve the image;
+		// 101 references leave it as text.
+		for (const count of [98, 101]) {
+			const prefix = '[r] '.repeat(count);
+			const source = `${prefix}x <!-- a -->PRESERVE ![<!-- a -->old][r] tail<!-- /a --> KEEP\n\n[r]: ${'u'.repeat(1000)}`;
+			const markers = getCommentMarkAll(source);
+			expect(markers[0].content).toBe(count === 98 ? 'PRESERVE ![<!-- a -->old][r] tail' : 'old][r] tail');
+			const updated = await commentMark(source, { a: 'NEW' });
+			expect(updated.includes('PRESERVE ![')).toBe(count === 101);
+		}
+	});
+
+	test('a failed large lookup does not consume the remaining budget', () => {
+		// cmark-gfm 0.29.0.gfm.13 renders `![<!-- a -->old][large]` as text and
+		// resolves `![<!-- b -->x][small]`, so only the `a` marker is visible.
+		const source = `${'[r] '.repeat(99)}![<!-- a -->old<!-- /a -->][large] ![<!-- b -->x<!-- /b -->][small]\n\n`
+			+ `[r]: ${'u'.repeat(1000)}\n[large]: ${'u'.repeat(1001)}\n[small]: /x`;
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'old',
+		}]);
+	});
+
+	test('a decoded entity completes a backslash escape', async () => {
+		// `\&bne;` decodes to `\=` and a combining character, and cmark-gfm then
+		// removes the backslash, so `[r]` costs 801 bytes. All 100 uses fit, 33
+		// `[t]` uses fill the budget, and `![…][s]` renders as text. cmark-gfm
+		// 0.29.0.gfm.13 renders both `<!-- a -->` openers.
+		const source = `${'[r] '.repeat(100)}${'[t] '.repeat(40)}x <!-- a -->PRESERVE ![<!-- a -->old][s] tail<!-- /a -->\n\n[r]: `
+			+ `${String.raw`\&bne;`.repeat(200)}u\n[t]: ${'t'.repeat(600)}\n[s]: ${'s'.repeat(200)}`;
+		const updated = await commentMark(source, { a: 'NEW' });
+		expect(updated).toBe(source.replace('old][s] tail', 'NEW'));
+	});
+
+	test('counts decoded numeric entities and normalized title line endings', () => {
+		for (const definition of [
+			`[s]: ${'u'.repeat(999)}&#x75;`,
+			String.raw`[s]: ${'u'.repeat(999)}\!`,
+			`[s]: < ${'u'.repeat(1000)} >`,
+			`[s]: / "${'t'.repeat(997)}\r\nx"`,
+		]) {
+			const source = `${'[r] '.repeat(99)}![<!-- a -->old][s] <!-- /a -->\n\n`
+				+ `[r]: ${'u'.repeat(1000)}\n${definition}`;
+			expect(getCommentMarkAll(source).length).toBe(0);
+		}
+	});
+
+	test('counts NUL and lone surrogates as replacement characters in definitions', () => {
+		for (const character of ['\0', '\uD800']) {
+			const source = `${'[r] '.repeat(33)}![<!-- a -->old][r] <!-- /a -->\n\n`
+				+ `[r]: ${character.repeat(1000)}`;
+			expect(getCommentMarkAll(source).length).toBe(1);
+		}
+	});
+
+	test('slow-path CPU time scales near linearly', () => {
+		const measure = (count: number) => {
+			// The first paragraph holds `<`, `[`, and `]`, so events are buffered
+			// and the budget's second block pass runs.
+			const source = `x [r] <!-- a -->old<!-- /a -->\n\n${'[r] x\n\n'.repeat(count)}[r]: ${'u'.repeat(1000)}\n`;
+			let best = Infinity;
+			for (let index = 0; index < 5; index += 1) {
+				const start = process.cpuUsage();
+				getCommentMarkAll(source);
+				const elapsed = process.cpuUsage(start);
+				best = Math.min(best, elapsed.user + elapsed.system);
+			}
+			return best;
+		};
+		measure(1000);
+		const small = measure(4000);
+		const large = measure(8000);
+		expect(large / small < 3).toBe(true);
+	});
+
+	test('counts NUL input bytes before replacement for the cap', () => {
+		const prefix = '[r] '.repeat(103);
+		const source = `\`\`\`\n${'\0'.repeat(102_000)}\n\`\`\`\n\n${prefix}![<!-- a -->old][r] <!-- /a -->\n\n`
+			+ `[r]: ${'u'.repeat(1000)}`;
+		expect(getCommentMarkAll(source).length).toBe(1);
+	});
+});
+
 describe('comment and code boundaries', () => {
+	test('buffered HTML lines retain streamed comment positions and line context', () => {
+		for (const newline of ['\n', '\r\n', '\r']) {
+			for (const prefix of ['', '> ']) {
+				const suffix = [
+					'',
+					`${prefix}<div>`,
+					`${prefix}<span title="`,
+					`${prefix}<!-- not a comment -->`,
+					`${prefix}">`,
+					`${prefix}  <!-- a -->`,
+					`${prefix}old`,
+					`${prefix}<!-- /a -->`,
+					`${prefix}</div>`,
+				].join(newline);
+				const collect = (head: string) => {
+					const events: unknown[][] = [];
+					scanComments(head + newline + suffix, (...event) => events.push(event));
+					return events;
+				};
+				const streamed = collect('x abcdef <span>');
+				expect(streamed.length).toBe(2);
+				expect(collect('x [r](u) <span>')).toStrictEqual(streamed);
+			}
+		}
+	});
 	test('a fenced example containing <!-- does not hide the next marker', async () => {
 		const content = ['```html', '<!--', '```', createMarker('x', 'old')].join('\n');
 
@@ -413,6 +565,165 @@ describe('inline code', () => {
 	});
 });
 
+describe('links and images', () => {
+	test('reference labels use cmark case folding and replacement characters', async () => {
+		const content = 'x <!-- a -->outer ![<!-- a -->inner][ı] tail<!-- /a -->\n\n[I]: /u';
+		expect(getCommentMarkAll(content)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'inner][ı] tail',
+		}]);
+		expect(await commentMark(content, { a: 'NEW' })).toBe(
+			'x <!-- a -->outer ![<!-- a -->NEW<!-- /a -->\n\n[I]: /u',
+		);
+		for (const label of ['\u0000', '\uD800', '\uDC00']) {
+			expect(getCommentMarkAll(`![<!-- a -->old<!-- /a -->][\uFFFD]\n\n[${label}]: /url`)).toStrictEqual([]);
+		}
+		expect(getCommentMarkAll('![<!-- a -->old<!-- /a -->][SS]\n\n[ß]: /url')).toStrictEqual([]);
+	});
+
+	test('reference links preserve nested marker boundaries', async () => {
+		for (const [content, old, updated] of [
+			['x <!-- a -->old [outer [ref]](<!-- /a -->) PRESERVE <!-- /a -->\n\n[ref]: /u', 'old [outer [ref]](', 'x <!-- a -->NEW<!-- /a -->) PRESERVE <!-- /a -->\n\n[ref]: /u'],
+			['x <!-- a -->outer [a [b][r]](<!-- a -->) tail<!-- /a -->\n\n[r]: /url', ') tail', 'x <!-- a -->outer [a [b][r]](<!-- a -->NEW<!-- /a -->\n\n[r]: /url'],
+		] as const) {
+			expect(getCommentMarkAll(content)).toStrictEqual([{
+				tagName: 'a',
+				attributes: {},
+				content: old,
+			}]);
+			expect(await commentMark(content, { a: 'NEW' })).toBe(updated);
+		}
+	});
+
+	test('reference links and images resolve definitions after their use', () => {
+		const marker = '<!-- a -->old<!-- /a -->';
+		for (const suffix of ['[r]', '[]', '[ ]', '']) {
+			const label = suffix === '[r]' ? 'r' : marker;
+			for (const image of [false, true]) {
+				const prefix = image ? '!' : '';
+				const content = `x ${prefix}[${marker}]${suffix}`;
+				const literal = [{
+					tagName: 'a',
+					attributes: {},
+					content: 'old',
+				}];
+				expect(getCommentMarkAll(content)).toStrictEqual(literal);
+				expect(getCommentMarkAll(`${content}\n\n[${label}]: /u`)).toStrictEqual(image ? [] : literal);
+			}
+		}
+		for (const content of [
+			'![<!-- a -->old<!-- /a -->][r]\n\n[r]: /url',
+			'![<!-- a -->old<!-- /a -->][SS]\n\n[ß]: /url',
+			'x [text][<!-- a -->old<!-- /a -->]\n\n[<!-- a -->old<!-- /a -->]: /u',
+		]) {
+			expect(getCommentMarkAll(content)).toStrictEqual([]);
+		}
+	});
+
+	test('destinations and titles do not render comments', async () => {
+		const sources = [
+			'[x](<!-- a -->)<!-- /a -->',
+			'[x](u<!--a-->)<!-- /a -->',
+			'[x](u(a(b))<!--a-->)<!-- /a -->',
+			String.raw`[x](u\)<!--a-->)<!-- /a -->`,
+			String.raw`[x](u\(<!--a-->)<!-- /a -->`,
+			'[x](u "<!-- a -->")<!-- /a -->',
+			"[x](u '<!-- a -->')<!-- /a -->",
+			'[x](u (<!-- a -->))<!-- /a -->',
+			'[x](\v<!-- a -->)<!-- /a -->',
+			'[x](u\v<!--a-->)<!-- /a -->',
+			'[x](u\f<!--a-->)<!-- /a -->',
+			'[a [b]](<!-- a -->)<!-- /a -->',
+			'[a `]` b](<!-- a -->)<!-- /a -->',
+		];
+		for (const content of sources) {
+			expect(getCommentMarkAll(content)).toStrictEqual([]);
+		}
+		await expect(commentMark(sources[0], { a: 'NEW' }))
+			.rejects.toThrow('[comment-mark] Selector "a" matched no markers');
+	});
+
+	test('link text and literal links retain comments', () => {
+		for (const content of [
+			'[x <!-- a -->old<!-- /a -->](u)',
+			'[x](u <!-- a -->old<!-- /a -->)',
+			String.raw`\[x](<!-- a -->old<!-- /a -->)`,
+			'![<!-- a -->old<!-- /a -->',
+		]) {
+			expect(getCommentMarkAll(content)).toStrictEqual([{
+				tagName: 'a',
+				attributes: {},
+				content: 'old',
+			}]);
+		}
+	});
+
+	test('a link disables older link openers', () => {
+		const content = '[a [b](u)](<!-- a -->)<!-- /a -->';
+		expect(getCommentMarkAll(content)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: ')',
+		}]);
+	});
+
+	test('image alt text escapes comments, including nested links and images', () => {
+		for (const content of [
+			'![<!-- a -->old<!-- /a -->](u)',
+			'[a ![<!-- a -->old<!-- /a -->](u)](v)',
+			'![a [<!-- a -->old<!-- /a -->](u)](v)',
+			'![before ![<!-- a -->old<!-- /a -->](u) after',
+			'![before ![<!-- a -->old<!-- /a -->] after](u)',
+		]) {
+			expect(getCommentMarkAll(content)).toStrictEqual([]);
+		}
+	});
+
+	test('a bracket followed by a caret is not an image opener', () => {
+		const content = 'x <!-- a -->outer ![^<!-- a -->inner](u) tail<!-- /a -->';
+		expect(getCommentMarkAll(content)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'inner](u) tail',
+		}]);
+	});
+
+	test('image spans are emitted in order when an image is literal', () => {
+		const content = '![<!-- a -->old<!-- /a -->] nope <!-- b -->yes<!-- /b -->';
+		expect(getCommentMarkAll(content)).toStrictEqual([
+			{
+				tagName: 'a',
+				attributes: {},
+				content: 'old',
+			},
+			{
+				tagName: 'b',
+				attributes: {},
+				content: 'yes',
+			},
+		]);
+	});
+
+	test('reference destinations include vertical tab and form feed', () => {
+		for (const control of ['\v', '\f']) {
+			const content = `[r]: u${control}<!--a-->\n\n[r]\n<!-- /a -->`;
+			expect(getCommentMarkAll(content)).toStrictEqual([]);
+		}
+	});
+
+	test('labels keep vertical tab and form feed', () => {
+		// cmark trims and collapses labels with `cmark_isspace`, which excludes
+		// `\v` and `\f`, so a label of only `\v` is not blank and can resolve.
+		expect(getCommentMarkAll('[\v]: <!-- a -->\n\n<!-- /a -->')).toStrictEqual([]);
+		expect(getCommentMarkAll('[a\vb]: <!-- a -->\n\n[a b]\n<!-- /a -->')).toStrictEqual([]);
+		for (const control of ['\v', '\f']) {
+			const content = `![x <!-- a -->][${control}]<!-- /a -->\n\n[x <!-- a -->]: /u`;
+			expect(getCommentMarkAll(content).map(marker => marker.content)).toStrictEqual([`][${control}]`]);
+		}
+	});
+});
+
 describe('paragraph interruption', () => {
 	test('an ordered marker other than one does not interrupt a paragraph', async () => {
 		const content = ['paragraph', '2. ~~~', `   ${createMarker('x', 'real')}`, '   ~~~'].join('\n');
@@ -550,6 +861,93 @@ describe('GitHub rendering', () => {
 		const source = `<div>\n\t${marker}\n</div>`;
 
 		expect(await commentMark(source, { a: 'new' })).toBe(`<div>\n\t${createMarker('a', '\nnew\n')}\n</div>`);
+	});
+});
+
+describe('table cells', () => {
+	test('unescapes the paragraph split off before the header', async () => {
+		// cmark-gfm 0.29.0.gfm.13 renders both opening comments for this input.
+		const source = 'x <!-- a -->PRESERVE ![<!-- a -->inner][r\\|s] tail<!-- /a -->\n| a |\n| - |\n\n[r\\|s]: /u';
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: String.raw`inner][r\|s] tail`,
+		}]);
+		expect(await commentMark(source, { a: 'NEW' })).toBe(
+			'x <!-- a -->PRESERVE ![<!-- a -->NEW<!-- /a -->\n| a |\n| - |\n\n[r\\|s]: /u',
+		);
+		const withoutTable = source.replace('\n| a |\n| - |', '');
+		// Without a table, cmark resolves the image and renders only the outer pair.
+		expect(getCommentMarkAll(withoutTable)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: String.raw`PRESERVE ![<!-- a -->inner][r\|s] tail`,
+		}]);
+	});
+
+	test('maps each line in a paragraph split off before a header', async () => {
+		// cmark-gfm renders both marker pairs in this multi-line paragraph.
+		const source = 'first \\|\nsecond \\| <!-- a -->old<!-- /a -->\nthird \\| <!-- b -->yes<!-- /b -->\n| a |\n| - |';
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'old',
+		}, {
+			tagName: 'b',
+			attributes: {},
+			content: 'yes',
+		}]);
+		expect(await commentMark(source, {
+			a: 'NEW',
+			b: 'NEXT',
+		})).toBe(
+			'first \\|\nsecond \\| <!-- a -->NEW<!-- /a -->\nthird \\| <!-- b -->NEXT<!-- /b -->\n| a |\n| - |',
+		);
+	});
+
+	test('maps a raw comment spanning paragraph lines after an escaped pipe', async () => {
+		// cmark-gfm renders this multi-line opener and its closer as comments.
+		for (const newline of ['\n', '\r\n', '\r']) {
+			const source = [String.raw`first \| <!-- a`, ' -->old<!-- /a -->', '| a |', '| - |'].join(newline);
+			expect(getCommentMarkAll(source)).toStrictEqual([{
+				tagName: 'a',
+				attributes: {},
+				content: 'old',
+			}]);
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old', 'NEW'));
+		}
+	});
+
+	test('unescapes pipes before resolving image references', async () => {
+		const source = '| x |\n| - |\n| x <!-- a -->PRESERVE ![<!-- a -->inner][r\\|s] tail<!-- /a --> |\n\n[r\\|s]: /u';
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: String.raw`inner][r\|s] tail`,
+		}]);
+		expect(await commentMark(source, { a: 'NEW' })).toBe('| x |\n| - |\n| x <!-- a -->PRESERVE ![<!-- a -->NEW<!-- /a --> |\n\n[r\\|s]: /u');
+	});
+
+	test('keeps code spans containing escaped pipes literal', async () => {
+		const source = '| x |\n| - |\n| `a\\|<!-- a -->old<!-- /a -->` |\n\n<!-- a -->real<!-- /a -->';
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'real',
+		}]);
+		expect(await commentMark(source, { a: 'NEW' })).toBe('| x |\n| - |\n| `a\\|<!-- a -->old<!-- /a -->` |\n\n<!-- a -->\nNEW\n<!-- /a -->');
+	});
+
+	test('maps comments after escaped pipes and raw HTML attributes', async () => {
+		for (const prefix of [String.raw`before \| `, String.raw`<a title="\|">`]) {
+			const source = `| x |\n| - |\n| ${prefix}<!-- a -->old<!-- /a --> |`;
+			expect(getCommentMarkAll(source)).toStrictEqual([{
+				tagName: 'a',
+				attributes: {},
+				content: 'old',
+			}]);
+			expect(await commentMark(source, { a: 'NEW' })).toBe(`| x |\n| - |\n| ${prefix}<!-- a -->NEW<!-- /a --> |`);
+		}
 	});
 });
 

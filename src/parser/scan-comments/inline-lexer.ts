@@ -5,15 +5,136 @@ import {
 	isSpaceChar,
 	scanHtmlTag,
 } from './html-tag.ts';
+import {
+	isCmarkSpace,
+	scanDestination,
+	scanLabel,
+	scanTitle,
+} from './block/reference-definition.ts';
+
+/**
+ * Indexes `manual_scan_link_url_2` boundaries for monotonic destination starts.
+ * A down-step at the starting balance closes the destination; an up-step 33
+ * levels above it exceeds cmark-gfm's nesting limit. Escapes have the same
+ * parity globally and within a destination, which starts after `(` or space.
+ * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L1064-L1102
+ */
+const indexDestinations = (text: string) => {
+	let parenthesisCount = 0;
+	let spaceCount = 0;
+	for (let index = 0; index < text.length; index += 1) {
+		const code = text.charCodeAt(index);
+		if (code === 92 && isAsciiPunctuation(text.charCodeAt(index + 1))) {
+			index += 1;
+		} else if (code === 40 || code === 41) {
+			parenthesisCount += 1;
+		} else if (isCmarkSpace(code)) {
+			spaceCount += 1;
+		}
+	}
+	const levelCount = parenthesisCount * 2 + 2;
+	const upOffsets = new Int32Array(levelCount);
+	const downOffsets = new Int32Array(levelCount);
+	const spaces = new Int32Array(spaceCount);
+	let spaceIndex = 0;
+	let balance = 0;
+	for (let index = 0; index < text.length; index += 1) {
+		const code = text.charCodeAt(index);
+		if (code === 92 && isAsciiPunctuation(text.charCodeAt(index + 1))) {
+			index += 1;
+		} else if (code === 40) {
+			balance += 1;
+			upOffsets[balance + parenthesisCount + 1] += 1;
+		} else if (code === 41) {
+			downOffsets[balance + parenthesisCount + 1] += 1;
+			balance -= 1;
+		} else if (isCmarkSpace(code)) {
+			spaces[spaceIndex] = index;
+			spaceIndex += 1;
+		}
+	}
+	// Counting sort groups each level's positions while preserving source order.
+	for (let level = 1; level < levelCount; level += 1) {
+		upOffsets[level] += upOffsets[level - 1];
+		downOffsets[level] += downOffsets[level - 1];
+	}
+	const upPositions = new Int32Array(upOffsets[levelCount - 1]);
+	const downPositions = new Int32Array(downOffsets[levelCount - 1]);
+	const upCursors = upOffsets.slice();
+	const downCursors = downOffsets.slice();
+	balance = 0;
+	for (let index = 0; index < text.length; index += 1) {
+		const code = text.charCodeAt(index);
+		if (code === 92 && isAsciiPunctuation(text.charCodeAt(index + 1))) {
+			index += 1;
+		} else if (code === 40) {
+			balance += 1;
+			const level = balance + parenthesisCount;
+			upPositions[upCursors[level]] = index;
+			upCursors[level] += 1;
+		} else if (code === 41) {
+			const level = balance + parenthesisCount;
+			downPositions[downCursors[level]] = index;
+			downCursors[level] += 1;
+			balance -= 1;
+		}
+	}
+	upCursors.set(upOffsets);
+	downCursors.set(downOffsets);
+	const next = (
+		positions: Int32Array,
+		offsets: Int32Array,
+		cursors: Int32Array,
+		level: number,
+		start: number,
+	) => {
+		if (level < 0 || level + 1 >= levelCount) {
+			return text.length;
+		}
+		let cursor = cursors[level];
+		const end = offsets[level + 1];
+		while (cursor < end && positions[cursor] < start) {
+			cursor += 1;
+		}
+		cursors[level] = cursor;
+		return cursor < end ? positions[cursor] : text.length;
+	};
+	let spaceCursor = 0;
+	let balanceCursor = 0;
+	let startBalance = 0;
+	return (start: number) => {
+		// Destination starts increase and cannot occur inside an escaped pair.
+		while (balanceCursor < start) {
+			const code = text.charCodeAt(balanceCursor);
+			if (code === 92 && isAsciiPunctuation(text.charCodeAt(balanceCursor + 1))) {
+				balanceCursor += 2;
+			} else {
+				startBalance += Number(code === 40) - Number(code === 41);
+				balanceCursor += 1;
+			}
+		}
+		while (spaceCursor < spaceCount && spaces[spaceCursor] < start) {
+			spaceCursor += 1;
+		}
+		const whitespace = spaceCursor < spaceCount ? spaces[spaceCursor] : text.length;
+		const level = startBalance + parenthesisCount;
+		const close = next(downPositions, downOffsets, downCursors, level, start);
+		const overflow = next(upPositions, upOffsets, upCursors, level + 33, start);
+		const end = Math.min(whitespace, close);
+		return end === text.length || overflow < end || whitespace === start ? -1 : end;
+	};
+};
 
 /**
  * The inline phase. It finds the raw HTML spans in the text of one paragraph,
  * heading, or table cell, as `handle_pointy_brace` in GitHub's renderer does:
  * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L911-L1018
  *
- * Only the inline rules that decide where raw HTML can start are lexed:
- * backslash escapes, code spans, and autolinks. Everything else is text that
- * renders escaped, so it cannot open or close a comment.
+ * It lexes the inline rules that decide where raw HTML can start: backslash
+ * escapes, code spans, `<…>` autolinks, and links and images. Footnotes and
+ * bare-URL autolinks are not lexed yet.
+ * Everything else renders as escaped text or renderer-generated markup, neither
+ * of which can open a comment.
  */
 
 // `MAXBACKTICKS`: a longer run is literal text.
@@ -143,7 +264,11 @@ const skipProcessingInstruction = (text: string, index: number) => {
 /**
  * Calls `emit` with the start and end of each raw HTML span in `text`, in order.
  */
-export const lexInline = (text: string, emit: (start: number, end: number) => void) => {
+export const lexInline = (
+	text: string,
+	emit: (start: number, end: number) => void,
+	isDefinedLabel: (label: string) => boolean,
+) => {
 	// Once a kind of construct fails to close, cmark-gfm stops matching that
 	// kind for the rest of the text. An unclosed comment disables every `<!`
 	// construct, including empty comments.
@@ -249,10 +374,171 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 		return next === 47 || isAsciiLetter(next) ? scanHtmlTag(text, index, text.length) : -1;
 	};
 
+	// `scan_spacechars` differs from the whitespace in a reference definition.
+	const skipInlineSpaces = (start: number) => {
+		while (isSpaceChar(text.charCodeAt(start))) {
+			start += 1;
+		}
+		return start;
+	};
+	let destinationIndex: ReturnType<typeof indexDestinations> | undefined;
+	let destinationWork = 0;
+	const scanUnbracketedDestination = (start: number) => {
+		if (!destinationIndex && destinationWork > text.length) {
+			destinationIndex = indexDestinations(text);
+		}
+		if (destinationIndex) {
+			return destinationIndex(start);
+		}
+		let cursor = start;
+		let depth = 0;
+		while (cursor < text.length) {
+			const code = text.charCodeAt(cursor);
+			if (code === 92 && isAsciiPunctuation(text.charCodeAt(cursor + 1))) {
+				cursor += 2;
+			} else if (code === 40) {
+				depth += 1;
+				if (depth > 32) {
+					break;
+				}
+				cursor += 1;
+			} else if (code === 41) {
+				if (depth === 0) {
+					break;
+				}
+				depth -= 1;
+				cursor += 1;
+			} else if (isCmarkSpace(code)) {
+				break;
+			} else {
+				cursor += 1;
+			}
+		}
+		destinationWork += cursor - start + 1;
+		const startsWithSpace = cursor === start && text.charCodeAt(cursor) !== 41;
+		return cursor >= text.length || depth > 32 || startsWithSpace ? -1 : cursor;
+	};
+	const matchLinkTail = (start: number) => {
+		if (text.charCodeAt(start) !== 40) {
+			return -1;
+		}
+		const destinationStart = skipInlineSpaces(start + 1);
+		let destinationEnd: number;
+		if (text.charCodeAt(destinationStart) === 60) {
+			destinationEnd = scanDestination(text, destinationStart);
+		} else {
+			destinationEnd = scanUnbracketedDestination(destinationStart);
+		}
+		if (destinationEnd === -1) {
+			return -1;
+		}
+		const titleStart = skipInlineSpaces(destinationEnd);
+		const title = titleStart === destinationEnd ? -1 : scanTitle(text, titleStart);
+		const end = skipInlineSpaces(title === -1 ? titleStart : title);
+		return text.charCodeAt(end) === 41 ? end + 1 : -1;
+	};
+
+	// A completed link sets one shared flag; a later `[` clears it, so even an
+	// older link opener may become usable again.
+	// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L1136-L1349
+	const brackets: {
+		image: boolean;
+		spanStart: number;
+		position: number;
+		bracketAfter: boolean;
+	}[] = [];
+	const spans: {
+		start: number;
+		end: number;
+	}[] = [];
+	let images = 0;
+	let noLinkOpeners = true;
+	const pushBracket = (image: boolean) => {
+		if (brackets.length > 0) {
+			brackets.at(-1)!.bracketAfter = true;
+		}
+		brackets.push({
+			image,
+			spanStart: spans.length,
+			position: index + (image ? 2 : 1),
+			bracketAfter: false,
+		});
+		if (image) {
+			images += 1;
+		} else {
+			noLinkOpeners = false;
+		}
+	};
+	const flushSpans = () => {
+		for (const span of spans) {
+			emit(span.start, span.end);
+		}
+		spans.length = 0;
+	};
+	// `handle_close_bracket`: https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L1199-L1228
+	const matchReference = (opener: (typeof brackets)[number], start: number) => {
+		const labelEnd = text.charCodeAt(start) === 91 ? scanLabel(text, start, true) : -1;
+		let label = labelEnd === -1 ? '' : text.slice(start + 1, labelEnd - 1);
+		let labelStart = 0;
+		while (labelStart < label.length && isCmarkSpace(label.charCodeAt(labelStart))) {
+			labelStart += 1;
+		}
+		const empty = labelStart === label.length;
+		if ((labelEnd === -1 || empty) && !opener.bracketAfter) {
+			label = text.slice(opener.position, start - 1);
+		}
+		return (labelEnd !== -1 || !opener.bracketAfter) && isDefinedLabel(label)
+			? (labelEnd === -1 ? start : labelEnd)
+			: -1;
+	};
+
 	let index = 0;
 	while (index < text.length) {
 		const code = text.charCodeAt(index);
 		switch (code) {
+			case 33: {
+				if (text.charCodeAt(index + 1) === 91 && text.charCodeAt(index + 2) !== 94) {
+					pushBracket(true);
+					index += 2;
+				} else {
+					index += 1;
+				}
+				break;
+			}
+			case 91: {
+				pushBracket(false);
+				index += 1;
+				break;
+			}
+			case 93: {
+				const opener = brackets.pop();
+				index += 1;
+				if (!opener) {
+					break;
+				}
+				let end = -1;
+				if (opener.image || !noLinkOpeners) {
+					end = matchLinkTail(index);
+					if (end === -1) {
+						end = matchReference(opener, index);
+					}
+				}
+				if (end !== -1) {
+					index = end;
+					if (opener.image) {
+						spans.length = opener.spanStart;
+					} else {
+						noLinkOpeners = true;
+					}
+				}
+				if (opener.image) {
+					images -= 1;
+					if (images === 0) {
+						flushSpans();
+					}
+				}
+				break;
+			}
 			case 92: {
 				index += isAsciiPunctuation(text.charCodeAt(index + 1)) ? 2 : 1;
 
@@ -273,7 +559,14 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 				if (end === -1) {
 					index += 1;
 				} else {
-					emit(index, end);
+					if (images > 0) {
+						spans.push({
+							start: index,
+							end,
+						});
+					} else {
+						emit(index, end);
+					}
 					index = end;
 				}
 
@@ -284,4 +577,5 @@ export const lexInline = (text: string, emit: (start: number, end: number) => vo
 			}
 		}
 	}
+	flushSpans();
 };

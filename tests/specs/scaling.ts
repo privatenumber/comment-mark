@@ -44,4 +44,58 @@ describe('parser scaling', () => {
 		expect(markers).toStrictEqual([]);
 		expect(elapsed).toBeLessThan(1500);
 	});
+
+	test('link tail and bracket scans scale linearly', () => {
+		const inputs = [
+			(n: number) => '['.repeat(n) + '](a "'.repeat(n),
+			(n: number) => '['.repeat(n) + "](a '".repeat(n),
+			(n: number) => '['.repeat(n) + '](a ('.repeat(n),
+			(n: number) => '['.repeat(n * 3) + '](a "](a \'](a ('.repeat(n),
+			(n: number) => '['.repeat(n) + '](<'.repeat(n),
+			(n: number) => '['.repeat(n) + '](a()'.repeat(n),
+			(n: number) => '['.repeat(n) + '![ '.repeat(n) + ']('.repeat(n),
+			(n: number) => '[[[['.repeat(n) + '[a](b)'.repeat(n),
+		];
+		for (const input of inputs) {
+			const measure = (size: number) => {
+				const content = `x <!-- a --> ${input(size)}`;
+				let best = Infinity;
+				for (let attempt = 0; attempt < 5; attempt += 1) {
+					const start = process.cpuUsage();
+					getCommentMarkAll(content);
+					const elapsed = process.cpuUsage(start);
+					best = Math.min(best, elapsed.user + elapsed.system);
+				}
+				return best;
+			};
+			measure(1000);
+			const small = measure(5000);
+			const large = measure(10_000);
+			expect(large).toBeLessThan(small * 3 + 20_000);
+		}
+	});
+
+	test('reference lookups scale linearly', () => {
+		for (const input of [
+			(n: number) => `${'[r] '.repeat(n)}\n\n${Array.from({ length: n }, (_, i) => `[r${i}]: /u\n`).join('')}[r]: /u`,
+			(n: number) => '[undefined] '.repeat(n),
+			(n: number) => `[${'a'.repeat(999)}] `.repeat(n),
+		]) {
+			const measure = (size: number) => {
+				const content = `x <!-- a --> ${input(size)}`;
+				let best = Infinity;
+				for (let attempt = 0; attempt < 5; attempt += 1) {
+					const start = process.cpuUsage();
+					getCommentMarkAll(content);
+					const elapsed = process.cpuUsage(start);
+					best = Math.min(best, elapsed.user + elapsed.system);
+				}
+				return best;
+			};
+			measure(100);
+			const small = measure(1000);
+			const large = measure(2000);
+			expect(large).toBeLessThan(small * 3 + 20_000);
+		}
+	});
 });
