@@ -166,7 +166,7 @@ for (const document of docs) {
     ], { input: document }).toString()
     const tree = parse(html, {
         scriptingEnabled: false,
-        sourceCodeLocationInfo: true,
+        sourceCodeLocationInfo: true
     })
     const comments = walk(tree, html, []).sort((a, b) => a[0] - b[0])
     console.log(JSON.stringify(comments.map(([, data]) => data)))
