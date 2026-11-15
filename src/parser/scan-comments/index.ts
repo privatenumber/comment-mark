@@ -1,5 +1,6 @@
-import { lexBlocks, type BlockHandlers } from './block/index.ts';
+import { lexBlocks, type BlockHandlers, type GeneratedBlock } from './block/index.ts';
 import { normalizeLabel } from './block/reference-definition.ts';
+import { renderGeneratedBlock } from './generated-block.ts';
 import { createHtmlTokenizer } from './html-tokenizer.ts';
 import { lexInline } from './inline-lexer.ts';
 import { createReferenceBudget, type ReferenceDefinition } from './reference-budget.ts';
@@ -75,7 +76,10 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 		return !failed && normalized !== '' && labels.has(normalized);
 	};
 
-	const handlers: Pick<BlockHandlers, 'html' | 'text'> = {
+	const handlers: Pick<BlockHandlers, 'html' | 'text' | 'generated'> = {
+		generated: (block, afterMarkup) => {
+			tokenizer.generated(afterMarkup, block.type === 'code', () => renderGeneratedBlock(source, block));
+		},
 		html: (start, end, afterMarkup, continuation) => {
 			tokenizer.feed(start, end, afterMarkup, continuation, true);
 		},
@@ -138,10 +142,20 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 	const positions: number[] = [];
 	const continuations: string[] = [];
 	const textSegments: number[][] = [];
+	const generatedBlocks: GeneratedBlock[] = [];
 	const containers: ReturnType<typeof tokenizer.open>[] = [];
 	const containerNames = ['blockquote', 'li', 'ul', 'ol', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td'] as const;
 	let buffering = false;
 	lexBlocks(source, {
+		generated: (block, afterMarkup) => {
+			if (buffering) {
+				positions.push(-4, generatedBlocks.length, Number(afterMarkup));
+				continuations.push('');
+				generatedBlocks.push(block);
+			} else {
+				handlers.generated!(block, afterMarkup);
+			}
+		},
 		text: (segments, continuation, unescapePipes, type) => {
 			// Raw HTML starts with `<`, so text without one renders as text and
 			// needs no replay. A `<` between two segments only costs a needless
@@ -246,6 +260,11 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 			}
 			case -3: {
 				tokenizer.close(containers.pop());
+
+				break;
+			}
+			case -4: {
+				handlers.generated!(generatedBlocks[end], positions[(index * 3) + 2] === 1);
 
 				break;
 			}

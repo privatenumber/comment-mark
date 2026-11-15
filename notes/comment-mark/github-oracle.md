@@ -1,6 +1,6 @@
 # GitHub oracle
 
-A local stand-in for GitHub's Markdown rendering, used to check which HTML comments [the scanner](./comment-scanning.md) should report. It renders with cmark-gfm 0.29.0.gfm.13 and GitHub's extensions, then parses the HTML with parse5 with scripting disabled, as GitHub parses it. A comment is a comment node that parse5 builds from a real `<!--` and `-->` in the output.
+A local stand-in for GitHub's Markdown rendering, used to check which HTML comments [the scanner](./comment-scanning.md) should report. It renders with cmark-gfm 0.29.0.gfm.13, `--github-pre-lang`, and GitHub's extensions, then parses the HTML with parse5 with scripting disabled, as GitHub parses it. A comment is a comment node that parse5 builds from a real `<!--` and `-->` in the output.
 
 The oracle is wrong inside SVG and MathML, where GitHub matched none of the four parsers compared [below](#github-probes). There, [GitHub's own API](#github-probes) is the authority, and the probes below are the evidence.
 
@@ -22,7 +22,7 @@ cd ..
 npm init -y && npm pkg set type=module && npm install parse5@8.1.1
 ```
 
-Check: `printf '<!-- a -->\0x <title>' | ./batch | tr '\0' '|'` prints `<!-- a -->`, a line feed, then `|<p>x &lt;title></p>`. The escaped `<title>` shows that the tagfilter extension is active.
+Check: `printf '<!-- a -->\0x <title>' | ./batch --github-pre-lang | tr '\0' '|'` prints `<!-- a -->`, a line feed, then `|<p>x &lt;title></p>`. The escaped `<title>` shows that the tagfilter extension is active. `printf '```js\nx\n```\n' | ./batch --github-pre-lang` prints `<pre lang="js"><code>x`, a line feed, and `</code></pre>`.
 
 ## Scripts
 
@@ -41,7 +41,12 @@ Save each file beside `batch`.
 
 static const char *extensions[] = {"table", "strikethrough", "autolink", "tagfilter", "tasklist"};
 
-int main(void) {
+int main(int argc, char **argv) {
+  if (argc != 2 || strcmp(argv[1], "--github-pre-lang") != 0) {
+    fputs("Expected --github-pre-lang\n", stderr);
+    return 1;
+  }
+  int options = CMARK_OPT_UNSAFE | CMARK_OPT_GITHUB_PRE_LANG;
   cmark_gfm_core_extensions_ensure_registered();
   size_t cap = 1 << 20, len = 0;
   char *buf = malloc(cap);
@@ -50,13 +55,13 @@ int main(void) {
     c = getchar();
     if (c == EOF || c == 0) {
       if (c == EOF && len == 0) break;
-      cmark_parser *parser = cmark_parser_new(CMARK_OPT_UNSAFE);
+      cmark_parser *parser = cmark_parser_new(options);
       for (size_t i = 0; i < sizeof extensions / sizeof *extensions; i++) {
         cmark_parser_attach_syntax_extension(parser, cmark_find_syntax_extension(extensions[i]));
       }
       cmark_parser_feed(parser, buf, len);
       cmark_node *doc = cmark_parser_finish(parser);
-      char *html = cmark_render_html(doc, CMARK_OPT_UNSAFE, cmark_parser_get_syntax_extensions(parser));
+      char *html = cmark_render_html(doc, options, cmark_parser_get_syntax_extensions(parser));
       fputs(html, stdout);
       putchar(0);
       free(html);
@@ -86,7 +91,7 @@ import { parseFragment } from 'parse5'
 
 const batch = new URL('batch', import.meta.url).pathname
 
-export const render = docs => execFileSync(batch, {
+export const render = (docs, options = ['--github-pre-lang']) => execFileSync(batch, options, {
     input: docs.join('\0'),
     maxBuffer: 2 ** 30
 }).toString('utf8').split('\0').slice(0, docs.length)
@@ -114,6 +119,42 @@ export const textOf = (html) => {
 }
 
 export const githubComments = docs => render(docs).map(commentsOf)
+```
+
+For a JSON array of documents, `p5.mjs` runs the cmark-gfm CLI instead of the batch renderer:
+
+```js
+// Usage: node p5.mjs <directory with parse5> <cmark-gfm binary> <documents.json>
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+
+const require = createRequire(`${process.argv[2]}/`)
+const { parse } = await import(require.resolve('parse5'))
+const docs = JSON.parse(readFileSync(process.argv[4], 'utf8'))
+const walk = (node, comments) => {
+    if (node.nodeName === '#comment') { comments.push(node.data) }
+    for (const child of node.childNodes ?? []) { walk(child, comments) }
+    if (node.content) { walk(node.content, comments) }
+    return comments
+}
+for (const document of docs) {
+    const html = execFileSync(process.argv[3], [
+        '-e',
+        'table',
+        '-e',
+        'strikethrough',
+        '-e',
+        'autolink',
+        '-e',
+        'tagfilter',
+        '-e',
+        'tasklist',
+        '--unsafe',
+        '--github-pre-lang'
+    ], { input: document }).toString()
+    console.log(JSON.stringify(walk(parse(html, { scriptingEnabled: false }), [])))
+}
 ```
 
 `compare.mjs` compares a scanner with the oracle. Pass the path of a checkout's `src/parser/scan-comments/index.ts`. Set `SHOW=n` to print the n shortest mismatching documents.
@@ -206,7 +247,7 @@ for (let i = 0; i < count; i += 1) {
 }
 
 const failures = []
-const htmls = render(docs)
+const htmls = render(docs, ['--github-pre-lang'])
 let errors = 0
 for (const [index, document] of docs.entries()) {
     let actual
@@ -447,25 +488,29 @@ console.log('interactions', interactions)
 
 ## Entity table
 
-[entities.ts](../../src/parser/scan-comments/entities.ts) holds the decoded byte length of each named entity in cmark-gfm 0.29.0.gfm.13, for the [reference expansion budget](./comment-scanning.md#reference-expansion-budget). Regenerate it when the scanner ports a new cmark-gfm tag, from that tag's `src/entities.inc`:
+[entities.ts](../../src/parser/scan-comments/entities.ts) holds the decoded byte length of each named entity in cmark-gfm 0.29.0.gfm.13, for the [reference expansion budget](./comment-scanning.md#reference-expansion-budget). Its numeric decoder is also used by generated code-block rendering. Save the script below as `generate-entities.mjs` in the repository root, then run it when the scanner ports a new cmark-gfm tag, from that tag's `src/entities.inc`:
 
 ```sh
 node generate-entities.mjs <cmark-gfm>/src/entities.inc src/parser/scan-comments/entities.ts
 ```
 
-The script stores each entity's decoded byte length and, when it is ASCII, its first decoded byte, which can complete a backslash escape, as `=` does in `\&bne;`. It fails if the table does not have 2,125 entries, if decoding any entity grows it by more than 1 byte, which the budget's fast bound relies on, or if a multi-byte entity decodes to a backslash. On 2026-11-14 the output also matched `character-entities` 2.0.2 in every name and decoded byte length.
+The script replaces only the `groups` entries and leaves the numeric decoder and lookup code intact. Pass `--check` after the two paths to verify the current table without writing. Each group stores the decoded byte length and the first decoded byte when that byte is ASCII. The first byte can complete a backslash escape, as `=` does in `\&bne;`. The script fails if the table does not have 2,125 unique entries, if decoding any entity grows it by more than 1 byte, which the budget's fast bound relies on, or if a multi-byte entity decodes to a backslash. It also compares every name and decoded value byte-for-byte with the installed `character-entities` package, which supplies the full values for fence languages. On 2026-11-15, all 2,125 names and values matched version 2.0.2.
 
 `generate-entities.mjs`:
 
 ```js
-// Generates src/parser/scan-comments/entities.ts from cmark-gfm's entities.inc.
-// Usage: node generate-entities.mjs <entities.inc> <entities.ts>
+// Updates the groups in entities.ts from cmark-gfm's entities.inc.
+// Usage: node generate-entities.mjs <entities.inc> <entities.ts> [--check]
 import fs from 'node:fs'
+import { characterEntities } from 'character-entities'
 
 const source = fs.readFileSync(process.argv[2], 'utf8')
 const entries = [...source.matchAll(/\{\(unsigned char\*\)"([^"]+)", \{([^}]+)\}\}/g)]
-if (entries.length !== 2125) {
-    throw new Error(`Expected 2125 entries, got ${entries.length}`)
+const names = new Set(entries.map(([, name]) => name))
+if (
+    entries.length !== 2125 || names.size !== 2125 || Object.keys(characterEntities).length !== 2125
+) {
+    throw new Error('Expected 2125 unique names in each table')
 }
 
 // Each entity is stored with its decoded byte length and, if it is ASCII, its
@@ -474,6 +519,12 @@ if (entries.length !== 2125) {
 const groups = new Map()
 for (const [, name, raw] of entries) {
     const bytes = raw.split(',').map(Number).filter(byte => byte !== 0)
+    if (
+        !Object.hasOwn(characterEntities, name)
+        || !Buffer.from(characterEntities[name]).equals(Buffer.from(bytes))
+    ) {
+        throw new Error(`character-entities differs for ${name}`)
+    }
     if (bytes.length > name.length + 3) {
         throw new Error(`Decoding grows ${name} by more than 1 byte`)
     }
@@ -487,37 +538,30 @@ for (const [, name, raw] of entries) {
 
 const lines = [...groups]
     .sort(([a], [b]) => a.localeCompare(b, 'en', { numeric: true }))
-    .map(([key, names]) => `\t[${key}, '${names.join(' ')}'],`)
+    .map(([key, groupNames]) => `\t[${key}, '${groupNames.join(' ')}'],`)
 
-fs.writeFileSync(process.argv[3], `// Generated from src/entities.inc in cmark-gfm 0.29.0.gfm.13. To regenerate,
-// see "Entity table" in notes/comment-mark/github-oracle.md.
-// Each group holds the decoded byte length, the first decoded byte if it is
-// ASCII or -1, and the entity names.
-type Entity = [bytes: number, first: number, names: string];
-
-const groups: Entity[] = [
-${lines.join('\n')}
-];
-
-let entities: Map<string, Entity> | undefined;
-
-export const namedEntity = (name: string) => {
-\tif (!entities) {
-\t\tentities = new Map();
-\t\tfor (const group of groups) {
-\t\t\tfor (const entry of group[2].split(' ')) {
-\t\t\t\tentities.set(entry, group);
-\t\t\t}
-\t\t}
-\t}
-\treturn entities.get(name);
-};
-`)
+const path = process.argv[3]
+const current = fs.readFileSync(path, 'utf8')
+const marker = 'const groups: Entity[] = [\n'
+const start = current.indexOf(marker)
+const end = current.indexOf('\n];', start + marker.length)
+if (start === -1 || end === -1 || current.includes(marker, start + marker.length)) {
+    throw new Error('Expected one groups section in entities.ts')
+}
+const updated = current.slice(0, start + marker.length) + lines.join('\n') + current.slice(end)
+if (process.argv[4] === '--check') {
+    if (updated !== current) {
+        throw new Error('The generated groups differ from entities.ts')
+    }
+} else {
+    fs.writeFileSync(path, updated)
+}
+console.log(`Checked ${entries.length} names and values; groups ${process.argv[4] === '--check' ? 'match' : 'updated'}`)
 ```
 
 ## Results
 
-Run `node compare.mjs <scan-comments/index.ts> 20000 <seed> [rich|autolink|links|refs|tables]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
+Run `node compare.mjs <scan-comments/index.ts> 20000 <seed> [rich|autolink|links|refs|tables|foreign]`. The results for the current scanner are in [comment scanning](./comment-scanning.md#github-oracle).
 
 The comparison numbers each generated marker, such as `<!-- a12 -->`, and each bare `<!--`, such as `<!--o12q`. A comment is identified by the number it starts with, which checks its opening, and the last marker number in it, which checks its closing. Where a comment has no number, as with `<!-->` or a `<!--` built from two fragments, its first or last 3 characters are compared after normalization: entities decoded, and tag-like sequences and whitespace dropped. A comment that spans chunks also holds markup that the renderer generates, so its full text cannot match. A few mismatches per seed remain as artifacts of this normalization, when generated markup such as `<hr />` or a setext underline falls in those last 3 characters. Use `show.mjs` to confirm each mismatch before treating it as a scanner bug.
 
@@ -575,6 +619,69 @@ An earlier round of 35 probes on the same day found:
 - **Integration points keep CDATA.** `<math><annotation-xml encoding="text/html">D` is in, and so is the encoding `text&#47;html`.
 - **Scripting is disabled.** `<noscript><!-- a -->x<!-- /a --></noscript> tail` renders `<p>x tail</p>`, so the content is HTML with comments, not raw text.
 - **Comments are stripped everywhere tested,** including inside `<svg>`, `<math>`, and `<select>`.
+
+### Tight-list boundary
+
+On 2026-11-15, GitHub `/markdown` in `gfm` mode rendered these two documents. `VISIBLE` distinguishes the comment boundary even though GitHub strips comments.
+
+| Markdown | GitHub output |
+| --- | --- |
+| `- <!-- n --><?x\n  VISIBLE <!-- a -->old<!-- /a -->` | `<ul>\n<li>\nold</li>\n</ul>` |
+| The same input followed by `\n\n- b` | `<ul>\n<li>\nVISIBLE old<p></p>\n</li>\n<li>\n<p>b</p>\n</li>\n</ul>` |
+
+The first list is tight, so its paragraph emits no `<p>` and the bogus comment started by `<?x` hides `VISIBLE` and the opening marker. The later item makes the second list loose, so `<p>` ends that bogus comment before `VISIBLE`. cmark-gfm 0.29.0.gfm.13 with `--github-pre-lang` and parse5 give the same boundary. The [public-API tests](../../tests/specs/markdown.ts) also cover definition-only and nested-list children, blockquotes, line endings, buffered events, and the range of a later marker; those variants were checked with the local oracle, not separately on GitHub.
+
+### Task-list checkbox and attribute boundary
+
+On 2026-11-15, `/markdown` in `gfm` mode rendered the following document with each fragment in the table. The later raw `<i>` supplies a literal quote. `BEFORE` and `VISIBLE` make the two marker positions distinguishable even though GitHub strips comments.
+
+```text
+<!--><a x="
+
+- FRAGMENT <!-- a -->BEFORE<!-- /a --><i title="v">AFTER</i><!-- a -->VISIBLE<!-- /a -->
+```
+
+| `FRAGMENT` | GitHub output |
+| --- | --- |
+| `[x] item` | `AFTERVISIBLE\n` |
+| `[ ] item` | `AFTERVISIBLE\n` |
+| `ordinary item` | `AFTERVISIBLE\n` |
+| `<input type="checkbox" disabled="" /> item` | ` item BEFORE<i title="v">AFTER</i>VISIBLE\n` |
+
+The cmark-gfm 0.29.0.gfm.13 plus parse5 oracle instead reports both markers for `[x] item`: cmark emits a checkbox containing quotes before `BEFORE`. GitHub's task syntax has the same observable boundary as the ordinary item, while the literal input exposes `BEFORE`. This is consistent with the attribute remaining open until the later `<i>`. The [task-list test](../../tests/specs/markdown.ts) checks all four fragments against this table. The scanner matches because it reports no event for the checkbox.
+
+GitHub `/markdown` also turns task syntax inside a raw HTML list item into checkboxes. On 2026-11-15, this input:
+
+```html
+<ul><li>[ ] item</li><li>[x] item</li></ul>
+```
+
+produced:
+
+```html
+<ul class="contains-task-list"><li class="task-list-item"><input type="checkbox" id="" disabled="" class="task-list-item-checkbox" aria-label="Incomplete task"> item</li><li class="task-list-item"><input type="checkbox" id="" disabled="" class="task-list-item-checkbox" aria-label="Completed task" checked=""> item</li></ul>
+```
+
+The local cmark-gfm 0.29.0.gfm.13 oracle with `--github-pre-lang` and the tasklist extension leaves the raw HTML input unchanged. GitHub's archived [`task_list` v1.0.2 filter](https://github.com/github/task_list/blob/v1.0.2/lib/task_list/filter.rb#L11-L15) says to run it after Markdown and sanitization, and [modifies the parsed document](https://github.com/github/task_list/blob/v1.0.2/lib/task_list/filter.rb#L108-L130). These results support a post-parse task-list pass, but neither the response nor the archived filter proves GitHub's current internal pipeline.
+
+Additional `/markdown` probes on 2026-11-15 distinguish task syntax from a literal input and show that reference resolution matters:
+
+| Markdown | GitHub output |
+| --- | --- |
+| `- [x] item\n\n[x]: /url` | `<ul>\n<li><a href="/url">x</a> item</li>\n</ul>` |
+| The attribute-boundary input above with `[x] item` and a later `[x]: /url` definition | `x item BEFORE<i title="v">AFTER</i>VISIBLE\n` |
+
+For the next two probes, let `W` be `<!-- a -->PRESERVE <![CDATA[ > <!-- a -->old ]]> tail<!-- /a -->`:
+
+| Markdown | GitHub output |
+| --- | --- |
+| `<select>\n\n- [ ] x <svg>\n\n` followed by `W` | `\n\n[ ] x \n\nPRESERVE  old ]]&gt; tail` |
+| `<select>\n\n- <input type="checkbox" disabled="" /> x <svg>\n\n` followed by `W` | `\n\n x \n\nPRESERVE  &gt; &lt;!-- a --&gt;old  tail` |
+| `<div>\n<svg><a x="\n\n- [ ] item\n\n` followed by `W` | `<div>\n</div>` |
+| `<div>\n<svg><a x="\n\n- ordinary item\n\n` followed by `W` | `<div>\n</div>` |
+| `<div>\n<svg><a x="\n\n- <input type="checkbox" disabled="" /> item\n\n` followed by `W` | `<div>\n item\n\nPRESERVE  &gt; &lt;!-- a --&gt;old  tail</div>` |
+
+In the SVG attribute cases, cmark renders the task and literal-input documents identically, but GitHub hides `PRESERVE` only in the task document. These observations rule out treating every task marker as the local oracle's generated checkbox before HTML tokenization. They do not identify GitHub's internal rendering stages.
 
 ### Parsers that don't match
 

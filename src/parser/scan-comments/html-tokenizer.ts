@@ -12,10 +12,10 @@ import { createForwardSearch } from './utils/forward-search.ts';
  * of an HTML block or of an inline raw HTML span. Between two segments the
  * browser sees a line feed, escaped text, markup that the renderer generates,
  * such as `</p>` or `<li>`, or nothing, as between two raw HTML spans that
- * touch. Escaped text holds no `<`, `>`, or `"`. Generated markup holds a `>`
- * and no `-->`, so only an open comment, an open quoted attribute value, and
- * CDATA carry past it. Without it, as between two HTML blocks, every state
- * carries.
+ * touch. Thematic breaks and code blocks provide their exact generated markup.
+ * Other generated markup is approximated by `afterMarkup`, `open`, and `close`:
+ * only an open comment, quoted attribute value, or CDATA carries past it.
+ * Without markup, as between two HTML blocks, every state carries.
  *
  * Only the states that decide where a comment starts and ends are modeled. A
  * comment that ends at `--!>`, at the end of the input, or abruptly, as in
@@ -75,22 +75,29 @@ export type HtmlTokenizer = {
 		continuation: string,
 		inHtmlBlock: boolean,
 	) => void;
+	generated: (afterMarkup: boolean, code: boolean, render: () => string) => void;
 	open: (name: string) => string;
 	close: (name: string | undefined) => void;
 };
 
 export const createHtmlTokenizer = (
-	source: string,
+	document: string,
 	visit: CommentVisitor,
 	hasForeignContent: boolean,
 ): HtmlTokenizer => {
-	const findTagOpen = createForwardSearch(source, '<');
-	const findTagClose = createForwardSearch(source, '>');
-	const findCommentClose = createForwardSearch(source, '-->');
-	const findBangCommentClose = createForwardSearch(source, '--!>');
-	const findDoubleQuote = createForwardSearch(source, '"');
-	const findSingleQuote = createForwardSearch(source, '\'');
-	const findCdataClose = createForwardSearch(source, ']]>');
+	const findTagOpen = createForwardSearch(document, '<');
+	const findTagClose = createForwardSearch(document, '>');
+	const findCommentClose = createForwardSearch(document, '-->');
+	const findBangCommentClose = createForwardSearch(document, '--!>');
+	const findDoubleQuote = createForwardSearch(document, '"');
+	const findSingleQuote = createForwardSearch(document, '\'');
+	const findCdataClose = createForwardSearch(document, ']]>');
+	let source = document;
+	let synthetic = false;
+	// Source searches keep monotonic positions; synthetic input uses separate searches.
+	const search = (find: (index: number) => number, needle: string, index: number) => (
+		synthetic ? source.indexOf(needle, index) : find(index)
+	);
 	// Keep each Map key below V8's 16,384-character length-only hashing threshold.
 	const elements: Element[] = [];
 	const positions = new Map<string, number[]>();
@@ -305,7 +312,7 @@ export const createHtmlTokenizer = (
 
 	/** Reads data from `index` and returns where reading continues. */
 	const readData = (index: number, continuation: string, startsLine: boolean) => {
-		const open = findTagOpen(index);
+		const open = search(findTagOpen, '<', index);
 		if (open === -1 || open >= end) {
 			return end;
 		}
@@ -328,7 +335,7 @@ export const createHtmlTokenizer = (
 				return open + 6;
 			}
 			state = State.Comment;
-			commentStart = open;
+			commentStart = synthetic ? -1 : open;
 			commentContinuation = continuation;
 			commentStartsLine = startsLine;
 			return open + 4;
@@ -352,7 +359,7 @@ export const createHtmlTokenizer = (
 			}
 			return open + 1;
 		}
-		if (isFilteredTag(open)) {
+		if (!synthetic && isFilteredTag(open)) {
 			return open + 1;
 		}
 		state = State.TagName;
@@ -466,8 +473,8 @@ export const createHtmlTokenizer = (
 				return readData(index, continuation, startsLine);
 			}
 			case State.Comment: {
-				const close = findCommentClose(index);
-				const bangClose = findBangCommentClose(index);
+				const close = search(findCommentClose, '-->', index);
+				const bangClose = search(findBangCommentClose, '--!>', index);
 				const closes = close !== -1 && close + 3 <= end;
 				const bangCloses = bangClose !== -1 && bangClose + 4 <= end;
 				if (!closes && !bangCloses) {
@@ -475,13 +482,16 @@ export const createHtmlTokenizer = (
 				}
 				state = State.Data;
 				if (closes && (!bangCloses || close < bangClose)) {
-					visit(commentStart, commentStart + 4, close, commentContinuation, commentStartsLine);
+					// Only comments with both endpoints in the document have source ranges.
+					if (!synthetic && commentStart !== -1) {
+						visit(commentStart, commentStart + 4, close, commentContinuation, commentStartsLine);
+					}
 					return close + 3;
 				}
 				return bangClose + 4;
 			}
 			case State.BogusComment: {
-				const close = findTagClose(index);
+				const close = search(findTagClose, '>', index);
 				if (close === -1 || close >= end) {
 					return end;
 				}
@@ -491,8 +501,8 @@ export const createHtmlTokenizer = (
 			case State.DoubleQuotedValue:
 			case State.SingleQuotedValue: {
 				const quote = state === State.DoubleQuotedValue
-					? findDoubleQuote(index)
-					: findSingleQuote(index);
+					? search(findDoubleQuote, '"', index)
+					: search(findSingleQuote, '\'', index);
 				if (quote === -1 || quote >= end) {
 					return end;
 				}
@@ -500,7 +510,7 @@ export const createHtmlTokenizer = (
 				return quote + 1;
 			}
 			case State.Cdata: {
-				const close = findCdataClose(index);
+				const close = search(findCdataClose, ']]>', index);
 				if (close === -1 || close + 3 > end) {
 					return end;
 				}
@@ -558,6 +568,25 @@ export const createHtmlTokenizer = (
 	};
 
 	return {
+		generated: (afterMarkup, code, render) => {
+			separate(afterMarkup);
+			if (state === State.Data) {
+				if (hasForeignContent && code) {
+					processElement('pre', false);
+					processElement('code', false);
+					processElement('code', true);
+					processElement('pre', true);
+				}
+				return;
+			}
+			source = render();
+			synthetic = true;
+			end = source.length;
+			let index = 0;
+			while (index < end) {
+				index = read(index, '', false);
+			}
+		},
 		open: (name) => {
 			const consumed = separate(true);
 			if (hasForeignContent && !consumed && state === State.Data) {
@@ -573,6 +602,8 @@ export const createHtmlTokenizer = (
 		},
 		feed: (start, segmentEnd, afterMarkup, continuation, inHtmlBlock) => {
 			separate(afterMarkup);
+			source = document;
+			synthetic = false;
 			end = segmentEnd;
 
 			let startsLine = false;

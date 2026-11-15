@@ -4,6 +4,9 @@ import {
 	getCommentMark,
 	getCommentMarkAll,
 } from '#comment-mark';
+import { lexBlocks } from '../../src/parser/scan-comments/block/index.ts';
+import { renderGeneratedBlock } from '../../src/parser/scan-comments/generated-block.ts';
+import { createHtmlTokenizer } from '../../src/parser/scan-comments/html-tokenizer.ts';
 import { scanComments } from '../../src/parser/scan-comments/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
@@ -1021,9 +1024,97 @@ describe('table cells', () => {
 	});
 });
 
+describe('generated block markup', () => {
+	test('matches cmark-gfm markup, including info strings and code content', () => {
+		// Expected markup is from cmark-gfm 0.29.0.gfm.13 with --github-pre-lang.
+		for (const [source, expected] of [
+			['---\n', '<hr />\n'],
+			['```&Tab;&bsol;&apos;&amp;&quot;&lt;&gt; other\n<&>"\'\n```\n', '<pre lang="\'&amp;&quot;&lt;&gt;"><code>&lt;&amp;&gt;&quot;\'\n</code></pre>\n'],
+			['~~~&#x1f600;&#xfffe;&#xD800;\n\uD800\n~~~', '<pre lang="😀��"><code>�\n</code></pre>\n'],
+			['>  ```js\r\n> \tX\r\n>  ```\r\n', '<pre lang="js"><code> X\n</code></pre>\n'],
+			['    a\n\n        \n    b\n\n    \n', '<pre><code>a\n\n    \nb\n</code></pre>\n'],
+			['```\n<!-- a -->\n```\n', '<pre><code>&lt;!-- a --&gt;\n</code></pre>\n'],
+		] as const) {
+			const markup: string[] = [];
+			lexBlocks(source, {
+				text: () => {},
+				html: () => {},
+				generated: block => markup.push(renderGeneratedBlock(source, block)),
+			});
+			expect(markup).toStrictEqual([expected]);
+		}
+	});
+
+	test('reports only comments with source positions', () => {
+		for (const [generated, between] of [["'><!-- generated -->", ''], ["'><!-- generated", '-->']] as const) {
+			const source = `<a x='\n${between}<!-- a -->old<!-- /a -->`;
+			const comments: string[] = [];
+			const tokenizer = createHtmlTokenizer(source, (_start, start, end) => {
+				comments.push(source.slice(start, end));
+			}, false);
+			tokenizer.feed(0, 6, false, '', true);
+			tokenizer.generated(false, true, () => generated);
+			tokenizer.feed(7, source.length, false, '', true);
+			expect(comments).toStrictEqual([' a ', ' /a ']);
+		}
+	});
+
+	test('does not render generated code while the tokenizer is in data state', () => {
+		const tokenizer = createHtmlTokenizer('', () => {}, true);
+		tokenizer.generated(false, true, () => {
+			throw new Error('Unexpected rendering');
+		});
+	});
+
+	test('task-list checkboxes do not end an open attribute value', async () => {
+		// GitHub /markdown, 2026-11-15: task syntax hides the first marker like an
+		// ordinary item, and only a literal input closes the attribute value.
+		// GitHub adds checkboxes after rendering, so cmark-gfm's <input> never
+		// reaches the HTML parser.
+		const markers = '<!-- a -->BEFORE<!-- /a --><i title="v">AFTER</i><!-- a -->VISIBLE<!-- /a -->';
+		for (const [fragment, replaced] of [
+			['[x] item', 'VISIBLE'],
+			['[ ] item', 'VISIBLE'],
+			['ordinary item', 'VISIBLE'],
+			['<input type="checkbox" disabled="" /> item', 'BEFORE'],
+		] as const) {
+			const source = `<!--><a x="\n\n- ${fragment} ${markers}`;
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace(`-->${replaced}<`, '-->NEW<'));
+		}
+	});
+
+	test('reads generated quotes in streamed and buffered block events', async () => {
+		for (const before of ['', '[<span>][r]\n\n[r]: /\n\n']) {
+			for (const ending of ['\n', '\r', '\r\n']) {
+				for (const code of ["```\n'\n```", "    '", '```&apos;\nx\n```', '```&#39;\nx\n```', '```&bsol;&apos;\nx\n```', '```&Tab;&#39; ignored\nx\n```']) {
+					const prefix = `${before}<div>\n<a x='\n\n${code}\n\n`.replaceAll('\n', ending);
+					const source = `${prefix}<!-- a -->old<!-- /a -->`;
+					expect(await commentMark(source, { a: 'NEW' })).toBe(`${prefix}<!-- a -->${ending}NEW${ending}<!-- /a -->`);
+				}
+			}
+		}
+	});
+});
+
 describe('foreign content', () => {
 	// GitHub /markdown renders both marker openers in these cases.
 	const wrapped = '<!-- a -->PRESERVE <![CDATA[ > <!-- a -->old ]]> tail<!-- /a -->';
+	for (const [name, prefix] of [
+		['thematic break', '<div>\n<svg\n\n---\n\n'],
+		['fenced code', '<div>\n<pre><svg\n\n```\nx\n```\n\n'],
+	] as const) {
+		test(`generated ${name} completes an unfinished SVG tag`, async () => {
+			// GitHub /markdown renders both openers, so the later one pairs.
+			const source = prefix + wrapped;
+			expect(await commentMark(source, { a: 'NEW' })).toBe(`${prefix}<!-- a -->PRESERVE <![CDATA[ > <!-- a -->\nNEW\n<!-- /a -->`);
+		});
+	}
+	test('fenced code with an info string retains foreign content', async () => {
+		// GitHub /markdown, 2026-11-15, renders only the outer opener. cmark-gfm
+		// with --github-pre-lang writes <svg\n<pre lang="js"><code>.
+		const prefix = '<div>\n<svg\n\n```js\nx\n```\n\n';
+		expect(await commentMark(prefix + wrapped, { a: 'NEW' })).toBe(`${prefix}<!-- a -->\nNEW\n<!-- /a -->`);
+	});
 	for (const delimiter of ['*', '**', '~~']) {
 		test(`generated ${delimiter} closes foreign content`, async () => {
 			// GitHub /markdown probe 17 checks the `*` case; 2026-11-15 also

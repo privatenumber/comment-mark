@@ -41,8 +41,21 @@ export type BlockHandlers = {
 	 * between the previous HTML block line and this one.
 	 */
 	html: (start: number, end: number, afterMarkup: boolean, continuation: string) => void;
+	generated?: (block: GeneratedBlock, afterMarkup: boolean) => void;
 	definition?: (label: string, destination: string, title: string) => void;
 };
+
+export type GeneratedBlock =
+	| { type: 'thematicBreak' }
+	| {
+		type: 'code';
+		infoStart: number;
+		infoEnd: number;
+		// Each line is a source range followed by its partially consumed tab's spaces.
+		lines: number[];
+		indented: boolean;
+		lastNonblank: number;
+	};
 
 type Container =
 	| { type: 'blockquote' }
@@ -71,8 +84,10 @@ type Leaf =
 		char: number;
 		length: number;
 		offset: number;
+		code?: Extract<GeneratedBlock, { type: 'code' }> | undefined;
 	}
-	| { type: 'indentedCode' }
+	| { type: 'indentedCode';
+		code?: Extract<GeneratedBlock, { type: 'code' }> | undefined; }
 	| {
 		type: 'html';
 		kind: number;
@@ -216,6 +231,13 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	};
 
 	const finalizeLeaf = () => {
+		if ((leaf?.type === 'fence' || leaf?.type === 'indentedCode') && leaf.code) {
+			if (leaf.code.indented) {
+				leaf.code.lines.length = leaf.code.lastNonblank;
+			}
+			handlers.generated!(leaf.code, markup);
+			markup = false;
+		}
 		if (leaf?.type === 'table') {
 			if (leaf.bodyOpen) {
 				handlers.close?.();
@@ -339,7 +361,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 						&& scanCloseFence(source, firstNonspace, lineEnd) >= leaf.length
 					) {
 						// The closing fence ends the line.
-						leaf = undefined;
+						finalizeLeaf();
 						return;
 					}
 					for (let spaces = leaf.offset; spaces > 0 && isSpaceOrTab(peek(offset)); spaces -= 1) {
@@ -386,10 +408,10 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				return;
 			}
 			unmatchedClosed = true;
-			markup ||= containers.length > matched;
 			if (!leafMatched) {
 				finalizeLeaf();
 			}
+			markup ||= containers.length > matched;
 			while (containers.length > matched) {
 				containers.pop();
 				handlers.close?.();
@@ -429,8 +451,20 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 					return false;
 				}
 				advance(codeIndent, true);
-				addChild();
-				leaf = { type: 'indentedCode' };
+				addChild(!handlers.generated);
+				leaf = {
+					type: 'indentedCode',
+					code: handlers.generated
+						? {
+							type: 'code',
+							infoStart: 0,
+							infoEnd: 0,
+							lines: [],
+							indented: true,
+							lastNonblank: 0,
+						}
+						: undefined,
+				};
 				target = 'indentedCode';
 				return true;
 			}
@@ -471,13 +505,23 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			const fenceLength = scanOpenFence(source, firstNonspace, lineEnd);
 			if (fenceLength) {
 				const fenceOffset = firstNonspace - offset;
-				addChild();
+				addChild(!handlers.generated);
 				leaf = {
 					type: 'fence',
 					char,
 					// cmark-gfm stores at most 255, so any longer run closes it.
 					length: Math.min(fenceLength, 255),
 					offset: fenceOffset,
+					code: handlers.generated
+						? {
+							type: 'code',
+							infoStart: firstNonspace + fenceLength,
+							infoEnd: lineEnd,
+							lines: [],
+							indented: false,
+							lastNonblank: 0,
+						}
+						: undefined,
 				};
 				advance(firstNonspace + fenceLength - offset, false);
 				target = 'fence';
@@ -510,7 +554,11 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			}
 
 			if (!(target === 'paragraph' && !allMatched) && scanThematicBreak(source, firstNonspace, lineEnd)) {
-				addChild();
+				addChild(!handlers.generated);
+				if (handlers.generated) {
+					handlers.generated({ type: 'thematicBreak' }, markup);
+					markup = false;
+				}
 				advance(lineEnd - offset, false);
 				target = 'thematicBreak';
 				return true;
@@ -622,6 +670,14 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 		switch (target) {
 			case 'fence':
 			case 'indentedCode': {
+				const { code } = (leaf as Extract<Leaf, { type: 'fence' | 'indentedCode' }>);
+				if (code && (target === 'indentedCode' || !opened)) {
+					const spaces = partiallyConsumedTab ? tabStop - (column % tabStop) : 0;
+					code.lines.push(contentStart, lineEnd, spaces);
+					if (!blank) {
+						code.lastNonblank = code.lines.length;
+					}
+				}
 				return;
 			}
 			case 'html': {
