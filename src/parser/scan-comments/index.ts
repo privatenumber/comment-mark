@@ -240,7 +240,7 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 	// Only replayed events look up labels, and without definitions no lookup
 	// resolves, so none can exceed the budget.
 	if (buffering && labels.size > 0) {
-		failures = createReferenceBudget(source, labels);
+		failures = createReferenceBudget(source, labels, hasForeignContent);
 	}
 	const findLineFeed = createForwardSearch(source, '\n');
 	const findCarriageReturn = createForwardSearch(source, '\r');

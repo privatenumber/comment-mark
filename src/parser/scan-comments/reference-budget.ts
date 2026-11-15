@@ -74,7 +74,15 @@ const definitionSize = ({ destination: rawDestination, title }: ReferenceDefinit
 };
 
 /** Returns failed lookup ordinals by block start, or undefined when the bound fits. */
-export const createReferenceBudget = (source: string, labels: Map<string, ReferenceDefinition>) => {
+/**
+ * `replayParagraphs` matches the replay rule in index.ts: with element tracking,
+ * paragraphs are replayed even without `<`.
+ */
+export const createReferenceBudget = (
+	source: string,
+	labels: Map<string, ReferenceDefinition>,
+	replayParagraphs: boolean,
+) => {
 	let maxSize = 0;
 	for (const { destination, title } of labels.values()) {
 		maxSize = Math.max(maxSize, 2 * (byteLength(destination) + byteLength(title)));
@@ -105,7 +113,7 @@ export const createReferenceBudget = (source: string, labels: Map<string, Refere
 	const findTagOpen = createForwardSearch(source, '<');
 	lexBlocks(source, {
 		html: () => {},
-		text: (segments, _continuation, unescapePipes) => {
+		text: (segments, _continuation, unescapePipes, type) => {
 			if (!segments.length) {
 				return;
 			}
@@ -117,7 +125,7 @@ export const createReferenceBudget = (source: string, labels: Map<string, Refere
 				return;
 			}
 			const open = findTagOpen(start);
-			const replayed = open !== -1 && open < end;
+			const replayed = (open !== -1 && open < end) || (replayParagraphs && type === 'paragraph');
 			let ordinal = 0;
 			lexInline(joinText(source, segments, undefined, unescapePipes), () => {}, (label) => {
 				const current = ordinal;

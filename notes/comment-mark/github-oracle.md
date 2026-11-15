@@ -128,14 +128,25 @@ For a JSON array of documents, `p5.mjs` runs the cmark-gfm CLI instead of the ba
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import path from 'node:path'
 
-const require = createRequire(`${process.argv[2]}/`)
+const require = createRequire(`${path.resolve(process.argv[2])}/`)
 const { parse } = await import(require.resolve('parse5'))
 const docs = JSON.parse(readFileSync(process.argv[4], 'utf8'))
-const walk = (node, comments) => {
-    if (node.nodeName === '#comment') { comments.push(node.data) }
-    for (const child of node.childNodes ?? []) { walk(child, comments) }
-    if (node.content) { walk(node.content, comments) }
+// Keep only comments written as `<!--` … `-->`, in source order: parse5 also
+// makes comment nodes from `<?x>` and unterminated `<!--`, and tree order can
+// differ from source order, as after `</html>` or through foster parenting.
+const walk = (node, html, comments) => {
+    const location = node.sourceCodeLocation
+    if (
+        node.nodeName === '#comment'
+        && html.startsWith('<!--', location.startOffset)
+        && html.slice(location.endOffset - 3, location.endOffset) === '-->'
+    ) {
+        comments.push([location.startOffset, node.data])
+    }
+    for (const child of node.childNodes ?? []) { walk(child, html, comments) }
+    if (node.content) { walk(node.content, html, comments) }
     return comments
 }
 for (const document of docs) {
@@ -153,7 +164,12 @@ for (const document of docs) {
         '--unsafe',
         '--github-pre-lang'
     ], { input: document }).toString()
-    console.log(JSON.stringify(walk(parse(html, { scriptingEnabled: false }), [])))
+    const tree = parse(html, {
+        scriptingEnabled: false,
+        sourceCodeLocationInfo: true,
+    })
+    const comments = walk(tree, html, []).sort((a, b) => a[0] - b[0])
+    console.log(JSON.stringify(comments.map(([, data]) => data)))
 }
 ```
 
