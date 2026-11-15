@@ -4,7 +4,8 @@ import { lexBlocks } from '../../src/parser/scan-comments/block/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('parser scaling', () => {
-	test('does not retain unneeded code lines', () => {
+	test('lexBlocks skips code lines when wantsCode() is false', () => {
+		// Retention changes only memory, so it has no public observable result.
 		for (const content of [`\`\`\`\n${'x\n'.repeat(1000)}\`\`\`\n`, '    x\n'.repeat(1000)]) {
 			lexBlocks(content, {
 				text: () => {},

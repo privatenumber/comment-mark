@@ -84,7 +84,9 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 			tokenizer.feed(start, end, afterMarkup, continuation, true);
 		},
 		text: (segments, continuation, unescapePipes, type) => {
-			const element = type === 'paragraph' ? tokenizer.open('p') : undefined;
+			if (type === 'paragraph') {
+				tokenizer.open('p');
+			}
 			activeFailures = failures?.get(segments[0]);
 			lookupOrdinal = 0;
 			// The inline phase reads the lines joined by line feeds. `textStarts`
@@ -131,8 +133,8 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 					afterMarkup = true;
 				}
 				: undefined);
-			if (element !== undefined) {
-				tokenizer.close(element);
+			if (type === 'paragraph') {
+				tokenizer.close('p');
 			}
 		},
 	};
@@ -143,7 +145,6 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 	const continuations: string[] = [];
 	const textSegments: number[][] = [];
 	const generatedBlocks: GeneratedBlock[] = [];
-	const containers: ReturnType<typeof tokenizer.open>[] = [];
 	const containerNames = ['blockquote', 'li', 'ul', 'ol', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td'] as const;
 	let buffering = false;
 	lexBlocks(source, {
@@ -213,17 +214,17 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 					positions.push(-2, containerNames.indexOf(name), 0);
 					continuations.push('');
 				} else {
-					containers.push(tokenizer.open(name));
+					tokenizer.open(name);
 				}
 			}
 			: undefined,
 		close: hasForeignContent
-			? () => {
+			? (name) => {
 				if (buffering) {
-					positions.push(-3, 0, 0);
+					positions.push(-3, containerNames.indexOf(name), 0);
 					continuations.push('');
 				} else {
-					tokenizer.close(containers.pop());
+					tokenizer.close(name);
 				}
 			}
 			: undefined,
@@ -255,12 +256,12 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 				break;
 			}
 			case -2: {
-				containers.push(tokenizer.open(containerNames[end]));
+				tokenizer.open(containerNames[end]);
 
 				break;
 			}
 			case -3: {
-				tokenizer.close(containers.pop());
+				tokenizer.close(containerNames[end]);
 
 				break;
 			}

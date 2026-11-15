@@ -4,8 +4,6 @@ import {
 	getCommentMark,
 	getCommentMarkAll,
 } from '#comment-mark';
-import { lexBlocks } from '../../src/parser/scan-comments/block/index.ts';
-import { renderGeneratedBlock } from '../../src/parser/scan-comments/generated-block.ts';
 import { scanComments } from '../../src/parser/scan-comments/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
@@ -1024,23 +1022,36 @@ describe('table cells', () => {
 });
 
 describe('generated block markup', () => {
-	test('matches cmark-gfm markup, including info strings and code content', () => {
-		// Expected markup is from cmark-gfm 0.29.0.gfm.13 with --github-pre-lang.
-		for (const [source, expected] of [
-			['---\n', '<hr />\n'],
-			['```&Tab;&bsol;&apos;&amp;&quot;&lt;&gt; other\n<&>"\'\n```\n', '<pre lang="\'&amp;&quot;&lt;&gt;"><code>&lt;&amp;&gt;&quot;\'\n</code></pre>\n'],
-			['~~~&#x1f600;&#xfffe;&#xD800;\n\uD800\n~~~', '<pre lang="😀��"><code>�\n</code></pre>\n'],
-			['>  ```js\r\n> \tX\r\n>  ```\r\n', '<pre lang="js"><code> X\n</code></pre>\n'],
-			['    a\n\n        \n    b\n\n    \n', '<pre><code>a\n\n    \nb\n</code></pre>\n'],
-			['```\n<!-- a -->\n```\n', '<pre><code>&lt;!-- a --&gt;\n</code></pre>\n'],
+	test('rendered code and break markup decide whether an attribute value closes', () => {
+		const tail = '\n\n<!-- a -->old<!-- /a -->';
+		for (const [open, block, found] of [
+			// The language is decoded, and its escapes are removed, before `'` is written.
+			["'", '```&apos;\n```', true],
+			["'", '```\\&apos;\n```', true],
+			["'", '```&Tab; x&apos;\n```', true],
+			// Code content keeps `'` unescaped.
+			["'", "```\n'\n```", true],
+			["'", '```\nx\n```', false],
+			["'", "    '", true],
+			["'", ">  ```\r\n> \t'\r\n>  ```", true],
+			// A code line ends at CR, so text after the fence is not code.
+			["'", "```\rx\r```\r'", false],
+			// `lang="` appears only for a non-empty language after trimming.
+			['"', '```js\n```', true],
+			['"', '```&quot;\n```', true],
+			['"', '```&Tab;\n```', false],
+			['"', '```\n```', false],
+			['"', '---', false],
+			["'", '---', false],
 		] as const) {
-			const markup: string[] = [];
-			lexBlocks(source, {
-				text: () => {},
-				html: () => {},
-				generated: block => markup.push(renderGeneratedBlock(source, block)),
-			});
-			expect(markup).toStrictEqual([expected]);
+			const source = `<!--><a x=${open}\n\n${block}${tail}`;
+			expect(getCommentMarkAll(source)).toStrictEqual(found
+				? [{
+					tagName: 'a',
+					attributes: {},
+					content: 'old',
+				}]
+				: []);
 		}
 	});
 

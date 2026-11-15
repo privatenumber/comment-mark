@@ -25,6 +25,8 @@ import { readTableRow, scanTableStart } from './table.ts';
  * ending reads as LF. Footnotes are not recognized.
  */
 
+type ContainerName = 'blockquote' | 'li' | 'ul' | 'ol' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'table' | 'thead' | 'tbody' | 'tr' | 'th' | 'td';
+
 export type BlockHandlers = {
 
 	/**
@@ -32,8 +34,8 @@ export type BlockHandlers = {
 	 * ends, as `[start, end]` pairs, one per line.
 	 */
 	text: (segments: number[], continuation: string, unescapePipes?: boolean, type?: 'paragraph' | 'heading' | 'cell') => void;
-	open?: ((type: 'blockquote' | 'li' | 'ul' | 'ol' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'table' | 'thead' | 'tbody' | 'tr' | 'th' | 'td') => void) | undefined;
-	close?: (() => void) | undefined;
+	open?: ((type: ContainerName) => void) | undefined;
+	close?: ((type: ContainerName) => void) | undefined;
 
 	/**
 	 * Receives each line of an HTML block as it is read. `afterMarkup` is true
@@ -71,6 +73,13 @@ type Container =
 		indent: number;
 		hasChild: boolean;
 	};
+
+const containerName = (container: Container) => {
+	if (container.type === 'list') {
+		return container.marker === 46 || container.marker === 41 ? 'ol' : 'ul';
+	}
+	return container.type === 'listItem' ? 'li' : 'blockquote';
+};
 
 type Leaf =
 	| {
@@ -248,9 +257,9 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 		}
 		if (leaf?.type === 'table') {
 			if (leaf.bodyOpen) {
-				handlers.close?.();
+				handlers.close?.('tbody');
 			}
-			handlers.close?.();
+			handlers.close?.('table');
 		}
 		if (
 			leaf?.type === 'heading'
@@ -261,7 +270,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			}
 			handlers.text(leaf.segments, leaf.continuation, false, leaf.type);
 			if (leaf.type === 'heading') {
-				handlers.close?.();
+				handlers.close?.(`h${leaf.headingLevel}` as 'h1');
 			}
 		}
 		leaf = undefined;
@@ -276,7 +285,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			handlers.open?.(type);
 			const segments = trimTableText(source, [cells[index], cells[index + 1]]);
 			handlers.text(segments, prefix, true, 'cell');
-			handlers.close?.();
+			handlers.close?.(type);
 		}
 	};
 
@@ -309,8 +318,8 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 		handlers.open?.('thead');
 		handlers.open?.('tr');
 		reportCells(header, header.length / 2, paragraph.continuation, 'th');
-		handlers.close?.();
-		handlers.close?.();
+		handlers.close?.('tr');
+		handlers.close?.('thead');
 		leaf = {
 			type: 'table',
 			columns: header.length / 2,
@@ -422,8 +431,8 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			}
 			markup ||= containers.length > matched;
 			while (containers.length > matched) {
-				containers.pop();
-				handlers.close?.();
+				const container = containers.pop()!;
+				handlers.close?.(containerName(container));
 			}
 		};
 
@@ -437,7 +446,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 			let parent = containers.at(-1);
 			if (parent?.type === 'list' && parent.marker !== listMarker) {
 				containers.pop();
-				handlers.close?.();
+				handlers.close?.(containerName(parent));
 				markup = true;
 				parent = containers.at(-1);
 			}
@@ -642,7 +651,7 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 				}
 				handlers.open?.('tr');
 				reportCells(cells, table.columns, table.continuation, 'td');
-				handlers.close?.();
+				handlers.close?.('tr');
 				advance(lineEnd - offset, false);
 				target = 'row';
 				return true;
@@ -764,8 +773,8 @@ export const lexBlocks = (source: string, handlers: BlockHandlers) => {
 	}
 	finalizeLeaf();
 	while (containers.length > 0) {
-		containers.pop();
-		handlers.close?.();
+		const container = containers.pop()!;
+		handlers.close?.(containerName(container));
 	}
 };
 

@@ -78,8 +78,8 @@ export type HtmlTokenizer = {
 	) => void;
 	generated: (afterMarkup: boolean, code: boolean, render: () => string) => void;
 	wantsCode: () => boolean;
-	open: (name: string) => string;
-	close: (name: string | undefined) => void;
+	open: (name: string) => void;
+	close: (name: string) => void;
 };
 
 export const createHtmlTokenizer = (
@@ -102,12 +102,13 @@ export const createHtmlTokenizer = (
 	);
 	// Keep each Map key below V8's 16,384-character length-only hashing threshold.
 	const elements: Element[] = [];
-	const positions = new Map<string, number[]>();
-	const longPositions: NameNode = { children: new Map() };
-	const longNode = (name: string, create: boolean) => {
-		let node = longPositions;
+	const positions: NameNode = { children: new Map() };
+	const nameNode = (name: string, create: boolean, remove = false) => {
+		let node = positions;
+		const path: [NameNode, string][] | undefined = remove ? [] : undefined;
 		for (let offset = 0; offset < name.length; offset += 16_383) {
 			const chunk = name.slice(offset, offset + 16_383);
+			path?.push([node, chunk]);
 			let child = node.children.get(chunk);
 			if (!child) {
 				if (!create) {
@@ -118,34 +119,25 @@ export const createHtmlTokenizer = (
 			}
 			node = child;
 		}
+		if (path) {
+			node.indexes = undefined;
+			while (path.length > 0 && node.children.size === 0 && !node.indexes) {
+				const [parent, chunk] = path.pop()!;
+				parent.children.delete(chunk);
+				node = parent;
+			}
+		}
 		return node;
 	};
-	const findIndexes = (name: string) => {
-		if (name.length < 16_384) {
-			return positions.get(name);
-		}
-		return longNode(name, false)?.indexes;
-	};
+	const findIndexes = (name: string) => nameNode(name, false)?.indexes;
 	const push = (name: string) => {
 		const parent = elements.at(-1);
-		let indexes: number[] | undefined;
-		if (name.length < 16_384) {
-			indexes = positions.get(name);
-			if (!indexes) {
-				indexes = [];
-				positions.set(name, indexes);
-			}
-		} else {
-			const node = longNode(name, true)!;
-			indexes = node.indexes;
-			if (!indexes) {
-				indexes = [];
-				node.indexes = indexes;
-			}
-		}
+		const node = nameNode(name, true)!;
+		node.indexes ??= [];
+		const { indexes } = node;
 		const element = {
 			name,
-			foreign: !!parent?.foreign || ((name === 'svg' || name === 'math') && !positions.get('select')?.length),
+			foreign: !!parent?.foreign || ((name === 'svg' || name === 'math') && !findIndexes('select')?.length),
 			position: elements.length,
 			indexes,
 		};
@@ -156,26 +148,9 @@ export const createHtmlTokenizer = (
 	const popTo = (position: number) => {
 		while (elements.length > position) {
 			const element = elements.pop()!;
-			const { indexes } = element;
-			indexes.pop();
-			if (indexes.length === 0) {
-				if (element.name.length < 16_384) {
-					positions.delete(element.name);
-				} else {
-					const path: [NameNode, string][] = [];
-					let node = longPositions;
-					for (let offset = 0; offset < element.name.length; offset += 16_383) {
-						const chunk = element.name.slice(offset, offset + 16_383);
-						path.push([node, chunk]);
-						node = node.children.get(chunk)!;
-					}
-					node.indexes = undefined;
-					while (path.length > 0 && node.children.size === 0 && !node.indexes) {
-						const [parent, chunk] = path.pop()!;
-						parent.children.delete(chunk);
-						node = parent;
-					}
-				}
+			element.indexes.pop();
+			if (element.indexes.length === 0) {
+				nameNode(element.name, false, true);
 			}
 		}
 	};
@@ -249,7 +224,7 @@ export const createHtmlTokenizer = (
 		let position = findIndexes(name)?.at(-1);
 		if (name.length === 2 && name[0] === 'h' && name[1] >= '1' && name[1] <= '6') {
 			for (let level = 1; level <= 6; level += 1) {
-				const candidate = positions.get(`h${level}`)?.at(-1);
+				const candidate = findIndexes(`h${level}`)?.at(-1);
 				if (
 					candidate !== undefined && !elements[candidate].foreign
 					&& (position === undefined || candidate > position)
@@ -263,7 +238,7 @@ export const createHtmlTokenizer = (
 		}
 	};
 	const processElement = (name: string, closing: boolean, selfClosed = false) => {
-		const select = positions.get('select')?.at(-1);
+		const select = findIndexes('select')?.at(-1);
 		if (select !== undefined && !elements[select].foreign) {
 			if (closing) {
 				if (name !== 'select' && name !== 'option' && name !== 'optgroup' && name !== 'template') {
@@ -296,6 +271,9 @@ export const createHtmlTokenizer = (
 				return;
 			}
 		}
+		// No void name is longer than 6 characters. The length check is a measured
+		// fast path: with distinct 16,400-character names, `voidTagNames.has` made
+		// each doubling of the input cost 2.7-2.9x instead of 1.8x (2026-11-15).
 		if (closing) {
 			closeElement(name);
 		} else if ((name.length > 10 || !voidTagNames.has(name) || elements.at(-1)?.foreign) && !(selfClosed && (elements.at(-1)?.foreign || name === 'svg' || name === 'math'))) {
@@ -595,11 +573,10 @@ export const createHtmlTokenizer = (
 			if (hasForeignContent && !consumed && state === State.Data) {
 				processElement(name, false);
 			}
-			return name;
 		},
 		close: (name) => {
 			const consumed = separate(true);
-			if (hasForeignContent && !consumed && state === State.Data && name !== undefined) {
+			if (hasForeignContent && !consumed && state === State.Data) {
 				processElement(name, true);
 			}
 		},
