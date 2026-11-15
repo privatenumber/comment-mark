@@ -11,6 +11,7 @@ import {
 	scanLabel,
 	scanTitle,
 } from './block/reference-definition.ts';
+import { matchBareAutolink } from './bare-autolink.ts';
 
 /**
  * Indexes `manual_scan_link_url_2` boundaries for monotonic destination starts.
@@ -131,8 +132,7 @@ const indexDestinations = (text: string) => {
  * https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/inlines.c#L911-L1018
  *
  * It lexes the inline rules that decide where raw HTML can start: backslash
- * escapes, code spans, `<…>` autolinks, and links and images. Footnotes and
- * bare-URL autolinks are not lexed yet.
+ * escapes, code spans, autolinks, and links and images. Footnotes are not lexed yet.
  * Everything else renders as escaped text or renderer-generated markup, neither
  * of which can open a comment.
  */
@@ -282,7 +282,8 @@ export const lexInline = (
 	let runStarts: number[] | undefined;
 	const runLengths: number[] = [];
 	let currentRun = 0;
-	const nextRunOfLength = new Map<number, number>();
+	const lastBacktick = new Map<number, number>();
+	let scannedBackticks = false;
 
 	const findRuns = () => {
 		const starts: number[] = [];
@@ -310,12 +311,23 @@ export const lexInline = (
 		if (length > maxBacktickRun) {
 			return index + length;
 		}
-		let next = Math.max(nextRunOfLength.get(length) ?? 0, currentRun + 1);
+		if (scannedBackticks && (lastBacktick.get(length) ?? 0) <= index + length) {
+			return index + length;
+		}
+		// Like `scan_to_closing_backticks`, record every run passed. After one
+		// scan reaches the end, a scan runs only when the cache shows a closer, so
+		// scans never overlap.
+		let next = currentRun + 1;
 		while (next < runStarts.length && runLengths[next] !== length) {
+			lastBacktick.set(runLengths[next], runStarts[next]);
 			next += 1;
 		}
-		nextRunOfLength.set(length, next);
-		return next < runStarts.length ? runStarts[next] + length : index + length;
+		if (next === runStarts.length) {
+			scannedBackticks = true;
+			return index + length;
+		}
+		lastBacktick.set(length, runStarts[next]);
+		return runStarts[next] + length;
 	};
 
 	/** Returns the end of the raw HTML at the `<` at `index`, or -1. */
@@ -496,6 +508,12 @@ export const lexInline = (
 	while (index < text.length) {
 		const code = text.charCodeAt(index);
 		switch (code) {
+			case 58:
+			case 119: {
+				const end = brackets.length === 0 ? matchBareAutolink(text, index) : -1;
+				index = end === -1 ? index + 1 : end;
+				break;
+			}
 			case 33: {
 				if (text.charCodeAt(index + 1) === 91 && text.charCodeAt(index + 2) !== 94) {
 					pushBracket(true);
