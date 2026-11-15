@@ -53,7 +53,7 @@ type Element = {
 };
 
 type NameNode = {
-	children: Map<string, NameNode>;
+	children?: Map<string, NameNode> | undefined;
 	indexes?: number[] | undefined;
 };
 
@@ -104,26 +104,31 @@ export const createHtmlTokenizer = (
 	const elements: Element[] = [];
 	const positions: NameNode = { children: new Map() };
 	const nameNode = (name: string, create: boolean, remove = false) => {
+		// Most names are one chunk, so they skip the path and its cleanup walk.
+		if (remove && name.length <= 16_383) {
+			positions.children!.delete(name);
+			return undefined;
+		}
 		let node = positions;
 		const path: [NameNode, string][] | undefined = remove ? [] : undefined;
 		for (let offset = 0; offset < name.length; offset += 16_383) {
 			const chunk = name.slice(offset, offset + 16_383);
 			path?.push([node, chunk]);
-			let child = node.children.get(chunk);
+			let child = node.children?.get(chunk);
 			if (!child) {
 				if (!create) {
 					return undefined;
 				}
-				child = { children: new Map() };
-				node.children.set(chunk, child);
+				child = {};
+				(node.children ??= new Map()).set(chunk, child);
 			}
 			node = child;
 		}
 		if (path) {
 			node.indexes = undefined;
-			while (path.length > 0 && node.children.size === 0 && !node.indexes) {
+			while (path.length > 0 && !node.children?.size && !node.indexes) {
 				const [parent, chunk] = path.pop()!;
-				parent.children.delete(chunk);
+				parent.children!.delete(chunk);
 				node = parent;
 			}
 		}
