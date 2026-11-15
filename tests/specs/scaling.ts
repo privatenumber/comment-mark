@@ -1,8 +1,154 @@
 import { describe, test, expect } from 'manten';
 import { getCommentMarkAll } from '#comment-mark';
+import { lexBlocks } from '../../src/parser/scan-comments/block/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('parser scaling', () => {
+	test('lexBlocks skips code lines when wantsCode() is false', () => {
+		// Retention changes only memory, so it has no public observable result.
+		for (const content of [`\`\`\`\n${'x\n'.repeat(1000)}\`\`\`\n`, '    x\n'.repeat(1000)]) {
+			lexBlocks(content, {
+				text: () => {},
+				html: () => {},
+				wantsCode: () => false,
+				generated: (block) => {
+					if (block.type === 'code') {
+						expect(block.lines).toStrictEqual([]);
+						expect(block.tabSpaces).toStrictEqual([]);
+					}
+				},
+			});
+		}
+	});
+	for (const [name, input] of [
+		// No underscore closer has a matching opener.
+		['unmatched delimiter openers', (n: number) => '*a '.repeat(n) + 'b_ '.repeat(n)],
+		// Each match consumes only two characters from each long run.
+		['long delimiter runs', (n: number) => `${'*'.repeat(n)}x${'*'.repeat(n)}`],
+		// Every character starts a new delimiter run.
+		['alternating delimiters', (n: number) => '*_'.repeat(n)],
+	] as const) {
+		test(`${name} scale linearly`, () => {
+			const measure = (size: number) => {
+				const content = `x <svg/> <!-- a --> ${input(size)}`;
+				let best = Infinity;
+				for (let attempt = 0; attempt < 10; attempt += 1) {
+					const start = performance.now();
+					for (let iteration = 0; iteration < 8; iteration += 1) {
+						getCommentMarkAll(content);
+					}
+					const elapsed = (performance.now() - start) * 1000;
+					best = Math.min(best, elapsed);
+				}
+				return best;
+			};
+			measure(3000);
+			const small = measure(3000);
+			const large = measure(6000);
+			expect(large / small).toBeLessThan(3.2);
+		});
+	}
+
+	test('short table rows scale with source size', () => {
+		const measure = (size: number) => {
+			const content = `x [x] <svg> <!-- a -->\n\n${'|h'.repeat(size)}|\n${'|-'.repeat(size)}|\n${'| x |\n'.repeat(size)}`;
+			let best = Infinity;
+			for (let attempt = 0; attempt < 7; attempt += 1) {
+				const start = performance.now();
+				getCommentMarkAll(content);
+				const elapsed = (performance.now() - start) * 1000;
+				best = Math.min(best, elapsed);
+			}
+			return best;
+		};
+		measure(1500);
+		const small = measure(3000);
+		const large = measure(6000);
+		expect(large / small).toBeLessThan(3);
+	});
+
+	test('long tag hash collisions preserve exact nearest matches', () => {
+		const prefix = 'a'.repeat(16_400);
+		const a = `${prefix}0015zx`;
+		const b = `${prefix}00cpcd`;
+		const marker = createMarker('x', 'value');
+		const content = `<!-- a -->\n<div>\n<${a}><svg><${a}></${a}></${b}><![CDATA[ > ${marker} ]]></${a}><![CDATA[ > ${marker} ]]><${b}></${b}><${b}></${b}>`;
+		expect(getCommentMarkAll(content)).toStrictEqual([
+			{
+				tagName: 'x',
+				attributes: {},
+				content: 'value',
+			},
+		]);
+	});
+
+	test('long colliding tag names scale linearly', () => {
+		const pairs = [['0015zx', '00cpcd'], ...Array.from({ length: 10 }, (_, index) => (index % 2 ? ['0035zx', '00apcd'] : ['0053zx', '00cpad']))];
+		const prefix = 'a'.repeat(16_400);
+		const measure = (size: number) => {
+			const content = `<!-- a -->\n<div>\n<svg/>\n${Array.from({ length: size }, (_, index) => `<${prefix}${pairs.map((pair, bit) => pair[Math.floor(index / 2 ** bit) % 2]).join('')}>`).join('')}`;
+			let best = Infinity;
+			for (let attempt = 0; attempt < 2; attempt += 1) {
+				const start = performance.now();
+				getCommentMarkAll(content);
+				const elapsed = (performance.now() - start) * 1000;
+				best = Math.min(best, elapsed);
+			}
+			return best;
+		};
+		measure(50);
+		const small = measure(512);
+		const large = measure(1024);
+		expect(large / small).toBeLessThan(2.6);
+	});
+
+	test('long distinct tag names scale linearly', () => {
+		const prefix = 'a'.repeat(16_400);
+		const measure = (size: number) => {
+			const content = `<!-- a -->\n<div>\n<svg/>\n${Array.from({ length: size }, (_, index) => `<${prefix}${String(index).padStart(5, '0')}>`).join('\n')}`;
+			let best = Infinity;
+			for (let attempt = 0; attempt < 2; attempt += 1) {
+				const start = performance.now();
+				getCommentMarkAll(content);
+				const elapsed = (performance.now() - start) * 1000;
+				best = Math.min(best, elapsed);
+			}
+			return best;
+		};
+		measure(50);
+		const small = measure(800);
+		const large = measure(1600);
+		expect(large / small).toBeLessThan(2.6);
+	});
+
+	test('foreign content scans scale linearly', () => {
+		for (const input of [
+			(n: number) => '<svg>'.repeat(n) + '</svg>'.repeat(n),
+			(n: number) => '<svg>'.repeat(n),
+			(n: number) => '<svg>'.repeat(n) + '</missing>'.repeat(n),
+			// A native terminator search is much faster than the other cases, so this
+			// input is larger to keep its timing above runner noise.
+			(n: number) => `<svg>${'<![CDATA['.repeat(n * 400)}`,
+			(n: number) => 'x <svg>\n\ntext\n\n'.repeat(n),
+		]) {
+			const measure = (size: number) => {
+				const content = `<!-- a -->${input(size)}`;
+				let best = Infinity;
+				for (let attempt = 0; attempt < 5; attempt += 1) {
+					const start = performance.now();
+					getCommentMarkAll(content);
+					const elapsed = (performance.now() - start) * 1000;
+					best = Math.min(best, elapsed);
+				}
+				return best;
+			};
+			measure(1000);
+			const small = measure(50_000);
+			const large = measure(100_000);
+			expect(large / small).toBeLessThan(3);
+		}
+	});
+
 	test('scans many unterminated openers without rescanning', () => {
 		// A document with a long run of `<!--` and no `-->` must not trigger a
 		// terminator search at every opener.
@@ -64,10 +210,10 @@ describe('parser scaling', () => {
 				const content = `x <!-- a --> ${input(size)}`;
 				let best = Infinity;
 				for (let attempt = 0; attempt < 5; attempt += 1) {
-					const start = process.cpuUsage();
+					const start = performance.now();
 					getCommentMarkAll(content);
-					const elapsed = process.cpuUsage(start);
-					best = Math.min(best, elapsed.user + elapsed.system);
+					const elapsed = (performance.now() - start) * 1000;
+					best = Math.min(best, elapsed);
 				}
 				return best;
 			};
@@ -88,10 +234,10 @@ describe('parser scaling', () => {
 				const content = `x <!-- a --> ${input(size)}`;
 				let best = Infinity;
 				for (let attempt = 0; attempt < 5; attempt += 1) {
-					const start = process.cpuUsage();
+					const start = performance.now();
 					getCommentMarkAll(content);
-					const elapsed = process.cpuUsage(start);
-					best = Math.min(best, elapsed.user + elapsed.system);
+					const elapsed = (performance.now() - start) * 1000;
+					best = Math.min(best, elapsed);
 				}
 				return best;
 			};

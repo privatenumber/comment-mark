@@ -4,6 +4,45 @@
 // ASCII or -1, and the entity names.
 type Entity = [bytes: number, first: number, names: string];
 
+const digitValue = (digit: number, hex: boolean) => {
+	if (digit >= 48 && digit <= 57) {
+		return digit - 48;
+	}
+	if (hex && digit >= 65 && digit <= 70) {
+		return digit - 55;
+	}
+	if (hex && digit >= 97 && digit <= 102) {
+		return digit - 87;
+	}
+	return -1;
+};
+
+// Houdini accepts at most eight digits and replaces invalid code points.
+export const numericEntity = (text: string, index: number) => {
+	let cursor = index + 2;
+	const hex = text[cursor] === 'x' || text[cursor] === 'X';
+	if (hex) {
+		cursor += 1;
+	}
+	const start = cursor;
+	let code = 0;
+	while (cursor < text.length) {
+		const value = digitValue(text.charCodeAt(cursor), hex);
+		if (value < 0) {
+			break;
+		}
+		code = Math.min(0x11_00_00, code * (hex ? 16 : 10) + value);
+		cursor += 1;
+	}
+	if (cursor === start || cursor - start > 8 || text[cursor] !== ';') {
+		return undefined;
+	}
+	return {
+		code: code !== 0 && code < 0x11_00_00 && (code < 0xD8_00 || code >= 0xE0_00) ? code : 0xFF_FD,
+		end: cursor,
+	};
+};
+
 const groups: Entity[] = [
 	[1, 9, 'Tab'],
 	[1, 10, 'NewLine'],
@@ -60,4 +99,57 @@ export const namedEntity = (name: string) => {
 		}
 	}
 	return entities.get(name);
+};
+
+export const decodeEntity = (text: string, index: number) => {
+	if (text.startsWith('&#', index)) {
+		const entity = numericEntity(text, index);
+		if (!entity) {
+			return undefined;
+		}
+		const { code, end } = entity;
+		// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/utf8.c#L202-L207
+		let bytes: number;
+		if (code === 0xFF_FE || code === 0xFF_FF || code < 0x80) {
+			bytes = 1;
+		} else if (code < 0x8_00) {
+			bytes = 2;
+		} else if (code < 0x1_00_00) {
+			bytes = 3;
+		} else {
+			bytes = 4;
+		}
+		return {
+			bytes,
+			code,
+			end,
+		};
+	}
+	// Houdini searches names of 2-31 bytes, terminated by `;`.
+	// The table contains only ASCII letters and digits.
+	// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/houdini_html_u.c#L10-L35
+	// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/houdini_html_u.c#L80-L100
+	let end = index + 1;
+	while (end < text.length && end - index <= 31) {
+		const character = text.charCodeAt(end);
+		if (
+			!(character >= 65 && character <= 90)
+			&& !(character >= 97 && character <= 122)
+			&& !(character >= 48 && character <= 57)
+		) {
+			break;
+		}
+		end += 1;
+	}
+	if (end - index >= 3 && text.charCodeAt(end) === 59) {
+		const entity = namedEntity(text.slice(index + 1, end));
+		if (entity) {
+			return {
+				bytes: entity[0],
+				code: entity[1],
+				end,
+			};
+		}
+	}
+	return undefined;
 };

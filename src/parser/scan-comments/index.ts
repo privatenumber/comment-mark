@@ -1,5 +1,6 @@
-import { lexBlocks, type BlockHandlers } from './block/index.ts';
+import { lexBlocks, type BlockHandlers, type GeneratedBlock } from './block/index.ts';
 import { normalizeLabel } from './block/reference-definition.ts';
+import { renderGeneratedBlock } from './generated-block.ts';
 import { createHtmlTokenizer } from './html-tokenizer.ts';
 import { lexInline } from './inline-lexer.ts';
 import { createReferenceBudget, type ReferenceDefinition } from './reference-budget.ts';
@@ -31,8 +32,8 @@ export type CommentVisitor = (
  * 3. The browser phase reads HTML blocks and raw HTML spans as a browser would
  *    and reports the comments.
  *
- * Each phase follows GitHub's renderer, cmark-gfm 0.29.0.gfm.13, and the HTML
- * standard. The rules each phase leaves out are listed in
+ * The phases model GitHub's renderer, cmark-gfm 0.29.0.gfm.13, and its HTML
+ * handling. The rules each phase leaves out are listed in
  * notes/comment-mark/comment-scanning.md.
  */
 export const scanComments = (source: string, visit: CommentVisitor) => {
@@ -42,7 +43,25 @@ export const scanComments = (source: string, visit: CommentVisitor) => {
 };
 
 const scanDocument = (source: string, visit: CommentVisitor) => {
-	const tokenizer = createHtmlTokenizer(source, visit);
+	// One native search per `<` costs nothing measurable on real documents.
+	// Lowercasing a copy or searching for the names cost more; see the notes.
+	let hasForeignContent = false;
+	const asciiLower = (index: number) => {
+		const code = source.charCodeAt(index);
+		return code >= 65 && code <= 90 ? code + 32 : code;
+	};
+	for (let index = source.indexOf('<'); index !== -1; index = source.indexOf('<', index + 1)) {
+		const first = asciiLower(index + 1);
+		if (
+			(first === 115 && asciiLower(index + 2) === 118 && asciiLower(index + 3) === 103)
+			|| (first === 109 && asciiLower(index + 2) === 97
+				&& asciiLower(index + 3) === 116 && asciiLower(index + 4) === 104)
+		) {
+			hasForeignContent = true;
+			break;
+		}
+	}
+	const tokenizer = createHtmlTokenizer(source, visit, hasForeignContent);
 	const findTagOpen = createForwardSearch(source, '<');
 	const findOpenBracket = createForwardSearch(source, '[');
 	const findCloseBracket = createForwardSearch(source, ']');
@@ -57,11 +76,17 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 		return !failed && normalized !== '' && labels.has(normalized);
 	};
 
-	const handlers: BlockHandlers = {
+	const handlers: Pick<BlockHandlers, 'html' | 'text' | 'generated'> = {
+		generated: (block, afterMarkup) => {
+			tokenizer.generated(afterMarkup, block.type === 'code', () => renderGeneratedBlock(source, block));
+		},
 		html: (start, end, afterMarkup, continuation) => {
 			tokenizer.feed(start, end, afterMarkup, continuation, true);
 		},
-		text: (segments, continuation, unescapePipes) => {
+		text: (segments, continuation, unescapePipes, type) => {
+			if (type === 'paragraph') {
+				tokenizer.open('p');
+			}
 			activeFailures = failures?.get(segments[0]);
 			lookupOrdinal = 0;
 			// The inline phase reads the lines joined by line feeds. `textStarts`
@@ -98,7 +123,19 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 					tokenizer.feed(partStart, partEnd, afterMarkup, continuation, false);
 					afterMarkup = false;
 				}
-			}, isDefinedLabel);
+			}, isDefinedLabel, hasForeignContent
+				? (name, open) => {
+					if (open) {
+						tokenizer.open(name);
+					} else {
+						tokenizer.close(name);
+					}
+					afterMarkup = true;
+				}
+				: undefined);
+			if (type === 'paragraph') {
+				tokenizer.close('p');
+			}
 		},
 	};
 	// Each event uses three numbers: text uses -1 and an index into textSegments;
@@ -107,17 +144,31 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 	const positions: number[] = [];
 	const continuations: string[] = [];
 	const textSegments: number[][] = [];
+	const generatedBlocks: GeneratedBlock[] = [];
+	const containerNames = ['blockquote', 'li', 'ul', 'ol', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td'] as const;
 	let buffering = false;
 	lexBlocks(source, {
-		text: (segments, continuation, unescapePipes) => {
+		wantsCode: () => buffering || tokenizer.wantsCode(),
+		generated: (block, afterMarkup) => {
+			if (buffering) {
+				positions.push(-4, generatedBlocks.length, Number(afterMarkup));
+				continuations.push('');
+				generatedBlocks.push(block);
+			} else {
+				handlers.generated!(block, afterMarkup);
+			}
+		},
+		text: (segments, continuation, unescapePipes, type) => {
 			// Raw HTML starts with `<`, so text without one renders as text and
 			// needs no replay. A `<` between two segments only costs a needless
-			// inline pass.
+			// inline pass. With element tracking, a paragraph's generated `<p>` and
+			// `</p>` still matter: they can complete an unfinished raw tag or close
+			// an outer paragraph.
 			if (segments.length === 0) {
 				return;
 			}
 			const open = findTagOpen(segments[0]);
-			if (open !== -1 && open < segments.at(-1)!) {
+			if ((open !== -1 && open < segments.at(-1)!) || (hasForeignContent && type === 'paragraph')) {
 				if (!buffering) {
 					const start = segments[0];
 					const end = segments.at(-1)!;
@@ -126,11 +177,11 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 					buffering = left !== -1 && left < end && right !== -1 && right < end;
 				}
 				if (buffering) {
-					positions.push(-1, textSegments.length, Number(unescapePipes));
+					positions.push(-1, textSegments.length, Number(unescapePipes) + (type === 'paragraph' ? 2 : (type === 'heading' ? 4 : 0)));
 					continuations.push(continuation);
 					textSegments.push(segments);
 				} else {
-					handlers.text(segments, continuation, unescapePipes);
+					handlers.text(segments, continuation, unescapePipes, type);
 				}
 			}
 		},
@@ -157,6 +208,26 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 				handlers.html(start, end, afterMarkup, continuation);
 			}
 		},
+		open: hasForeignContent
+			? (name) => {
+				if (buffering) {
+					positions.push(-2, containerNames.indexOf(name), 0);
+					continuations.push('');
+				} else {
+					tokenizer.open(name);
+				}
+			}
+			: undefined,
+		close: hasForeignContent
+			? (name) => {
+				if (buffering) {
+					positions.push(-3, containerNames.indexOf(name), 0);
+					continuations.push('');
+				} else {
+					tokenizer.close(name);
+				}
+			}
+			: undefined,
 		definition: (label, destination, title) => {
 			const normalized = normalizeLabel(label);
 			if (normalized && !labels.has(normalized)) {
@@ -170,33 +241,54 @@ const scanDocument = (source: string, visit: CommentVisitor) => {
 	// Only replayed events look up labels, and without definitions no lookup
 	// resolves, so none can exceed the budget.
 	if (buffering && labels.size > 0) {
-		failures = createReferenceBudget(source, labels);
+		failures = createReferenceBudget(source, labels, hasForeignContent);
 	}
 	const findLineFeed = createForwardSearch(source, '\n');
 	const findCarriageReturn = createForwardSearch(source, '\r');
 	for (let index = 0; index < continuations.length; index += 1) {
 		const start = positions[index * 3];
 		const end = positions[(index * 3) + 1];
-		if (start === -1) {
-			handlers.text(textSegments[end], continuations[index], positions[(index * 3) + 2] === 1);
-		} else {
-			const flags = positions[(index * 3) + 2];
-			let lineStart = start;
-			let afterMarkup = flags === 1 || flags === 3;
-			if (flags >= 2) {
-				while (lineStart < end) {
-					const lf = findLineFeed(lineStart);
-					const cr = findCarriageReturn(lineStart);
-					const lineEnd = Math.min(lf === -1 ? end : lf, cr === -1 ? end : cr, end);
-					if (lineEnd === end) {
-						break;
-					}
-					handlers.html(lineStart, lineEnd, afterMarkup, continuations[index]);
-					afterMarkup = false;
-					lineStart = lineEnd + (source.startsWith('\r\n', lineEnd) ? 2 : 1);
-				}
+		switch (start) {
+			case -1: {
+				const flags = positions[(index * 3) + 2];
+				handlers.text(textSegments[end], continuations[index], flags % 2 === 1, flags >= 4 ? 'heading' : (flags >= 2 ? 'paragraph' : 'cell'));
+
+				break;
 			}
-			handlers.html(lineStart, end, afterMarkup, continuations[index]);
+			case -2: {
+				tokenizer.open(containerNames[end]);
+
+				break;
+			}
+			case -3: {
+				tokenizer.close(containerNames[end]);
+
+				break;
+			}
+			case -4: {
+				handlers.generated!(generatedBlocks[end], positions[(index * 3) + 2] === 1);
+
+				break;
+			}
+			default: {
+				const flags = positions[(index * 3) + 2];
+				let lineStart = start;
+				let afterMarkup = flags === 1 || flags === 3;
+				if (flags >= 2) {
+					while (lineStart < end) {
+						const lf = findLineFeed(lineStart);
+						const cr = findCarriageReturn(lineStart);
+						const lineEnd = Math.min(lf === -1 ? end : lf, cr === -1 ? end : cr, end);
+						if (lineEnd === end) {
+							break;
+						}
+						handlers.html(lineStart, lineEnd, afterMarkup, continuations[index]);
+						afterMarkup = false;
+						lineStart = lineEnd + (source.startsWith('\r\n', lineEnd) ? 2 : 1);
+					}
+				}
+				handlers.html(lineStart, end, afterMarkup, continuations[index]);
+			}
 		}
 	}
 };

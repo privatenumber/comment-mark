@@ -12,6 +12,7 @@ import {
 	scanTitle,
 } from './block/reference-definition.ts';
 import { matchBareAutolink } from './bare-autolink.ts';
+import { createEmphasis, type Delimiter } from './emphasis.ts';
 
 /**
  * Indexes `manual_scan_link_url_2` boundaries for monotonic destination starts.
@@ -268,6 +269,7 @@ export const lexInline = (
 	text: string,
 	emit: (start: number, end: number) => void,
 	isDefinedLabel: (label: string) => boolean,
+	element?: (name: 'a' | 'em' | 'strong' | 'del', open: boolean) => void,
 ) => {
 	// Once a kind of construct fails to close, cmark-gfm stops matching that
 	// kind for the rest of the text. An unclosed comment disables every `<!`
@@ -459,10 +461,13 @@ export const lexInline = (
 		position: number;
 		bracketAfter: boolean;
 	}[] = [];
+	// A start of -1 marks a link, and -2 marks a delimiter run.
 	const spans: {
 		start: number;
 		end: number;
+		delimiter?: Delimiter;
 	}[] = [];
+	let emphasis: ReturnType<typeof createEmphasis> | undefined;
 	let images = 0;
 	let noLinkOpeners = true;
 	const pushBracket = (image: boolean) => {
@@ -475,6 +480,12 @@ export const lexInline = (
 			position: index + (image ? 2 : 1),
 			bracketAfter: false,
 		});
+		if (element && !image) {
+			spans.push({
+				start: -1,
+				end: 0,
+			});
+		}
 		if (image) {
 			images += 1;
 		} else {
@@ -482,8 +493,39 @@ export const lexInline = (
 		}
 	};
 	const flushSpans = () => {
+		if (spans.length === 0) {
+			return;
+		}
+		const parents: string[] = [];
+		// The renderer omits strong nodes whose immediate parent is also strong.
+		// https://github.com/github/cmark-gfm/blob/0.29.0.gfm.13/src/html.c#L366-L374
+		const emitElement = (name: 'a' | 'em' | 'strong' | 'del', open: boolean) => {
+			if (!open) {
+				parents.pop();
+			}
+			if (name !== 'strong' || parents.at(-1) !== 'strong') {
+				element!(name, open);
+			}
+			if (open) {
+				parents.push(name);
+			}
+		};
 		for (const span of spans) {
-			emit(span.start, span.end);
+			if (span.start === -1) {
+				if (span.end !== 0) {
+					emitElement('a', span.end === 1);
+				}
+			} else if (span.start === -2) {
+				const { opens, closes } = span.delimiter!;
+				for (const name of closes) {
+					emitElement(name, false);
+				}
+				for (let cursor = opens.length - 1; cursor >= 0; cursor -= 1) {
+					emitElement(opens[cursor], true);
+				}
+			} else {
+				emit(span.start, span.end);
+			}
 		}
 		spans.length = 0;
 	};
@@ -508,6 +550,23 @@ export const lexInline = (
 	while (index < text.length) {
 		const code = text.charCodeAt(index);
 		switch (code) {
+			case 42: case 95: case 126: {
+				if (!element) {
+					index += 1;
+					break;
+				}
+				emphasis ??= createEmphasis(text);
+				const { end, delimiter } = emphasis.push(index);
+				if (delimiter) {
+					spans.push({
+						start: -2,
+						end: 0,
+						delimiter,
+					});
+				}
+				index = end;
+				break;
+			}
 			case 58:
 			case 119: {
 				const end = brackets.length === 0 ? matchBareAutolink(text, index) : -1;
@@ -543,17 +602,25 @@ export const lexInline = (
 				}
 				if (end !== -1) {
 					index = end;
+					emphasis?.process(opener.position);
 					if (opener.image) {
 						spans.length = opener.spanStart;
 					} else {
 						noLinkOpeners = true;
+						if (element) {
+							spans[opener.spanStart].end = 1;
+							spans.push({
+								start: -1,
+								end: 2,
+							});
+						}
 					}
 				}
 				if (opener.image) {
 					images -= 1;
-					if (images === 0) {
-						flushSpans();
-					}
+				}
+				if (images === 0 && !emphasis && (!element || brackets.length === 0)) {
+					flushSpans();
 				}
 				break;
 			}
@@ -577,7 +644,7 @@ export const lexInline = (
 				if (end === -1) {
 					index += 1;
 				} else {
-					if (images > 0) {
+					if (images > 0 || (element && (brackets.length > 0 || emphasis))) {
 						spans.push({
 							start: index,
 							end,
@@ -595,5 +662,6 @@ export const lexInline = (
 			}
 		}
 	}
+	emphasis?.process(0);
 	flushSpans();
 };

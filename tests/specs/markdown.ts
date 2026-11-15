@@ -174,17 +174,17 @@ describe('reference expansion budget', () => {
 		}
 	});
 
-	test('slow-path CPU time scales near linearly', () => {
+	test('slow-path time scales near linearly', () => {
 		const measure = (count: number) => {
 			// The first paragraph holds `<`, `[`, and `]`, so events are buffered
 			// and the budget's second block pass runs.
 			const source = `x [r] <!-- a -->old<!-- /a -->\n\n${'[r] x\n\n'.repeat(count)}[r]: ${'u'.repeat(1000)}\n`;
 			let best = Infinity;
 			for (let index = 0; index < 5; index += 1) {
-				const start = process.cpuUsage();
+				const start = performance.now();
 				getCommentMarkAll(source);
-				const elapsed = process.cpuUsage(start);
-				best = Math.min(best, elapsed.user + elapsed.system);
+				const elapsed = performance.now() - start;
+				best = Math.min(best, elapsed);
 			}
 			return best;
 		};
@@ -904,7 +904,8 @@ describe('GitHub rendering', () => {
 		// GitHub escapes the `<` of `<title>`, so its quote opens no attribute value.
 		['a filtered tag is text', `<div>\n<title a="\n\n${marker}`, true],
 		['an open attribute value continues into the next HTML block', `<div>\n<span a="\n\n${marker}`, false],
-		['noscript content is raw text', `<noscript>${marker}</noscript>`, false],
+		// GitHub /markdown, mode=gfm, 2026-11-14: scripting is disabled.
+		['noscript content contains comments', `<noscript>${marker}</noscript>`, true],
 	];
 
 	for (const [name, source, rendered] of cases) {
@@ -1017,6 +1018,290 @@ describe('table cells', () => {
 			}]);
 			expect(await commentMark(source, { a: 'NEW' })).toBe(`| x |\n| - |\n| ${prefix}<!-- a -->NEW<!-- /a --> |`);
 		}
+	});
+});
+
+describe('generated block markup', () => {
+	test('rendered code and break markup decide whether an attribute value closes', () => {
+		const tail = '\n\n<!-- a -->old<!-- /a -->';
+		for (const [open, block, found] of [
+			// The language is decoded, and its escapes are removed, before `'` is written.
+			["'", '```&apos;\n```', true],
+			["'", '```\\&apos;\n```', true],
+			["'", '```&Tab; x&apos;\n```', true],
+			// Code content keeps `'` unescaped.
+			["'", "```\n'\n```", true],
+			["'", '```\nx\n```', false],
+			["'", "    '", true],
+			["'", ">  ```\r\n> \t'\r\n>  ```", true],
+			// A code line ends at CR, so text after the fence is not code.
+			["'", "```\rx\r```\r'", false],
+			// `lang="` appears only for a non-empty language after trimming.
+			['"', '```js\n```', true],
+			['"', '```&quot;\n```', true],
+			['"', '```&Tab;\n```', false],
+			['"', '```\n```', false],
+			['"', '---', false],
+			["'", '---', false],
+		] as const) {
+			const source = `<!--><a x=${open}\n\n${block}${tail}`;
+			expect(getCommentMarkAll(source)).toStrictEqual(found
+				? [{
+					tagName: 'a',
+					attributes: {},
+					content: 'old',
+				}]
+				: []);
+		}
+	});
+
+	test('reports only comments with source positions', () => {
+		// cmark-gfm 0.29.0.gfm.13 with --github-pre-lang and parse5 reports
+		// only the source marker after the code block.
+		const source = "<!--><a x='\n\n```\n'<!-- a -->bogus<!-- /a -->\n```\n\n<!-- a -->old<!-- /a -->";
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'old',
+		}]);
+	});
+
+	test('ignores code block markers while the tokenizer is in data state', () => {
+		const source = '<!-- a -->old<!-- /a -->\n\n```\n<!-- a -->bogus<!-- /a -->\n```\n';
+		expect(getCommentMarkAll(source)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'old',
+		}]);
+	});
+
+	test('task-list checkboxes do not end an open attribute value', async () => {
+		// GitHub /markdown, 2026-11-15: task syntax hides the first marker like an
+		// ordinary item, and only a literal input closes the attribute value.
+		// The archived task_list filter supports a post-parse insertion inference;
+		// the observed boundary does not establish GitHub's current pipeline.
+		const markers = '<!-- a -->BEFORE<!-- /a --><i title="v">AFTER</i><!-- a -->VISIBLE<!-- /a -->';
+		for (const [fragment, replaced] of [
+			['[x] item', 'VISIBLE'],
+			['[ ] item', 'VISIBLE'],
+			['ordinary item', 'VISIBLE'],
+			['<input type="checkbox" disabled="" /> item', 'BEFORE'],
+		] as const) {
+			const source = `<!--><a x="\n\n- ${fragment} ${markers}`;
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace(`-->${replaced}<`, '-->NEW<'));
+		}
+	});
+
+	test('reads generated quotes in streamed and buffered block events', async () => {
+		for (const before of ['', '[<span>][r]\n\n[r]: /\n\n']) {
+			for (const ending of ['\n', '\r', '\r\n']) {
+				for (const code of ["```\n'\n```", "    '", '```&apos;\nx\n```', '```&#39;\nx\n```', '```&bsol;&apos;\nx\n```', '```&Tab;&#39; ignored\nx\n```']) {
+					const prefix = `${before}<div>\n<a x='\n\n${code}\n\n`.replaceAll('\n', ending);
+					const source = `${prefix}<!-- a -->old<!-- /a -->`;
+					expect(await commentMark(source, { a: 'NEW' })).toBe(`${prefix}<!-- a -->${ending}NEW${ending}<!-- /a -->`);
+				}
+			}
+		}
+	});
+});
+
+describe('foreign content', () => {
+	// GitHub /markdown renders both marker openers in these cases.
+	const wrapped = '<!-- a -->PRESERVE <![CDATA[ > <!-- a -->old ]]> tail<!-- /a -->';
+	test('tracks void names in foreign content', async () => {
+		// GitHub /markdown, mode=gfm, 2026-11-15: source remains foreign.
+		// The br case needs a matching stack entry; an unmatched </br> leaves SVG open.
+		for (const [prefix, inner] of [
+			['<svg><source><svg></source></svg>', true],
+			['<svg><source></source>', false],
+			['<svg><br><svg></br></svg>', true],
+			['<svg></br>', false],
+		] as const) {
+			const source = prefix + wrapped;
+			expect(await commentMark(source, { a: 'NEW' })).toBe(inner
+				? source.replace('old ]]> tail', 'NEW')
+				: `${prefix}<!-- a -->NEW<!-- /a -->`);
+		}
+	});
+	for (const [name, prefix] of [
+		['thematic break', '<div>\n<svg\n\n---\n\n'],
+		['fenced code', '<div>\n<pre><svg\n\n```\nx\n```\n\n'],
+	] as const) {
+		test(`generated ${name} completes an unfinished SVG tag`, async () => {
+			// GitHub /markdown renders both openers, so the later one pairs.
+			const source = prefix + wrapped;
+			expect(await commentMark(source, { a: 'NEW' })).toBe(`${prefix}<!-- a -->PRESERVE <![CDATA[ > <!-- a -->\nNEW\n<!-- /a -->`);
+		});
+	}
+	test('fenced code with an info string retains foreign content', async () => {
+		// GitHub /markdown, 2026-11-15, renders only the outer opener. cmark-gfm
+		// with --github-pre-lang writes <svg\n<pre lang="js"><code>.
+		const prefix = '<div>\n<svg\n\n```js\nx\n```\n\n';
+		expect(await commentMark(prefix + wrapped, { a: 'NEW' })).toBe(`${prefix}<!-- a -->\nNEW\n<!-- /a -->`);
+	});
+	for (const delimiter of ['*', '**', '~~']) {
+		test(`generated ${delimiter} closes foreign content`, async () => {
+			// GitHub /markdown probe 17 checks the `*` case; 2026-11-15 also
+			// confirmed the `**` and `~~` cases with both marker openers.
+			const source = `${delimiter}<svg>${delimiter} ${wrapped}`;
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', 'NEW'));
+		});
+	}
+	test('unmatched emphasis leaves foreign content open', async () => {
+		const source = `*<svg> ${wrapped}`;
+		expect(await commentMark(source, { a: 'NEW' })).toBe('*<svg> <!-- a -->NEW<!-- /a -->');
+	});
+	test('nested generated emphasis closes foreign content at the inner end tag', async () => {
+		// cmark-gfm 0.29.0.gfm.13 renders <strong><em><svg></em> before wrapped,
+		// and closes </strong> after it.
+		const source = `***<svg>* ${wrapped} x**`;
+		expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', 'NEW'));
+	});
+	test('resolved links close foreign content inside their labels', async () => {
+		// GitHub /markdown, 2026-11-15, renders both openers in each.
+		for (const source of [
+			`[<svg>](u) ${wrapped}`,
+			`[<svg>][r] ${wrapped}\n\n[r]: u`,
+		]) {
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', 'NEW'));
+		}
+		// With no definition, GitHub renders no link and the SVG stays open.
+		const source = `[<svg>] ${wrapped}`;
+		expect(await commentMark(source, { a: 'NEW' })).toBe('[<svg>] <!-- a -->NEW<!-- /a -->');
+	});
+	test('generated markup that completes a raw tag opens no element', async () => {
+		// GitHub /markdown, mode=gfm, 2026-11-15 renders both openers.
+		// The paragraph without raw HTML matters too: its generated markup still
+		// completes the tag.
+		for (const paragraph of ['x <x/>', 'x']) {
+			const source = `<div>\n<p><svg\n\n${paragraph}\n\n${wrapped}`;
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', '\nNEW\n'));
+		}
+	});
+	test('select ignores unrelated tags until it closes', async () => {
+		// GitHub /markdown, mode=gfm, 2026-11-15 renders both openers.
+		const source = `<div><select></div><svg>${wrapped}`;
+		expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', 'NEW'));
+		const cdata = '<div><select></div><svg><![CDATA[ > X<!-- a -->Y ]]>';
+		expect(getCommentMarkAll(cdata)).toStrictEqual([]);
+		for (const prefix of ['<select></select>', '<select><select>', '<select><input>']) {
+			const input = `<div>${prefix}<svg>${wrapped}`;
+			expect(await commentMark(input, { a: 'NEW' })).toBe(input.replace('PRESERVE <![CDATA[ > <!-- a -->old ]]> tail', 'NEW'));
+		}
+	});
+	test('raw heading end tags close foreign content inside generated headings', async () => {
+		// GitHub /markdown, mode=gfm, 2026-11-14: # <svg></h1> followed by wrapped.
+		for (const source of [
+			`# <svg></h1>${wrapped}`,
+			`## <svg></h1>${wrapped}`,
+			`#      <svg></h1>${wrapped}`,
+			`#      [x](u) <svg></h1>${wrapped}`,
+			`x <svg></h2>${wrapped}\n===`,
+		]) {
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', 'NEW'));
+		}
+	});
+	test('table end tags close foreign content inside generated cells', async () => {
+		// GitHub /markdown, mode=gfm, 2026-11-14 confirms the first case.
+		for (const source of [
+			`| <svg></th>${wrapped} |\n| - |`,
+			`| h |\n| - |\n| <svg></td>${wrapped} |`,
+			`| h |\n| - |\n| <svg></tr>${wrapped} |`,
+			`| <svg> | x |\n| - | - |\n| ${wrapped} | x |`,
+		]) {
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', 'NEW'));
+		}
+	});
+	test('raw list end tags close foreign content inside generated lists', async () => {
+		// cmark-gfm and parse5 render both marker openers in each case. GitHub
+		// /markdown also confirms the first case.
+		for (const source of [
+			`- x <svg></ul> ${wrapped}\n\n  y`,
+			`1. x <svg></ol> ${wrapped}\n\n   y`,
+			`- a\n+ b <svg></ul> ${wrapped}\n\n  y`,
+			`- a\n  - x <svg></ul> ${wrapped}\n\n    y`,
+			`[r] x\n\n- x <svg></ul> ${wrapped}\n\n  y`,
+		]) {
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', 'NEW'));
+		}
+	});
+	// These markers start on their own line in an HTML block, so updates are padded.
+	for (const [name, source] of [
+		['generated paragraph close', `x </p><p><svg>\n\n${wrapped}`],
+		['normalized tag name', `<div>\n<x\0><svg></x\uFFFD>\n\n${wrapped}`],
+	]) {
+		test(`preserves content after ${name}`, async () => {
+			expect(await commentMark(source, { a: 'NEW' })).toBe(source.replace('old ]]> tail', '\nNEW\n'));
+		});
+	}
+	// GitHub /markdown, mode=gfm, 2026-11-14. A foreign CDATA section holds
+	// text, while an HTML CDATA opener is a bogus comment ending at the first >.
+	// Each case starts with its probe number in the probe table of
+	// notes/comment-mark/github-oracle.md.
+	const marker = '<!-- a -->old<!-- /a -->';
+	const declaration = `<![CDATA[ > ${marker} ]]>`;
+	const cases: [number, string, boolean][] = [
+		[1, `<svg>\n\ntext\n\n${declaration}`, false],
+		[2, `<svg><span></svg>${declaration}`, true],
+		[3, `<svg></span>${declaration}`, false],
+		[4, `<svg></p>${declaration}`, true],
+		[5, `<svg><br>${declaration}`, false],
+		[6, `<svg><svg></svg>${declaration}`, false],
+		[7, `<math><mi>${declaration}`, false],
+		[8, `<svg/>${declaration}`, true],
+		[10, `<select><math>${declaration}`, true],
+		[11, `<select></select><svg>${declaration}`, false],
+		[12, `<p><svg></p>${declaration}`, true],
+		[13, `<SVG>${declaration}`, false],
+		[14, `- <svg>\n- ${declaration}`, true],
+		[15, `> <svg>\n\n${declaration}`, true],
+		[16, `<em><svg></em>${declaration}`, true],
+		[17, `*<svg>* ${declaration}`, true],
+		[18, `<svg><desc>${declaration}`, false],
+		[19, `<table><tr><td><svg></td></tr></table>${declaration}`, true],
+		[20, `<svg>\n</svg>\n\n${declaration}`, true],
+		[101, `x <svg>\n\n${declaration}`, true],
+		[103, `- <svg>\n\n  para\n\n  ${declaration}`, false],
+		[104, `<svg>\n\n- ${declaration}`, false],
+		[105, `- x <svg>\n- ${declaration}`, true],
+		[106, `<select>\n\n<svg>${declaration}`, true],
+		[107, `<div><p><svg></div>${declaration}`, true],
+		[108, `<b><svg></b>${declaration}`, true],
+		[109, `<table><svg>${declaration}`, false],
+		[110, `<svg><table>${declaration}`, false],
+		[111, `# <svg>\n\n${declaration}`, true],
+		[112, `<svg>\n\n# x\n\n${declaration}`, false],
+		[113, `<svg><noscript>${marker}</noscript> tail`, true],
+		[114, `<div><span><svg></div>${declaration}`, true],
+	];
+	// Approximations: probes 9 and 102 depend on foreignObject barriers, and
+	// tight-list paragraphs still receive a virtual p.
+	for (const [, source, found] of cases) {
+		test(`${found ? 'renders' : 'hides'} the marker in ${JSON.stringify(source)}`, async () => {
+			expect(getCommentMarkAll(source)).toStrictEqual(found
+				? [{
+					tagName: 'a',
+					attributes: {},
+					content: 'old',
+				}]
+				: []);
+			if (found) {
+				expect(await commentMark(source, { a: 'new' })).toBe(source.replace(marker, '<!-- a -->new<!-- /a -->'));
+			} else {
+				await expect(commentMark(source, { a: 'new' })).rejects.toThrow('matched no markers');
+			}
+		});
+	}
+
+	test('detects mixed-case foreign tags after unrelated tag openers', () => {
+		for (const tag of ['sVg', 'MaTh']) {
+			expect(getCommentMarkAll(`<div></div><${tag}>${declaration}`)).toStrictEqual([]);
+		}
+		expect(getCommentMarkAll(`<div></div>${declaration}`)).toStrictEqual([{
+			tagName: 'a',
+			attributes: {},
+			content: 'old',
+		}]);
 	});
 });
 
