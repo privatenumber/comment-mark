@@ -4,7 +4,6 @@ import {
 	getCommentMark,
 	getCommentMarkAll,
 } from '#comment-mark';
-import { scanComments } from '../../src/parser/scan-comments/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('bare autolinks', () => {
@@ -203,31 +202,6 @@ describe('reference expansion budget', () => {
 });
 
 describe('comment and code boundaries', () => {
-	test('buffered HTML lines retain streamed comment positions and line context', () => {
-		for (const newline of ['\n', '\r\n', '\r']) {
-			for (const prefix of ['', '> ']) {
-				const suffix = [
-					'',
-					`${prefix}<div>`,
-					`${prefix}<span title="`,
-					`${prefix}<!-- not a comment -->`,
-					`${prefix}">`,
-					`${prefix}  <!-- a -->`,
-					`${prefix}old`,
-					`${prefix}<!-- /a -->`,
-					`${prefix}</div>`,
-				].join(newline);
-				const collect = (head: string) => {
-					const events: unknown[][] = [];
-					scanComments(head + newline + suffix, (...event) => events.push(event));
-					return events;
-				};
-				const streamed = collect('x abcdef <span>');
-				expect(streamed.length).toBe(2);
-				expect(collect('x [r](u) <span>')).toStrictEqual(streamed);
-			}
-		}
-	});
 	test('a fenced example containing <!-- does not hide the next marker', async () => {
 		const content = ['```html', '<!--', '```', createMarker('x', 'old')].join('\n');
 
@@ -1237,7 +1211,7 @@ describe('foreign content', () => {
 	// GitHub /markdown, mode=gfm, 2026-11-14. A foreign CDATA section holds
 	// text, while an HTML CDATA opener is a bogus comment ending at the first >.
 	// Each case starts with its probe number in the probe table of
-	// notes/comment-mark/github-oracle.md.
+	// notes/gfm-comments/github-oracle.md in gfm-comments.
 	const marker = '<!-- a -->old<!-- /a -->';
 	const declaration = `<![CDATA[ > ${marker} ]]>`;
 	const cases: [number, string, boolean][] = [

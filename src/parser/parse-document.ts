@@ -1,10 +1,10 @@
+import { findComments } from 'gfm-comments';
 import {
 	isWhitespace,
 	readName,
 	skipWhitespace,
 } from './characters.ts';
 import { type Attribute, parseAttributeNodes } from './parse-attributes.ts';
-import { scanComments } from './scan-comments/index.ts';
 
 export type MarkerNode = {
 	tagName: string;
@@ -113,8 +113,10 @@ export const parseDocument = (source: string): MarkerNode[] => {
 	const topByTag = new Map<string, Opener | undefined>();
 	let openTop: Opener | undefined;
 
-	scanComments(source, (start, innerStart, innerEnd, continuation, startsLine) => {
-		const kind = classifyComment(source, innerStart, innerEnd);
+	for (const {
+		start, contentStart, contentEnd, continuation, startsLine,
+	} of findComments(source)) {
+		const kind = classifyComment(source, contentStart, contentEnd);
 
 		if (kind.type === 'closer') {
 			// Close the innermost opener with this tag name. Openers above it
@@ -122,7 +124,7 @@ export const parseDocument = (source: string): MarkerNode[] => {
 			// instead of breaking the marker they sit inside.
 			const opener = topByTag.get(kind.tagName);
 			if (!opener) {
-				return;
+				continue;
 			}
 
 			let dropped = openTop;
@@ -135,14 +137,14 @@ export const parseDocument = (source: string): MarkerNode[] => {
 			opener.closerStart = start;
 			topByTag.set(opener.kind.tagName, opener.previousSameTag);
 			openTop = opener.previousOpen;
-			return;
+			continue;
 		}
 
 		if (kind.type === 'opener') {
 			const opener: Opener = {
 				kind,
 				openingStart: start,
-				openingEnd: innerEnd,
+				openingEnd: contentEnd,
 				continuation,
 				startsLine,
 				closerStart: -1,
@@ -154,7 +156,7 @@ export const parseDocument = (source: string): MarkerNode[] => {
 			topByTag.set(kind.tagName, opener);
 			openTop = opener;
 		}
-	});
+	}
 
 	// A matched marker is nested when it opens before an earlier emitted marker
 	// closes. Matched markers are in opening order and the emitted ones do not

@@ -76,7 +76,7 @@ const withoutPrefixes = (content: string) => content.replaceAll(/[> ]/g, '');
 // no inline code, indented code, or backslash. A line can start with one space,
 // which neither parser reads as indentation. The scanner follows GitHub, which
 // differs from micromark's CommonMark in some of those forms, so this spec
-// leaves them to the GitHub oracle in notes/comment-mark/github-oracle.md.
+// leaves them to the GitHub oracle in gfm-comments' notes/gfm-comments/github-oracle.md.
 const fragments = [
 	'x <!-- a -->',
 	'x <!-- /a -->',

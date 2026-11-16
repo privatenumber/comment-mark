@@ -1,25 +1,8 @@
 import { describe, test, expect } from 'manten';
 import { getCommentMarkAll } from '#comment-mark';
-import { lexBlocks } from '../../src/parser/scan-comments/block/index.ts';
 import { createMarker } from '../utils/create-marker.ts';
 
 describe('parser scaling', () => {
-	test('lexBlocks skips code lines when wantsCode() is false', () => {
-		// Retention changes only memory, so it has no public observable result.
-		for (const content of [`\`\`\`\n${'x\n'.repeat(1000)}\`\`\`\n`, '    x\n'.repeat(1000)]) {
-			lexBlocks(content, {
-				text: () => {},
-				html: () => {},
-				wantsCode: () => false,
-				generated: (block) => {
-					if (block.type === 'code') {
-						expect(block.lines).toStrictEqual([]);
-						expect(block.tabSpaces).toStrictEqual([]);
-					}
-				},
-			});
-		}
-	});
 	for (const [name, input] of [
 		// No underscore closer has a matching opener.
 		['unmatched delimiter openers', (n: number) => '*a '.repeat(n) + 'b_ '.repeat(n)],

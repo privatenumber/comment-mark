@@ -7,8 +7,7 @@ Start with [related tools](./related-tools.md) for how comment-mark compares wit
 ## Document model
 
 - [Markers and selectors](./markers-and-selectors.md): why a marker is a matched comment pair, outermost-pair parsing, the selector grammar, attribute rewriting, and the v2 migration hazard.
-- [Comment scanning](./comment-scanning.md): why the scanner follows GitHub's renderer, its three-phase design without a tree, where a comment ends, its known gaps and how it was verified, and the parsers it was measured against.
-- [GitHub oracle](./github-oracle.md): the local cmark-gfm and parse5 build that stands in for GitHub, with the scripts that compare the scanner against it.
+- [Comment scanning](./comment-scanning.md): why comments come from gfm-comments, which of its fields comment-mark relies on, the behavior changes from the previous scanner, and the parsers it was measured against.
 
 ## Updates
 
