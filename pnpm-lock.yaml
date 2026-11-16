@@ -181,7 +181,7 @@ importers:
         version: 2.16.0
       gfm-comments:
         specifier: github:privatenumber/comment-mark#npm/gfm-comments
-        version: https://codeload.github.com/privatenumber/comment-mark/tar.gz/0bae27cb33b8757fd0f8695c1a9679be576fbb2d
+        version: https://codeload.github.com/privatenumber/comment-mark/tar.gz/1d67aca402ec701ee017b1500c86ed14d6f20601
       lintroll:
         specifier: ^1.32.1
         version: 1.32.1(@typescript-eslint/utils@8.70.0(eslint@9.39.5(jiti@2.6.1)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@6.0.3))(eslint-import-resolver-node@0.3.9(supports-color@7.2.0))(eslint-plugin-import@2.31.0)(jiti@2.6.1)(supports-color@7.2.0)(typescript@6.0.3)
@@ -1754,8 +1754,8 @@ packages:
     resolution: {integrity: sha512-X6fBC0pmImC70gvX2zm56go9hx0MyoGVdG0tUCkg/D+Xnh5TJsOZ7iDbOdI3PvmtrDxnu1YdDufpK2QJX1Meqw==}
     engines: {node: '>=20.20.0'}
 
-  gfm-comments@https://codeload.github.com/privatenumber/comment-mark/tar.gz/0bae27cb33b8757fd0f8695c1a9679be576fbb2d:
-    resolution: {gitHosted: true, integrity: sha512-1twoMBAf2h/42Y3P6OH8+nRJMfMnL78k6OBu0Ug69HZzQ9svLmcE6Pq21Tw56gsEzi5bphs3UUIWR9+HCugRag==, tarball: https://codeload.github.com/privatenumber/comment-mark/tar.gz/0bae27cb33b8757fd0f8695c1a9679be576fbb2d}
+  gfm-comments@https://codeload.github.com/privatenumber/comment-mark/tar.gz/1d67aca402ec701ee017b1500c86ed14d6f20601:
+    resolution: {gitHosted: true, integrity: sha512-mS+Rpm2fSb2PvbO3RoU/x9wt6Y0iwUMfvAAAjdY02JHaYkaEOBoSKTbDihtKjpelmluwCC5Pi0LIGeUJp3+xlA==, tarball: https://codeload.github.com/privatenumber/comment-mark/tar.gz/1d67aca402ec701ee017b1500c86ed14d6f20601}
     version: 0.0.0-semantic-release
     engines: {node: '>=22'}
 
@@ -4489,7 +4489,7 @@ snapshots:
     dependencies:
       resolve-pkg-maps: 1.0.0
 
-  gfm-comments@https://codeload.github.com/privatenumber/comment-mark/tar.gz/0bae27cb33b8757fd0f8695c1a9679be576fbb2d: {}
+  gfm-comments@https://codeload.github.com/privatenumber/comment-mark/tar.gz/1d67aca402ec701ee017b1500c86ed14d6f20601: {}
 
   git-hooks-list@4.2.1: {}
 
