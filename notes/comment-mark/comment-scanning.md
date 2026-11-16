@@ -8,22 +8,20 @@ comment-mark finds markers among the HTML comments that GitHub renders, which it
 
 comment-mark uses three parts of each comment that `findComments` returns:
 
-- **Offsets.** [parse-document.ts](../../src/parser/parse-document.ts) classifies each comment as an opener, a closer, or other, and pairs the markers. `findComments` returns only comments closed by `-->`, in document order.
-- **`startsLine`.** It decides the [content layout](./content-padding.md). It cannot be derived from the returned comments, because an empty `<!-->`, which is not returned, also starts a line.
+- **Offsets.** [parse-document.ts](../../src/parser/parse-document.ts) classifies each comment as an opener, a closer, or other, and pairs the markers. `findComments` returns every comment GitHub renders, in document order, including comments that end at a parse error. comment-mark keeps only comments whose closer, read from `contentEnd` through `end`, is `-->`.
+- **`startsLine`.** It decides the [content layout](./content-padding.md). comment-mark cannot derive it from the comments it keeps. An empty `<!-->` is returned with the closer `>` and `startsLine: true`, so comment-mark drops it, but it still makes the next comment on its line start that line. The same `>` or `-` can also be a container marker on one line and HTML block text on another.
 - **`continuation`.** The container prefix, such as `> `, that a replacement writes on each new line.
 
-gfm-comments is a devDependency. pkgroll bundles devDependencies into `dist/`, so the published package has no runtime dependency on it. The Markdown tests in [tests/specs/markdown.ts](../../tests/specs/markdown.ts) stay as integration tests: they check that markers update as GitHub renders them.
+gfm-comments is a devDependency. pkgroll bundles devDependencies into `dist/`, so the published package has no runtime dependency on it. gfm-comments' own tests cover the rendering rules; most of them came from this repository's `tests/specs/markdown.ts` at `96765d2`. comment-mark keeps only tests of its own contract:
+
+- [tests/specs/markdown.ts](../../tests/specs/markdown.ts): comments that end at a parse error, and empty comments, never open or close markers.
+- [tests/specs/scaling.ts](../../tests/specs/scaling.ts): unmatched closers do not make marker pairing quadratic.
+- [tests/specs/reference-parser.ts](../../tests/specs/reference-parser.ts): the micromark differential check.
+- [tests/specs/padding.ts](../../tests/specs/padding.ts) and [tests/specs/containers.ts](../../tests/specs/containers.ts): `startsLine` and `continuation` reach the output layout.
 
 ## Behavior changes from the previous scanner
 
-These changes came with the cmark-gfm-based scanner, before it moved to gfm-comments. Each was checked against the [GitHub oracle](https://github.com/privatenumber/gfm-comments/blob/6c37c80/notes/gfm-comments/github-oracle.md):
-
-- **Markers in indented code are skipped,** with four spaces or a tab, like fenced code.
-- **Escaped text, link reference definitions, and code spans that wrap lines or sit in table cells** are skipped.
-- **A comment that begins a later line of an HTML block starts its line at any indentation,** because the whole line is raw HTML. On the scanner's [corpus](https://github.com/privatenumber/gfm-comments/blob/6c37c80/notes/gfm-comments/comment-scanning.md#corpus-and-performance), 20 of 5,141 files differ only in this flag, such as READMEs with a tab-indented `<!-- prettier-ignore-start -->` inside `<p align="center">`.
-- **Comments in link and image destinations and titles, and in image alt text, are skipped,** for inline links and for references to a definition anywhere in the document. `[x](<!-- a -->)` renders as a link to `!--%20a%20--`, and `![<!-- a -->x](u)` renders the comment as alt text. The previous scanner reported both.
-- **A label of only `\v` or `\f` is a definition.** cmark-gfm tests a label's blankness with `cmark_isspace`, which excludes `\v` and `\f`, so `[\v]: <!-- a -->` renders nothing and its comment is skipped. The previous scanner treated the label as blank and reported the comment.
-- **A marker on a lazy blockquote or list line gets the container prefix.** `commentMark('> text\nmore <!-- a -->old<!-- /a -->', { a: 'x\ny' })` returns `"> text\nmore <!-- a -->x\n> y<!-- /a -->"`.
+The cmark-gfm-based scanner changed which comments render and which start their line, before it moved to gfm-comments. See [design: three phases](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/comment-scanning.md#design-three-phases), [link, image, and cell markup](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/comment-scanning.md#link-image-and-cell-markup), and [corpus and performance](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/comment-scanning.md#corpus-and-performance). One change is in comment-mark's output: a marker on a lazy blockquote or list line gets the container prefix. `commentMark('> text\nmore <!-- a -->old<!-- /a -->', { a: 'x\ny' })` returns `"> text\nmore <!-- a -->x\n> y<!-- /a -->"`.
 
 ## Parser alternatives
 
@@ -58,52 +56,4 @@ The observed tokens included these fields, with no position fields on the printe
 
 ## Historical evaluation from PR #13
 
-These measurements were taken while [PR #13](https://github.com/privatenumber/comment-mark/pull/13) was developed, on an Apple M2 Max with Node 24.14.1 using `mitata`. They are historical means, not measurements of the current scanner, and they are recorded only here: the PR's description and benchmark table do not include them. The original experimental inputs and harness are not available in this repository, so the figures cannot be independently reproduced from these tables alone. The [current benchmark suite](../../bench/) provides a starting point for a new comparison, not the original harness.
-
-The evaluation compared a lazy comment regex, an `indexOf` scanner, `html-comment-regex@1.1.2`, and `parse5@8.0.1`'s tokenizer. `htmlparser2@12.0.0` was also considered for its low-level tokenizer, but no comparable measurement was recorded. `htmljs-parser@5.15.0` was reported to miss fixed comment cases, and `strip-comments@2.0.1` was excluded on complexity grounds without a performance measurement. The original fixed inputs and source audit are unavailable, so these reports are not independent proof of those alternatives' current behavior.
-
-### Comment scanners on valid documents
-
-| Input | Lazy regex | `indexOf` scan | `html-comment-regex` | `parse5` tokenizer |
-| --- | ---: | ---: | ---: | ---: |
-| Prose only, 1.1 MB | 152.9 µs | 25.8 µs | 152.7 µs | 45.1 ms |
-| Few markers, 750 KB | 83.4 µs | 14.0 µs | 82.8 µs | 23.1 ms |
-| Many markers, 580 KB | 958.8 µs | 913.2 µs | 849.4 µs | 21.3 ms |
-| Many comments, 280 KB | 943.4 µs | 825.8 µs | 848.1 µs | 10.4 ms |
-
-The recorded `parse5` measurements do not establish the performance of `htmlparser2` or a Markdown parser. Both HTML tokenizers impose a different parsing model from the marker scanner, so compare semantics as well as speed before changing the implementation.
-
-### Malformed comment scaling
-
-The input repeated an unterminated marker opener. The measured regex time grew approximately fourfold per doubling, while the `indexOf` candidate grew approximately twofold for these inputs.
-
-| Openers | Lazy regex | `indexOf` scan |
-| ---: | ---: | ---: |
-| 2,000 | 8.03 ms | 108 µs |
-| 4,000 | 31.9 ms | 215 µs |
-| 8,000 | 127 ms | 432 µs |
-| 16,000 | 510 ms | 872 µs |
-
-### Attribute parser comparison
-
-| Input | Regex | Character scanner |
-| --- | ---: | ---: |
-| Single `id` | 264 ns | 590 ns |
-| Three attributes | 425 ns | 635 ns |
-| 2,000 attributes | 345 µs | 575 µs |
-| One 200 KB quoted value | 62.1 µs | 4.7 µs |
-
-The character scanner cost more for short metadata in this experiment but handled the long quoted value faster. An additional malformed bare-token comparison was reported as 651 µs to 40.7 ms for regex and 10.7 µs to 39.4 µs for the scanner; the input sizes for those endpoints were not recorded, so the result cannot establish a scaling rate.
-
-### Earlier implementation versus the PR #13 final scanner
-
-| Input | Earlier regex implementation | PR #13 scanner |
-| --- | ---: | ---: |
-| Prose only, 1.1 MB | 2.45 ms | 25.6 µs |
-| Few markers, 750 KB | 1.31 ms | 55.6 µs |
-| Many markers, 580 KB | 8.57 ms | 6.29 ms |
-| README-like with fences, 200 KB | 3.23 ms | 1.20 ms |
-| Unterminated, 16,000 openers | 510 ms | 449 µs |
-| Bare attribute token, 8,000 characters | 40.7 ms | 29.2 µs |
-
-These cases favored the final scanner in that experiment. The implementation has since changed, so neither the numbers nor the earlier optimization strategy should be assumed to describe today's code.
+The scanner benchmarks from [PR #13](https://github.com/privatenumber/comment-mark/pull/13) moved with the scanner. See [historical evaluation from PR #13](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/comment-scanning.md#historical-evaluation-from-pr-13) in gfm-comments.

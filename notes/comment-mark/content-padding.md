@@ -24,13 +24,7 @@ The position matters because of how CommonMark parses comments ([CommonMark 0.31
 - **A comment that starts a line opens an HTML block.** After container prefixes and at most three spaces of indentation, a line that starts with `<!--` opens a type 2 HTML block. The block ends on the first line that contains `-->`, and that whole line is raw HTML. Markdown on that line is not parsed, so `<!-- a -->**Jane**<!-- /a -->` on its own line shows the literal text `**Jane**`. The content must start on the next line, and the closing comment must not share the content's last line, or a closing fence such as ```` ```<!-- /a --> ```` stops being a closing fence.
 - **A comment inside a line is inline HTML.** In `Written by <!-- a --><!-- /a -->.`, the comment renders as nothing, so content inserted as written renders as if the markers were absent. A line break there would split the sentence or the heading.
 
-"Starts its line" means the comment begins a line of an HTML block. The scanner in gfm-comments decides that in its block phase, so the layout and the scanner agree on what an HTML block is ([comment scanning](./comment-scanning.md)):
-
-- A comment that opens an HTML block has at most three columns of indentation after container prefixes, with tabs expanded. Four or more columns at the top level are indented code, where markers are skipped, and in a paragraph they continue the paragraph, so `Before\n    <!-- a -->` stays inline.
-- A comment that begins a later line of an open HTML block, such as the lines after `<div>`, starts its line at any indentation, because the whole line is raw HTML.
-- A line that starts with a comment is raw HTML as a whole, so every marker on it starts its line, including adjacent pairs such as `<!-- a -->x<!-- /a --><!-- b -->y<!-- /b -->` and markers after an ordinary comment.
-- On the line where a multiline comment closes, later markers inherit that comment's block context: `<!-- note\n--> <!-- a -->` starts its line.
-- A leading byte order mark is not text. Markdown parsers drop it, so `﻿<!-- a -->` starts its line.
+"Starts its line" means the comment begins a line of an HTML block. The scanner in gfm-comments decides that in its block phase, so the layout and the scanner agree on what an HTML block is ([comment scanning](./comment-scanning.md)). The rules are in [where a comment starts its line](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/comment-scanning.md#where-a-comment-starts-its-line).
 
 ## Evidence: the render matrix
 
