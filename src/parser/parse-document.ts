@@ -116,6 +116,12 @@ export const parseDocument = (source: string): MarkerNode[] => {
 	for (const {
 		start, contentStart, contentEnd, continuation, startsLine,
 	} of findComments(source)) {
+		// A marker is a comment closed by `-->`. GitHub also renders comments that
+		// end at a parse error, such as an unclosed `<!-- /a` that hides the rest
+		// of the page, but those are not markers.
+		if (!source.startsWith(closeDelimiter, contentEnd)) {
+			continue;
+		}
 		const kind = classifyComment(source, contentStart, contentEnd);
 
 		if (kind.type === 'closer') {

@@ -298,6 +298,16 @@ describe('block comments', () => {
 	});
 });
 
+describe('comments that end at a parse error', () => {
+	test('do not open or close markers', () => {
+		// GitHub renders these as comments, but a marker needs `-->`. The
+		// unclosed `<!-- /a` hides the rest of the page.
+		expect(getCommentMarkAll('<!-- a -->old\n\n<!-- /a')).toStrictEqual([]);
+		expect(getCommentMarkAll('<!-- a --!>old<!-- /a -->')).toStrictEqual([]);
+		expect(getCommentMarkAll('<!-- a -->old<!-- /a --!>')).toStrictEqual([]);
+	});
+});
+
 describe('empty comments', () => {
 	test('an empty comment does not hide the next marker', () => {
 		// `<!-->` and `<!--->` are complete comments, so they do not run to the
