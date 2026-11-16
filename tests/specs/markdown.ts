@@ -305,6 +305,9 @@ describe('comments that end at a parse error', () => {
 		expect(getCommentMarkAll('<!-- a -->old\n\n<!-- /a')).toStrictEqual([]);
 		expect(getCommentMarkAll('<!-- a --!>old<!-- /a -->')).toStrictEqual([]);
 		expect(getCommentMarkAll('<!-- a -->old<!-- /a --!>')).toStrictEqual([]);
+		// The unclosed comment ends with its footnote definition, and GitHub
+		// shows the `-->` that starts the next paragraph as text
+		expect(getCommentMarkAll('text[^1]\n\n[^1]: <!-- a\n\n--> b <!-- /a -->\n')).toStrictEqual([]);
 	});
 });
 
