@@ -4,7 +4,7 @@ comment-mark finds markers among the HTML comments that GitHub renders, which it
 
 ## Decision: find comments with gfm-comments
 
-**Decision (2026-11-16): move the scanner to gfm-comments.** The scanner was developed here in `src/parser/scan-comments/` and moved unchanged from `96765d2`. This reverses the 2026-11-13 decision to keep it in comment-mark until a second consumer needed it: [mdeval](https://github.com/privatenumber/mdeval) needs the same comment positions to find its own markers.
+**Decision (2026-11-16): move the scanner to gfm-comments.** The scanner was developed here in `src/parser/scan-comments/` and moved unchanged from `96765d2`. gfm-comments has since changed how it reads footnotes and link, image, and table cell markup, to follow GitHub more closely, so comment-mark's detection in those contexts now follows gfm-comments, not the moved snapshot. This reverses the 2026-11-13 decision to keep it in comment-mark until a second consumer needed it: [mdeval](https://github.com/privatenumber/mdeval) needs the same comment positions to find its own markers.
 
 comment-mark uses three parts of each comment that `findComments` returns:
 

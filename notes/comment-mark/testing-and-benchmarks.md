@@ -10,7 +10,7 @@ The split exposed three test-quality issues. A claimed CRLF-preservation test di
 
 ## Scaling checks
 
-[tests/specs/scaling.ts](../../tests/specs/scaling.ts) builds adversarial fixtures before timing, checks exact parsed results, and places elapsed-time budgets on the backtick and unmatched-closer cases. These finite, machine-dependent thresholds catch large regressions; a passing time at one input size does not prove linear complexity. Synchronous CPU work also cannot be preempted by a JavaScript test timeout while it blocks the event loop. The scanner's backtick history and its evidence belong in [gfm-comments](https://github.com/privatenumber/gfm-comments/blob/6c37c80/notes/gfm-comments/comment-scanning.md).
+[tests/specs/scaling.ts](../../tests/specs/scaling.ts) builds adversarial fixtures before timing, checks exact parsed results, and places an elapsed-time budget on unmatched closers, which tests comment-mark's marker pairing. The scanner's own scaling tests, including backtick runs, are in gfm-comments. These finite, machine-dependent thresholds catch large regressions; a passing time at one input size does not prove linear complexity. Synchronous CPU work also cannot be preempted by a JavaScript test timeout while it blocks the event loop. The scanner's backtick history and its evidence belong in [gfm-comments](https://github.com/privatenumber/gfm-comments/blob/6c37c80/notes/gfm-comments/comment-scanning.md).
 
 ## Benchmark interpretation
 
