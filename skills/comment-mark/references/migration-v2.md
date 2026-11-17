@@ -43,12 +43,12 @@ v3 ships as an ES module only. `import` loads it directly. On Node.js 22.12 or n
 | Change | Consequence |
 | --- | --- |
 | Markers in fenced code and inline code are ignored | A v2 marker shown as a documentation example no longer updates. This is the fix that stops examples from being treated as real markers |
-| Only a matched comment pair is a marker | An unclosed `<!-- name -->` is left alone instead of throwing, and `<!-- TODO -->` stays ordinary text unless a matching `<!-- /TODO -->` follows. A marker pair nested inside another aborts parsing with `Nested marker ... is not supported` |
+| Only a matched comment pair is a marker | An unclosed `<!-- name -->` is left alone instead of throwing, and `<!-- TODO -->` stays ordinary text unless a matching `<!-- /TODO -->` follows. Only the outermost pair is a marker; a pair nested inside another stays part of the outer marker's content |
 | Markers are selected, not looked up by name | `commentMark` keys are selectors. A tag name selects on its own, and attribute predicates narrow it: `contributors[role='maintainer']` |
 | A static value replaces the first match | v2 updated every marker with a matching name. A function value runs for every match, and an array updates matches by position |
 | Attribute values have a grammar | v2 marker names were free-form text. Attributes must be separated by whitespace, and `id="a"file="b"` throws `Expected whitespace between attributes` |
 | Attributes can be updated | New capability: return `{ attributes }` from a function value to rewrite a marker's attributes |
-| Updates validate the whole document | A malformed or nested marker anywhere aborts the update, even when it is unrelated to the requested selectors |
+| Updates validate the whole document | A malformed marker anywhere aborts the update, even when it is unrelated to the requested selectors |
 
 ## Rewriting a tree
 

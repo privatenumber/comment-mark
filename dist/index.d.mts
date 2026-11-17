@@ -1,16 +1,4 @@
-type CommentMarkData = {
-    tagName: string;
-    attributes: Record<string, string>;
-    content: string;
-};
-type CommentMarkUpdate = {
-    attributes?: Record<string, string> | undefined;
-    content?: string | undefined;
-};
-type CommentMarkResolverResult = string | CommentMarkUpdate | null | undefined;
-type CommentMarkResolver = (marker: CommentMarkData, index: number) => CommentMarkResolverResult | Promise<CommentMarkResolverResult>;
-type CommentMarkStatic = string | CommentMarkUpdate | null | undefined;
-type CommentMarkReplacement = CommentMarkResolver | CommentMarkStatic | readonly CommentMarkStatic[];
+import { C as CommentMarkReplacement, a as CommentMarkData } from './document-Cfq1QhnK.mjs';
 
 /**
  * Replaces marked sections in `input` and returns the updated source.
@@ -30,5 +18,4 @@ declare const getCommentMark: (input: string | Buffer, selector: string) => Comm
  */
 declare const getCommentMarkAll: (input: string | Buffer, selector?: string) => CommentMarkData[];
 
-export { commentMark, getCommentMark, getCommentMarkAll };
-export type { CommentMarkData };
+export { CommentMarkData, CommentMarkReplacement, commentMark, getCommentMark, getCommentMarkAll };

@@ -41,10 +41,10 @@ npx comment-mark README.md --item="pear" --item.kind="fruit"
 - Selectors resolve against the document as read, so the outcome does not depend on flag order or on which marker an earlier flag changed.
 - Use `--selector=value`, not `--selector value`. Quote values with spaces or newlines, and quote the whole flag when the selector contains brackets.
 - The first `=` outside brackets and quotes separates the flag from its value, so `--"item[kind='fruit']"=pear` passes the selector `item[kind='fruit']`.
-- `--selector=` clears a section. Multiline values get a newline before and after.
+- `--selector=` clears a section. Markers on a comment-started line put nonempty content on its own lines; markers on a line starting with text insert it as written.
 - `--<selector>.<attribute>=<value>` sets one attribute and keeps the others and the content. `--selector.attribute=` sets an empty value.
 - The first `.` outside brackets and quotes separates the attribute from the selector, so a predicate value can contain one: `--"item[file='package.json'].kind"=metadata`.
-- Flags with identical selector text form one update: `--item=pear` and `--item.kind="fruit"` are reported together as `item`. Two different selectors that target the same marker conflict and abort before writing. An attribute update claims every marker its selector matches, so it also conflicts with a selector that matches one of the others.
+- Flags with identical selector text form one update: `--item=pear` and `--item.kind="fruit"` are reported together as `item`. Two different selectors that target the same marker conflict and abort before writing.
 - Each field can be set once per invocation. Repeated flags, valueless flags, invalid attribute names or values, and extra positional arguments are rejected before writing.
 - Bare `--help`, `-h`, and `--version` work without a file. Markers named `help` or `version` remain settable with `--help=<value>` or `--version=<value>`, or attribute-settable with `--help.<attribute>=<value>`.
 
@@ -70,4 +70,4 @@ Each entry is `{ tagName, attributes, content }`. Read mode prints `[]` when the
 
 ## Validation
 
-Update mode parses and validates the whole document before writing. A malformed or nested marker aborts the run without partial edits. A comment with no matching closing comment is not a marker, so it is left alone and reported as `Missing` when a selector targets it.
+Update mode parses and validates the whole document before writing. A malformed marker aborts the run without partial edits. A comment with no matching closing comment is not a marker, so it is left alone and reported as `Missing` when a selector targets it.

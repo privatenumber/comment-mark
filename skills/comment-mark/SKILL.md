@@ -1,6 +1,6 @@
 ---
 name: comment-mark
-description: Editing, updating, or reading comment-mark sections in Markdown or HTML, including the `comment-mark` CLI, the `commentMark` / `getCommentMark` API, selectors, or migrating v2 `<!-- name:start -->` markers.
+description: Editing, updating, or reading comment-mark sections in Markdown or HTML, including the `comment-mark` CLI, the `commentMark` / `getCommentMark` API, selectors, filling sections from other files with the files plugin, or migrating v2 `<!-- name:start -->` markers.
 ---
 
 # comment-mark
@@ -17,7 +17,7 @@ This skill covers comment-mark's marker syntax, selectors, JavaScript API, and C
 - The pair is what makes it a marker: `<!-- TODO -->` stays an ordinary comment until a matching `<!-- /TODO -->` follows.
 - Whitespace inside the comments is padding, so `<!-- contributors -->` and `<!--contributors-->` are equivalent.
 - An update replaces the content between the comments; the opening comment's attributes can also change. The tag name and the closing comment stay as written, so later updates still find the section.
-- A marker pair cannot sit inside another marker pair. Nesting aborts parsing.
+- Only the outermost pair is a marker. A balanced pair nested inside another pair stays part of the outer marker's content.
 - Tag names and attribute names are case-sensitive and matched verbatim.
 
 ## Selectors
@@ -50,11 +50,32 @@ Marker data is a plain object: `{ tagName, attributes, content }`.
 - A string replaces the first matching section. An array replaces matches by position in document order, and matches past the end of the array are left alone. An array holds static values only; a function is the selector's value.
 - A `null` or `undefined` entry consumes its position without replacing anything.
 - `commentMark` rejects a static value whose selector matches no marker, an array with more values than matches, a function as an array entry, and two selectors that target the same marker. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
-- A bare multiline string value gets a newline added on each side.
-- A function value runs for every match, in document order. It receives the marker (`{ tagName, attributes, content }`) and its zero-based position among the selector's matches, and its string result is inserted verbatim, with no added newline. The function may be async; its promise is awaited before the next resolver runs. Returning `null`/`undefined` preserves the section.
-- An object value (`{ attributes?, content? }`) replaces the parts it sets and preserves the parts it omits, whether passed directly or returned from a function. `attributes` is the marker's complete attribute set, including `id`, so an attribute left out is removed; a function can spread `marker.attributes` to keep the rest. An object's `content` is inserted verbatim.
+- Markers on a line that starts an HTML comment block after container prefixes and up to three indentation columns put nonempty content on its own lines. Other markers get no added boundary line breaks; list and blockquote continuation prefixes are still written after content line breaks. Added breaks use the first line ending outside every marker's opening comment and content (CRLF, LF, or CR), or LF when there is none. The same rule applies to HTML; added breaks may be visible inside `<pre>`.
+- Updates that would change marker boundaries, line context, or container continuation are rejected, such as an unclosed fence hiding a closing comment.
+- Content in a list item or blockquote stays in that container. Reading the content removes its container prefixes.
+- A function value runs for every match, in document order. It receives the marker (`{ tagName, attributes, content }`) and its zero-based position among the selector's matches, and its string result is inserted like any other content. The function may be async; its promise is awaited before the next resolver runs. Returning `null`/`undefined` preserves the section.
+- An object value (`{ attributes?, content? }`) replaces the parts it sets and preserves the parts it omits, whether passed directly or returned from a function. `attributes` is the marker's complete attribute set, including `id`, so an attribute left out is removed; a function can spread `marker.attributes` to keep the rest. An object's `content` is inserted like any other content.
 - In an object value, an omitted or `undefined` field preserves that part, `content: ''` clears the content, and `attributes: {}` removes every attribute. Attribute values must be strings.
 - Setting an attribute rewrites only its value, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses the original quoting when it fits and is re-quoted otherwise. Removing one drops the attribute and the whitespace written before it.
+
+## Files plugin
+
+`comment-mark/plugins/files` fills markers with the contents of other files. It returns replacements, so pass them to `commentMark`:
+
+```js
+import { commentMark } from 'comment-mark'
+import { files } from 'comment-mark/plugins/files'
+
+await commentMark(markdown, files({ baseDirectory: import.meta.dirname }))
+```
+
+Each `file` marker names a file in its `path` attribute: `<!-- file path="./LICENSE" --><!-- /file -->`.
+
+- `baseDirectory` is required and resolves every `path`; an absolute `path` is used as written.
+- `tagName` changes the marker tag name from the default `file`.
+- The file is read as UTF-8 and inserted with the same marker-position layout as any other content. A balanced marker written inside an included file stays part of the section's content.
+- A marker without a `path` attribute, or a file that cannot be read, rejects the call.
+- It composes with other replacements: `{ ...files({ baseDirectory }), version: '2.0.0' }`.
 
 ## CLI
 
@@ -76,14 +97,17 @@ npx comment-mark <file> [--<selector>=<value>...] [--<selector>.<attribute>=<val
 | A selector contains `=` | Quote the whole CLI flag; the first `=` outside brackets and quotes separates the flag from its value |
 | An attribute predicate value contains `.` | The first `.` outside brackets and quotes separates the attribute; a dot inside the predicate stays with the selector |
 | Marker missing during update | A static API value rejects with `Selector "<selector>" matched no markers`; a function is a no-op. The CLI prints `Missing` and exits `1` |
-| Value is multiline | A static string gets surrounding newlines; object content and function return values are inserted verbatim |
+| Content needs its own lines | Place its opening marker at the start of a line; place it inside a line to insert content as written |
 | Need every marker, in document order, with attributes | Use `getCommentMarkAll` or CLI read mode |
+| A section must copy another file's contents | Use the files plugin; it fills `file` markers from their `path` attribute |
 | A comment must stay ordinary | Leave it unpaired; only a matched opening and closing pair is a marker |
+| A marker sits inside another marker | Only the outermost pair is a marker; the inner pair is part of the outer marker's content and no selector matches it |
 | v2 `<!-- name:start -->` markers | Read `references/migration-v2.md` |
 
-Code regions: fenced code blocks (backtick or tilde, including `>` blockquote prefixes) and single-line inline code are ignored, so documentation examples stay literal. Indented code blocks and code spans that wrap across lines are not detected. Put active markers in prose; put literal examples inside fenced or single-line inline code.
+Code regions: fenced code blocks (backtick or tilde, including `>` blockquote prefixes) and single-line inline code are ignored, so documentation examples stay literal. Indented code blocks and code spans that wrap across lines are not detected. A marker inside indented code cannot render as if absent. Put active markers in prose; put literal examples inside fenced or single-line inline code.
 
 ## Resources
 
 - Read `references/migration-v2.md` when migrating v2 `<!-- name:start -->` / `<!-- name:end -->` markers to v3.
 - Read `references/cli.md` when scripting the CLI or depending on its output and exit codes.
+- Use `comment-mark/plugins/files` when a section's content comes from another file.

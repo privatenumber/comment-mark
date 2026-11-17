@@ -1,1 +1,1 @@
-export { c as commentMark, a as getCommentMark, g as getCommentMarkAll } from './index-BsP2XUGH.mjs';
+export { a as commentMark, b as getCommentMark, g as getCommentMarkAll } from './index-CIXS2ZE-.mjs';
