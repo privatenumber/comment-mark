@@ -10,7 +10,7 @@ The marker's position decides how replacement content is laid out. If the openin
 Written by <!-- author -->Jane<!-- /author -->.
 ```
 
-- Rule: `setContent` in [`src/document.ts`](../../src/document.ts) reads the `startsLine` flag that the scanner records for each marker in [`src/parser/scan-comments/index.ts`](../../src/parser/scan-comments/index.ts).
+- Rule: `setContent` in [`src/document.ts`](../../src/document.ts) reads the `onCommentLine` flag that [gfm-comments](https://github.com/privatenumber/gfm-comments/blob/develop/src/index.ts) reports for each marker's opening comment.
 - Contract: [`tests/specs/padding.ts`](../../tests/specs/padding.ts), and the rejection tests in [`tests/specs/replacement.ts`](../../tests/specs/replacement.ts).
 - Shipped in [#43](https://github.com/privatenumber/comment-mark/pull/43) with a `BREAKING CHANGE:` footer. It replaces the content-based rule of [#33](https://github.com/privatenumber/comment-mark/pull/33); see [rejected alternatives](#rejected-alternatives).
 - Checked against the #43 head `5140694` on 2026-11-11. The "starts its line" rules and the limits were rechecked on branch `refactor/two-phase-scanner` on 2026-11-13.
@@ -24,13 +24,7 @@ The position matters because of how CommonMark parses comments ([CommonMark 0.31
 - **A comment that starts a line opens an HTML block.** After container prefixes and at most three spaces of indentation, a line that starts with `<!--` opens a type 2 HTML block. The block ends on the first line that contains `-->`, and that whole line is raw HTML. Markdown on that line is not parsed, so `<!-- a -->**Jane**<!-- /a -->` on its own line shows the literal text `**Jane**`. The content must start on the next line, and the closing comment must not share the content's last line, or a closing fence such as ```` ```<!-- /a --> ```` stops being a closing fence.
 - **A comment inside a line is inline HTML.** In `Written by <!-- a --><!-- /a -->.`, the comment renders as nothing, so content inserted as written renders as if the markers were absent. A line break there would split the sentence or the heading.
 
-"Starts its line" means the comment begins a line of an HTML block. The scanner's block phase decides that, so the layout and the scanner agree on what an HTML block is ([comment scanning](./comment-scanning.md)):
-
-- A comment that opens an HTML block has at most three columns of indentation after container prefixes, with tabs expanded. Four or more columns at the top level are indented code, where markers are skipped, and in a paragraph they continue the paragraph, so `Before\n    <!-- a -->` stays inline.
-- A comment that begins a later line of an open HTML block, such as the lines after `<div>`, starts its line at any indentation, because the whole line is raw HTML.
-- A line that starts with a comment is raw HTML as a whole, so every marker on it starts its line, including adjacent pairs such as `<!-- a -->x<!-- /a --><!-- b -->y<!-- /b -->` and markers after an ordinary comment.
-- On the line where a multiline comment closes, later markers inherit that comment's block context: `<!-- note\n--> <!-- a -->` starts its line.
-- A leading byte order mark is not text. Markdown parsers drop it, so `﻿<!-- a -->` starts its line.
+"Starts its line" means the comment begins a line of an HTML block. The scanner in gfm-comments decides that in its block phase, so the layout and the scanner agree on what an HTML block is ([comment scanning](./comment-scanning.md)). The rules are in [where a comment starts its line](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/html-tokenizer.md#where-a-comment-starts-its-line).
 
 ## Evidence: the render matrix
 
@@ -166,12 +160,12 @@ Prettier's [range ignore](https://github.com/prettier/prettier/blob/b09dd90022c8
 
 ## Structure validation
 
-An update may change markers' content and attributes. It must never change the document's marker structure. Since #43, `commentMark` parses its output again whenever the output differs from the input. It rejects the update with `[comment-mark] Replacement for "<selector>" would change the document's markers` if any marker differs in tag name, opening or closing position, `startsLine`, or container continuation. The error names every selector whose section changed. The CLI writes nothing on rejection. Source: `commentMark` in [`src/index.ts`](../../src/index.ts).
+An update may change markers' content and attributes. It must never change the document's marker structure. Since #43, `commentMark` parses its output again whenever the output differs from the input. It rejects the update with `[comment-mark] Replacement for "<selector>" would change the document's markers` if any marker differs in tag name, opening or closing position, `onCommentLine`, or `nextLinePrefix`. The error names every selector whose section changed. The CLI writes nothing on rejection. Source: `commentMark` in [`src/index.ts`](../../src/index.ts).
 
 This is the policy the attribute writer already follows: never write something the reader would parse differently. Without it, inserted content could corrupt the document silently:
 
 - `Example: <!-- a --><!-- /a -->` with a fenced block that ends at the end of the content puts the closing comment on the closing fence's line, so the fence never closes. The next run finds no markers, and updates to unrelated markers fail as missing.
-- An unclosed fence, an unmatched same-name opener, or an unfinished `<!-- note` hides or captures a closing comment. See the [scanner gaps](./comment-scanning.md#known-gaps) and [file inclusion](./file-inclusion.md).
+- An unclosed fence, an unmatched same-name opener, or an unfinished `<!-- note` hides or captures a closing comment. See the [scanner gaps](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/known-gaps.md) and [file inclusion](./file-inclusion.md).
 - An earlier replacement on the same line can change a later marker's line context or its list context, which would change that marker's layout on the next run.
 
 Rejected: validating only when the content contains a character that can affect the scanner (`<`, a backtick, or `~`). This counterexample has none of them:
@@ -292,7 +286,7 @@ for (const count of [380, 3800]) {
 - **Markers on a line right after a paragraph line** interrupt the paragraph. No layout rule avoids this; see [the matrix](#evidence-the-render-matrix).
 - **Inline content that ends with a line break,** mid-sentence or in a table cell, cannot render as if the markers were absent; in a heading it does. Inline content that ends with a closing fence is rejected by validation.
 - **HTML `<pre>`** shows the added line breaks.
-- **Scanner gaps that validation shares.** Validation re-runs the same scanner, so it accepts what the scanner misreads. The cmark-gfm-faithful scanner closed the three gaps recorded at #43; the remaining scanner gaps are listed in [comment scanning](./comment-scanning.md#known-gaps). The three were:
+- **Scanner gaps that validation shares.** Validation re-runs the same scanner, so it accepts what the scanner misreads. The cmark-gfm-faithful scanner closed the three gaps recorded at #43; the remaining scanner gaps are listed in [gfm-comments](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/known-gaps.md). The three were:
 
   - **A multiline attribute value inside a list** was written without the list indentation, which ends the list in GFM. The scanner now follows containers while a comment is open, so validation rejects the update.
   - **A marker on a lazy continuation line** of a blockquote or list got no container prefix, so a heading in the content rendered outside the blockquote. It now gets the prefix.

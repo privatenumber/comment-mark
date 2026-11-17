@@ -80,70 +80,70 @@ describe('marker position layout', () => {
 			before: '',
 			after: '',
 			lineStart: true,
-			continuation: '',
+			nextLinePrefix: '',
 		},
 		{
 			name: 'after blank line',
 			before: 'intro\n\n',
 			after: '',
 			lineStart: true,
-			continuation: '',
+			nextLinePrefix: '',
 		},
 		{
 			name: 'blockquote',
 			before: '> ',
 			after: '',
 			lineStart: true,
-			continuation: '> ',
+			nextLinePrefix: '> ',
 		},
 		{
 			name: 'list item',
 			before: '- ',
 			after: '',
 			lineStart: true,
-			continuation: '  ',
+			nextLinePrefix: '  ',
 		},
 		{
 			name: 'one space',
 			before: ' ',
 			after: '',
 			lineStart: true,
-			continuation: '',
+			nextLinePrefix: '',
 		},
 		{
 			name: 'two spaces',
 			before: '  ',
 			after: '',
 			lineStart: true,
-			continuation: '',
+			nextLinePrefix: '',
 		},
 		{
 			name: 'three spaces',
 			before: '   ',
 			after: '',
 			lineStart: true,
-			continuation: '',
+			nextLinePrefix: '',
 		},
 		{
 			name: 'sentence',
 			before: 'Version: ',
 			after: '.',
 			lineStart: false,
-			continuation: '',
+			nextLinePrefix: '',
 		},
 		{
 			name: 'heading',
 			before: '# ',
 			after: '',
 			lineStart: false,
-			continuation: '',
+			nextLinePrefix: '',
 		},
 		{
 			name: 'table cell',
 			before: '| ',
 			after: ' |',
 			lineStart: false,
-			continuation: '',
+			nextLinePrefix: '',
 		},
 	];
 
@@ -158,7 +158,7 @@ describe('marker position layout', () => {
 				const padded = position.lineStart && content
 					? `\n${content}${content.endsWith('\n') ? '' : '\n'}`
 					: content;
-				const written = padded.replaceAll('\n', `\n${position.continuation}`);
+				const written = padded.replaceAll('\n', `\n${position.nextLinePrefix}`);
 				expect(await commentMark(input, { a: content })).toBe(
 					`${position.before}${createMarker('a', written)}${position.after}`,
 				);

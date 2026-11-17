@@ -9,6 +9,7 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - type-flag
   - cleye
+  - gfm-comments@1.0.0
 permissions:
   clean-pkg-json:
     skills: true
