@@ -67,7 +67,7 @@
 		"@types/node": "^24.13.3",
 		"clean-pkg-json": "^2.0.0",
 		"fs-fixture": "^2.16.0",
-		"gfm-comments": "github:privatenumber/comment-mark#npm/gfm-comments",
+		"gfm-comments": "^1.0.0",
 		"lintroll": "^1.32.1",
 		"manten": "^2.0.2",
 		"md-pen": "^1.2.0",
