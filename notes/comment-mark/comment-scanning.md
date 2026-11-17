@@ -9,15 +9,15 @@ comment-mark finds markers among the HTML comments that GitHub renders, which it
 comment-mark uses three parts of each comment that `findComments` returns:
 
 - **Offsets.** [parse-document.ts](../../src/parser/parse-document.ts) classifies each comment as an opener, a closer, or other, and pairs the markers. `findComments` returns every comment GitHub renders, in document order, including comments that end at a parse error. comment-mark keeps only comments whose closer, read from `contentEnd` through `end`, is `-->`.
-- **`startsLine`.** It decides the [content layout](./content-padding.md). comment-mark cannot derive it from the comments it keeps. An empty `<!-->` is returned with the closer `>` and `startsLine: true`, so comment-mark drops it, but it still makes the next comment on its line start that line. The same `>` or `-` can also be a container marker on one line and HTML block text on another.
-- **`continuation`.** The container prefix, such as `> `, that a replacement writes on each new line.
+- **`onCommentLine`.** It decides the [content layout](./content-padding.md). comment-mark cannot derive it from the comments it keeps. An empty `<!-->` is returned with the closer `>` and `onCommentLine: true`, so comment-mark drops it, but it still puts the next comment on its line on a comment line. The same `>` or `-` can also be a container marker on one line and HTML block text on another.
+- **`nextLinePrefix`.** The container prefix, such as `> `, that a replacement writes on each new line.
 
 gfm-comments is a devDependency. pkgroll bundles devDependencies into `dist/`, so the published package has no runtime dependency on it. gfm-comments' own tests cover the rendering rules; most of them came from this repository's `tests/specs/markdown.ts` at `96765d2`. comment-mark keeps only tests of its own contract:
 
 - [tests/specs/markdown.ts](../../tests/specs/markdown.ts): comments that end at a parse error, and empty comments, never open or close markers.
 - [tests/specs/scaling.ts](../../tests/specs/scaling.ts): unmatched closers do not make marker pairing quadratic.
 - [tests/specs/reference-parser.ts](../../tests/specs/reference-parser.ts): the micromark differential check.
-- [tests/specs/padding.ts](../../tests/specs/padding.ts) and [tests/specs/containers.ts](../../tests/specs/containers.ts): `startsLine` and `continuation` reach the output layout.
+- [tests/specs/padding.ts](../../tests/specs/padding.ts) and [tests/specs/containers.ts](../../tests/specs/containers.ts): `onCommentLine` and `nextLinePrefix` reach the output layout.
 
 ## Behavior changes from the previous scanner
 

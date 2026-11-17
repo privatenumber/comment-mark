@@ -48,8 +48,8 @@ export const commentMark = async (
 		const markers = parseDocument(output);
 		valid = markers.length === document.markers.length && markers.every((marker, index) => (
 			marker.tagName === document.markers[index].node.tagName
-			&& marker.startsLine === document.markers[index].node.startsLine
-			&& marker.continuation === document.markers[index].node.continuation
+			&& marker.onCommentLine === document.markers[index].node.onCommentLine
+			&& marker.nextLinePrefix === document.markers[index].node.nextLinePrefix
 			&& marker.openingStart === boundaries[index][0]
 			&& marker.contentEnd === boundaries[index][1]
 		));

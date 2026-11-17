@@ -68,11 +68,11 @@ const currentContent = (state: MarkerState) => {
 		return state.content;
 	}
 	const content = state.source.slice(state.node.contentStart, state.node.contentEnd);
-	const { continuation } = state.node;
-	if (!continuation) {
+	const { nextLinePrefix } = state.node;
+	if (!nextLinePrefix) {
 		return content;
 	}
-	const trimmed = continuation.trimEnd();
+	const trimmed = nextLinePrefix.trimEnd();
 	let result = '';
 	let start = 0;
 	for (let index = 0; index < content.length; index += 1) {
@@ -84,8 +84,8 @@ const currentContent = (state: MarkerState) => {
 		}
 		result += content.slice(start, index + 1);
 		start = index + 1;
-		if (content.startsWith(continuation, start)) {
-			start += continuation.length;
+		if (content.startsWith(nextLinePrefix, start)) {
+			start += nextLinePrefix.length;
 		} else if (trimmed && content.startsWith(trimmed, start)) {
 			start += trimmed.length;
 		}
@@ -105,7 +105,7 @@ const currentAttributes = (state: MarkerState) => {
 };
 
 const setContent = (state: MarkerState, content: string, getLineEnding: () => string) => {
-	if (state.node.startsLine && content) {
+	if (state.node.onCommentLine && content) {
 		const lineEnding = getLineEnding();
 		const leading = content.startsWith('\n') || content.startsWith('\r') ? '' : lineEnding;
 		const trailing = content.endsWith('\n') || content.endsWith('\r') ? '' : lineEnding;
@@ -209,9 +209,9 @@ export const renderDocument = (document: CommentDocument, boundaries?: Array<[nu
 		output += source.slice(cursor, state.node.openingStart);
 		const openingStart = output.length;
 		output += renderOpeningTag(state);
-		if (state.content !== undefined && state.node.continuation) {
-			const { continuation } = state.node;
-			const trimmed = continuation.trimEnd();
+		if (state.content !== undefined && state.node.nextLinePrefix) {
+			const { nextLinePrefix } = state.node;
+			const trimmed = nextLinePrefix.trimEnd();
 			const { content } = state;
 			let start = 0;
 			for (let index = 0; index < content.length; index += 1) {
@@ -223,7 +223,7 @@ export const renderDocument = (document: CommentDocument, boundaries?: Array<[nu
 				}
 				output += content.slice(start, index + 1);
 				const next = content[index + 1];
-				output += next === '\n' || next === '\r' ? trimmed : continuation;
+				output += next === '\n' || next === '\r' ? trimmed : nextLinePrefix;
 				start = index + 1;
 			}
 			output += content.slice(start);

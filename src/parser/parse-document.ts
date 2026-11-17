@@ -13,8 +13,8 @@ export type MarkerNode = {
 	openingStart: number;
 	contentStart: number;
 	contentEnd: number;
-	continuation: string;
-	startsLine: boolean;
+	nextLinePrefix: string;
+	onCommentLine: boolean;
 	// Where the attributes begin, so a rewrite can insert new ones after the
 	// tag name and drop the whitespace a removed attribute was written with.
 	attributesStart: number;
@@ -80,8 +80,8 @@ type Opener = {
 	kind: Extract<CommentKind, { type: 'opener' }>;
 	openingStart: number;
 	openingEnd: number;
-	continuation: string;
-	startsLine: boolean;
+	nextLinePrefix: string;
+	onCommentLine: boolean;
 	closerStart: number;
 	matched: boolean;
 	// The opener below this one in the open stack, and the nearest earlier
@@ -114,7 +114,7 @@ export const parseDocument = (source: string): MarkerNode[] => {
 	let openTop: Opener | undefined;
 
 	for (const {
-		start, end, contentStart, contentEnd, continuation, startsLine,
+		start, end, contentStart, contentEnd, nextLinePrefix, onCommentLine,
 	} of findComments(source)) {
 		// A marker is a comment closed by `-->`. GitHub also renders comments that
 		// end at a parse error, such as an unclosed `<!-- /a` that hides the rest
@@ -152,8 +152,8 @@ export const parseDocument = (source: string): MarkerNode[] => {
 				kind,
 				openingStart: start,
 				openingEnd: contentEnd,
-				continuation,
-				startsLine,
+				nextLinePrefix,
+				onCommentLine,
 				closerStart: -1,
 				matched: false,
 				previousOpen: openTop,
@@ -190,8 +190,8 @@ export const parseDocument = (source: string): MarkerNode[] => {
 			openingStart: opener.openingStart,
 			contentStart: opener.openingEnd + closeDelimiter.length,
 			contentEnd: opener.closerStart,
-			continuation: opener.continuation,
-			startsLine: opener.startsLine,
+			nextLinePrefix: opener.nextLinePrefix,
+			onCommentLine: opener.onCommentLine,
 			attributesStart: opener.kind.attributesStart,
 		});
 	}

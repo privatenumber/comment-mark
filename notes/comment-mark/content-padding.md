@@ -10,7 +10,7 @@ The marker's position decides how replacement content is laid out. If the openin
 Written by <!-- author -->Jane<!-- /author -->.
 ```
 
-- Rule: `setContent` in [`src/document.ts`](../../src/document.ts) reads the `startsLine` flag that [gfm-comments](https://github.com/privatenumber/gfm-comments/blob/6c37c80/src/index.ts) reports for each marker's opening comment.
+- Rule: `setContent` in [`src/document.ts`](../../src/document.ts) reads the `onCommentLine` flag that [gfm-comments](https://github.com/privatenumber/gfm-comments/blob/6c37c80/src/index.ts) reports for each marker's opening comment.
 - Contract: [`tests/specs/padding.ts`](../../tests/specs/padding.ts), and the rejection tests in [`tests/specs/replacement.ts`](../../tests/specs/replacement.ts).
 - Shipped in [#43](https://github.com/privatenumber/comment-mark/pull/43) with a `BREAKING CHANGE:` footer. It replaces the content-based rule of [#33](https://github.com/privatenumber/comment-mark/pull/33); see [rejected alternatives](#rejected-alternatives).
 - Checked against the #43 head `5140694` on 2026-11-11. The "starts its line" rules and the limits were rechecked on branch `refactor/two-phase-scanner` on 2026-11-13.
@@ -160,7 +160,7 @@ Prettier's [range ignore](https://github.com/prettier/prettier/blob/b09dd90022c8
 
 ## Structure validation
 
-An update may change markers' content and attributes. It must never change the document's marker structure. Since #43, `commentMark` parses its output again whenever the output differs from the input. It rejects the update with `[comment-mark] Replacement for "<selector>" would change the document's markers` if any marker differs in tag name, opening or closing position, `startsLine`, or container continuation. The error names every selector whose section changed. The CLI writes nothing on rejection. Source: `commentMark` in [`src/index.ts`](../../src/index.ts).
+An update may change markers' content and attributes. It must never change the document's marker structure. Since #43, `commentMark` parses its output again whenever the output differs from the input. It rejects the update with `[comment-mark] Replacement for "<selector>" would change the document's markers` if any marker differs in tag name, opening or closing position, `onCommentLine`, or `nextLinePrefix`. The error names every selector whose section changed. The CLI writes nothing on rejection. Source: `commentMark` in [`src/index.ts`](../../src/index.ts).
 
 This is the policy the attribute writer already follows: never write something the reader would parse differently. Without it, inserted content could corrupt the document silently:
 
