@@ -9,7 +9,7 @@ Sources were checked on 2026-11-08 at the versions or commits named in the linke
 comment-mark combines four properties. No inspected tool has all of them:
 
 - **Content between paired markers.** The section is cached between an opening and a closing comment, so the same file is both the template and the output. See [markers and selectors](./markers-and-selectors.md).
-- **Code examples stay literal.** Markers inside fenced and indented code, inline code spans, escaped text, and link reference definitions are ignored, because the scanner finds only the comments GitHub renders. A few rare forms are still misread; see the [known gaps](https://github.com/privatenumber/gfm-comments/blob/6c37c80/notes/gfm-comments/comment-scanning.md#known-gaps).
+- **Code examples stay literal.** Markers inside fenced and indented code, inline code spans, escaped text, and link reference definitions are ignored, because the scanner finds only the comments GitHub renders. A few rare forms are still misread; see the [known gaps](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/known-gaps.md).
 - **Selection by tag name and attributes.** A selector can target one of several markers with the same tag name. See [markers and selectors](./markers-and-selectors.md).
 - **Position-based layout.** A marker that starts its line gets content on its own lines, and a marker inside a line gets content inserted as written, with container prefixes in both cases. Updates that would change the document's markers are rejected. See [content layout](./content-padding.md).
 

@@ -1,6 +1,6 @@
 # Comment scanning
 
-comment-mark finds markers among the HTML comments that GitHub renders, which it gets from [gfm-comments](https://github.com/privatenumber/gfm-comments). gfm-comments ports the parts of GitHub's renderer, [cmark-gfm 0.29.0.gfm.13](https://github.com/github/cmark-gfm/tree/0.29.0.gfm.13), that decide where raw HTML can appear, then reads that HTML as a browser would. Its [scanner notes](https://github.com/privatenumber/gfm-comments/blob/6c37c80/notes/gfm-comments/comment-scanning.md) own the rules, the [known gaps](https://github.com/privatenumber/gfm-comments/blob/6c37c80/notes/gfm-comments/comment-scanning.md#known-gaps), the verification, and the [GitHub oracle](https://github.com/privatenumber/gfm-comments/blob/6c37c80/notes/gfm-comments/github-oracle.md).
+comment-mark finds markers among the HTML comments that GitHub renders, which it gets from [gfm-comments](https://github.com/privatenumber/gfm-comments). gfm-comments ports the parts of GitHub's renderer, [cmark-gfm 0.29.0.gfm.13](https://github.com/github/cmark-gfm/tree/0.29.0.gfm.13), that decide where raw HTML can appear, then reads that HTML as a browser would. Its [scanner notes](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/README.md) own the rules, the [known gaps](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/known-gaps.md), the verification, and the [GitHub oracle](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/github-oracle.md).
 
 ## Decision: find comments with gfm-comments
 
@@ -21,7 +21,7 @@ gfm-comments is a devDependency. pkgroll bundles devDependencies into `dist/`, s
 
 ## Behavior changes from the previous scanner
 
-The cmark-gfm-based scanner changed which comments render and which start their line, before it moved to gfm-comments. See [design: three phases](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/comment-scanning.md#design-three-phases), [link, image, and cell markup](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/comment-scanning.md#link-image-and-cell-markup), and [corpus and performance](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/comment-scanning.md#corpus-and-performance). One change is in comment-mark's output: a marker on a lazy blockquote or list line gets the container prefix. `commentMark('> text\nmore <!-- a -->old<!-- /a -->', { a: 'x\ny' })` returns `"> text\nmore <!-- a -->x\n> y<!-- /a -->"`.
+The cmark-gfm-based scanner changed which comments render and which start their line, before it moved to gfm-comments. See [design: three phases](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/design.md#design-three-phases), [link, image, and cell markup](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/inline-and-links.md#link-image-and-cell-markup), and [corpus and performance](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/linear-time.md#corpus-and-performance). One change is in comment-mark's output: a marker on a lazy blockquote or list line gets the container prefix. `commentMark('> text\nmore <!-- a -->old<!-- /a -->', { a: 'x\ny' })` returns `"> text\nmore <!-- a -->x\n> y<!-- /a -->"`.
 
 ## Parser alternatives
 
@@ -56,4 +56,4 @@ The observed tokens included these fields, with no position fields on the printe
 
 ## Historical evaluation from PR #13
 
-The scanner benchmarks from [PR #13](https://github.com/privatenumber/comment-mark/pull/13) moved with the scanner. See [historical evaluation from PR #13](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/comment-scanning.md#historical-evaluation-from-pr-13) in gfm-comments.
+The scanner benchmarks from [PR #13](https://github.com/privatenumber/comment-mark/pull/13) moved with the scanner. See [scanner history](https://github.com/privatenumber/gfm-comments/blob/develop/notes/gfm-comments/history.md) in gfm-comments.
