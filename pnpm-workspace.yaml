@@ -4,12 +4,12 @@ allowBuilds:
   esbuild: false
   unrs-resolver: false
 
-# type-flag and cleye are in-house packages, so their releases skip the
-# release-age soak. This lets a fix be adopted as soon as it is published.
+# type-flag, cleye, and gfm-comments are in-house packages, so their releases
+# skip the release-age soak. This lets a fix be adopted as soon as it is published.
 minimumReleaseAgeExclude:
   - type-flag
   - cleye
-  - gfm-comments@1.0.0
+  - gfm-comments
 permissions:
   clean-pkg-json:
     skills: true
