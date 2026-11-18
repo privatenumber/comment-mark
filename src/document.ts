@@ -319,15 +319,11 @@ const collectClaims = (
 
 		const resolver = !positional && typeof replacement === 'function';
 
-		// A selector with no matching marker is an error for a static
-		// replacement, so a typo or a stale selector fails loudly instead of
-		// being mistaken for a successful no-op. A resolver runs for every
-		// match, so it has nothing to do when nothing matches.
+		// A selector with no matching marker is an error for static values
+		// and resolvers alike, so a typo or a deleted marker fails loudly
+		// instead of being mistaken for a successful no-op. An empty array is
+		// the explicit way to accept zero matches.
 		if (matches.length === 0) {
-			if (resolver) {
-				continue;
-			}
-
 			throw new Error(`[comment-mark] Selector ${JSON.stringify(selectorText)} matched no markers`);
 		}
 

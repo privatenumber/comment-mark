@@ -70,9 +70,23 @@ describe('files plugin', () => {
 			'hello.txt': 'Hello',
 		});
 
-		const document = '<!-- snippet path="hello.txt" --><!-- /snippet -->';
+		const snippet = '<!-- snippet path="hello.txt" --><!-- /snippet -->';
 
-		expect(await commentMark(document, files({ baseDirectory: fixture.path }))).toBe(document);
+		expect(await commentMark(
+			`<!-- file path="hello.txt" --><!-- /file -->${snippet}`,
+			files({ baseDirectory: fixture.path }),
+		)).toBe(`<!-- file path="hello.txt" -->\nHello\n<!-- /file -->${snippet}`);
+	});
+
+	test('rejects a document with no markers of its tag name', async () => {
+		await using fixture = await createFixture({
+			'hello.txt': 'Hello',
+		});
+
+		await expect(commentMark(
+			'<!-- snippet path="hello.txt" --><!-- /snippet -->',
+			files({ baseDirectory: fixture.path }),
+		)).rejects.toThrow('[comment-mark] Selector "file" matched no markers');
 	});
 
 	test('composes with other replacements', async () => {

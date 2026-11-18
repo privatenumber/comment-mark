@@ -110,7 +110,7 @@ Returns a promise that resolves to the updated content as a string. Buffer input
 - In an object value, an omitted or `undefined` field preserves that part, `content: ''` clears the content, and `attributes: {}` removes every attribute. An attribute value must be a string, so `attributes: { hash: undefined }` is invalid.
 - A function may return an object with the same rules. It receives the marker, so spread `marker.attributes` to keep the ones you do not change.
 - A changed attribute value is written back in place, keeping the whitespace around `=`, the indentation, and the line endings. The value reuses its original quoting when it still fits, and is re-quoted otherwise. A new attribute is appended as `name="value"`.
-- A static value whose selector matches no marker rejects, so a typo or a stale selector is not mistaken for a successful no-op. A function runs for every match, so a selector that matches nothing is a no-op. Pass an empty array to request no change explicitly.
+- A selector that matches no marker rejects, whether its value is static or a function, so a typo or a deleted marker is not mistaken for a successful no-op. Pass an empty array to request no change explicitly, or leave the selector out when the document may not have the marker.
 - Rejects an array with more values than matches, a function as an array entry, and two selectors that target the same marker, rather than dropping values or picking a winner.
 - Ignores markers inside fenced code blocks and inline code spans.
 - A block marker puts nonempty content on its own lines, and an inline marker inserts it as given. See [content layout](./markers.md#content-layout).
@@ -202,4 +202,4 @@ await commentMark(markdown, {
 })
 ```
 
-A marker without a `path` attribute, or a file that cannot be read, rejects the call.
+A marker without a `path` attribute, or a file that cannot be read, rejects the call. A document with no markers of the plugin's `tagName` also rejects, like any selector that matches nothing.

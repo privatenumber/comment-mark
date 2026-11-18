@@ -6,13 +6,26 @@ Project behavior was checked against commit [`d41c4a5`](https://github.com/priva
 
 ## Target claims
 
-The [claim collector](../../src/document.ts#L287-L374) resolves all selectors before invoking any resolver. It rejects a static value whose selector has no match, excess array entries, a function inside an array, or two selectors claiming the same marker. This catches stale selectors and conflicts before a callback can produce side effects. An empty array is an explicit no-op. A missing resolver selector is also a no-op because its callback runs once per match and there are none.
+The [claim collector](../../src/document.ts#L287-L374) resolves all selectors before invoking any resolver. It rejects a static value whose selector has no match, excess array entries, a function inside an array, or two selectors claiming the same marker. This catches stale selectors and conflicts before a callback can produce side effects. A resolver whose selector matches nothing also rejects. An empty array is the only explicit no-op.
 
 - A static string or update object claims the first match.
 - An array contains static values and addresses matches by position. A `null` or `undefined` entry consumes a position without claiming or updating it.
 - A resolver receives the marker data and its zero-based index among that selector's matches. It claims every match, even if it later returns `undefined`. Another selector cannot claim one of those matches.
 
-[PR #21](https://github.com/privatenumber/comment-mark/pull/21) introduced missing-selector errors for static updates. [PR #26](https://github.com/privatenumber/comment-mark/pull/26) changed resolver values to run for every match and made a missing resolver selector a no-op. Its earlier `(attributes, content)` callback signature and first-match resolver behavior are superseded. [PR #27](https://github.com/privatenumber/comment-mark/pull/27) removed functions inside positional arrays: an index check in a selector-level resolver can compute selectively without a second callback form with different claim rules. See the [resolver targeting tests](../../tests/specs/resolvers.ts#L120-L167).
+[PR #21](https://github.com/privatenumber/comment-mark/pull/21) introduced missing-selector errors for static updates. [PR #26](https://github.com/privatenumber/comment-mark/pull/26) changed resolver values to run for every match and made a missing resolver selector a no-op. Its earlier `(attributes, content)` callback signature and first-match resolver behavior are superseded. [PR #27](https://github.com/privatenumber/comment-mark/pull/27) removed functions inside positional arrays: an index check in a selector-level resolver can compute selectively without a second callback form with different claim rules. See the [resolver targeting tests](../../tests/specs/resolvers.ts#L120-L173).
+
+### Decision: a resolver that matches nothing rejects
+
+PR #26 made a zero-match resolver a no-op only because "a function runs for every match", like `[].map()`. The PR gave no use case for it. User feedback on 2026-11-18 showed the cost: a `lastUpdated` resolver must be a function because the new date depends on the marker's current attribute. When that marker was deleted, the update succeeded and the stale date went unnoticed. The user had to add a `getCommentMark()` guard that throws. That is exactly the failure the "mistakes fail loudly" rule exists to prevent.
+
+Alternatives considered:
+
+- **Keep the no-op and add an opt-in, such as `required(fn)` or an option.** Rejected: the safe behavior would need the caller to know about the opt-in, so the next user would hit the same bug. It also adds a second call shape for one concept.
+- **Reject by default (chosen).** One rule for every value type: a selector must match. A caller that accepts zero matches leaves the selector out, or passes `[]`. Precedent: Testing Library's `getAllBy*` queries throw when nothing matches, and the separate `queryAllBy*` queries return an empty array ([queries docs](https://testing-library.com/docs/queries/about/#types-of-queries), accessed 2026-11-18). The "all" form still requires at least one match by default.
+
+Consequence: `files()` spread into a call on a document with no markers of its tag name now rejects ([test](../../tests/specs/files-plugin.ts)). Revisit if a real workload needs one shared replacements object applied to many documents where some lack the marker. A per-call opt-out would then be justified by evidence.
+
+Performance: the check runs once per selector on `matches.length`, which is already computed, so it adds no work.
 
 ## Async execution and failure boundaries
 
