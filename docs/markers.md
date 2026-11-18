@@ -134,3 +134,15 @@ A selector is a tag name followed by optional attribute predicates, as in CSS at
 - **Use predicates when sections share a tag name.** Testing that an attribute exists, as in `contributors[role]`, is simpler than comparing its value.
 - **Values compare as literal text.** Single quotes, double quotes, or no quotes work in a selector, and `[role='maintainer']` matches `role=maintainer` however the marker quotes it.
 - **Unsupported syntax is an error.** Combinators, selector lists, pseudo-classes, and operators other than `=` are rejected instead of matching nothing.
+
+## Migrating from `:start` and `:end` markers
+
+comment-mark 2.x wrote a section as `<!-- name:start -->` and `<!-- name:end -->`. These comments are no longer markers, because `:` cannot follow a tag name. Convert them in place with Perl:
+
+```sh
+perl -pi -e 's/<!--\s*([A-Za-z_][\w-]*):start\s*-->/<!-- $1 -->/g; s/<!--\s*([A-Za-z_][\w-]*):end\s*-->/<!-- \/$1 -->/g' README.md
+```
+
+- **Unconverted names stay as they are.** A 2.x name that is not a valid tag name, such as `my.key`, does not match the pattern. Rename it by hand.
+- **An unconverted section fails loudly.** An update for a name the document no longer has as a marker rejects in JavaScript, and the CLI exits with code `1`.
+- **The first update can change the layout.** A block marker puts its content on its own lines (see [content layout](#content-layout)), so a section written on one line, such as `<!-- a -->x<!-- /a -->` at the start of a line, gets line breaks the first time it is updated.
