@@ -161,9 +161,15 @@ describe('resolver targeting', () => {
 		expect(positions).toStrictEqual([['one', 0], ['two', 1]]);
 	});
 
-	test('is a no-op when the selector matches nothing', async () => {
-		const content = createMarker('a', 'old');
-		expect(await commentMark(content, { b: () => 'new' })).toBe(content);
+	test('rejects a selector that matches nothing without running', async () => {
+		const calls: string[] = [];
+		await expect(commentMark(createMarker('a', 'old'), {
+			b: () => {
+				calls.push('b');
+				return 'new';
+			},
+		})).rejects.toThrow('[comment-mark] Selector "b" matched no markers');
+		expect(calls).toStrictEqual([]);
 	});
 });
 

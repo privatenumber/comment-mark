@@ -134,3 +134,18 @@ A selector is a tag name followed by optional attribute predicates, as in CSS at
 - **Use predicates when sections share a tag name.** Testing that an attribute exists, as in `contributors[role]`, is simpler than comparing its value.
 - **Values compare as literal text.** Single quotes, double quotes, or no quotes work in a selector, and `[role='maintainer']` matches `role=maintainer` however the marker quotes it.
 - **Unsupported syntax is an error.** Combinators, selector lists, pseudo-classes, and operators other than `=` are rejected instead of matching nothing.
+
+## Migrating from `:start` and `:end` markers
+
+comment-mark 2.x wrote a section as a pair of `:start` and `:end` comments. These comments are no longer markers, because `:` cannot follow a tag name. Rewrite each pair as an opening and a closing comment, and keep the content between them:
+
+```md
+<!-- version:start -->1.0.0<!-- version:end -->
+<!-- version -->1.0.0<!-- /version -->
+```
+
+- **Rename names that are not valid tag names.** A 2.x name could be any text, such as `my.key`. A tag name follows the [syntax rules](#syntax), so write it as `my-key` and update the code or CLI flags that set it.
+- **Leave examples in code alone.** `:start` and `:end` comments shown inside code blocks or inline code are documentation, not sections. comment-mark ignores markers there too ([markers in code examples](#markers-in-code-examples)).
+- **Check the result.** Run `npx comment-mark README.md` with no flags to list the markers it detects. Every converted section should appear.
+- **A missed section fails loudly.** An update for a section that was not converted rejects in JavaScript, and the CLI exits with code `1`.
+- **The first update can change the layout.** A block marker puts its content on its own lines (see [content layout](#content-layout)), so a section written on one line, such as `<!-- a -->x<!-- /a -->` at the start of a line, gets line breaks the first time it is updated.
